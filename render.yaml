@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 services:
   - type: web
     name: resume-fixer-backend
@@ -8,3 +9,15 @@ services:
     envVars:
       - key: OPENAI_API_KEY
         sync: false
+=======
+services:
+  - type: web
+    name: resume-fixer-backend
+    env: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python app.py"
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+>>>>>>> 5b3cf19 (Fix syntax issue in render.yaml)
