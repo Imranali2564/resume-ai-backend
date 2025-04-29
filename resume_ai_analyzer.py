@@ -5,13 +5,10 @@ import pytesseract
 import docx
 import os
 
-# ✅ Pull OpenAI key from environment and set correct base_url
 client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    base_url="https://api.openai.com/v1"
+    api_key=os.environ.get("OPENAI_API_KEY")
 )
 
-# 🧠 Path to Poppler bin (for OCR image conversion)
 POPPLER_PATH = r"C:\\Users\\Imran\\Downloads\\poppler-24.08.0\\Library\\bin"
 
 def extract_text_from_pdf(file_path):
@@ -36,7 +33,8 @@ def extract_text_with_ocr(file_path):
         images = convert_from_path(file_path, poppler_path=POPPLER_PATH)
         text = ""
         for img in images:
-            text += pytesseract.image_to_string(img, config='--psm 6')
+            ocr_text = pytesseract.image_to_string(img, config='--psm 6')
+            text += ocr_text
         return text
     except:
         return ""
@@ -59,21 +57,30 @@ def analyze_resume_with_openai(file_path):
         return {
             "suggestions": (
                 "⚠️ Could not read any text from your file. Make sure it is not an image-only scan or overly designed layout.\n"
-                "✅ Tip for Canva Users: Export your resume as a DOCX file, then convert it to PDF using Google Docs or MS Word. Avoid using graphic-heavy or multi-column templates."
+                "✅ Tip for Canva Users: Export your resume as a DOCX file, then convert it to PDF using Google Docs or MS Word."
             )
         }
 
+    # ✅ New Improved Prompt
     prompt = (
-        "You are an expert ATS (Applicant Tracking System) resume reviewer.\n"
-        "Analyze the following resume and provide improvement suggestions in bullet points:\n\n"
-        f"{resume_text}\n\n"
+        "You're an AI resume optimization expert. Analyze the resume below and return improvement suggestions in bullet points.\n"
+        "Focus on:\n"
+        "• Improving grammar and spelling\n"
+        "• Using professional and action-oriented language\n"
+        "• Fixing tone inconsistencies\n"
+        "• Optimizing keywords for ATS (applicant tracking systems)\n"
+        "• Removing weak or filler statements\n"
+        "• Strengthening achievements and results\n"
+        "• Rewording passive voice to active voice\n"
+        "• Suggesting skills or sections to add if missing\n\n"
+        f"Resume:\n{resume_text}\n\n"
         "Suggestions:"
     )
 
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
-            {"role": "system", "content": "You are a helpful AI assistant."},
+            {"role": "system", "content": "You are a top-tier AI resume reviewer and job application strategist."},
             {"role": "user", "content": prompt}
         ]
     )
