@@ -5,12 +5,13 @@ import pytesseract
 import docx
 import os
 
-# ✅ Your OpenAI API key
+# ✅ Pull OpenAI key from environment and set correct base_url
 client = OpenAI(
-    api_key="OPENAI_API_KEY"
+    api_key=os.getenv("OPENAI_API_KEY"),
+    base_url="https://api.openai.com/v1"
 )
 
-# 🧠 Path to Poppler bin (your system's path)
+# 🧠 Path to Poppler bin (for OCR image conversion)
 POPPLER_PATH = r"C:\\Users\\Imran\\Downloads\\poppler-24.08.0\\Library\\bin"
 
 def extract_text_from_pdf(file_path):
@@ -35,9 +36,7 @@ def extract_text_with_ocr(file_path):
         images = convert_from_path(file_path, poppler_path=POPPLER_PATH)
         text = ""
         for img in images:
-            # 🔍 Improved OCR config (PSM 6 assumes uniform block of text)
-            ocr_text = pytesseract.image_to_string(img, config='--psm 6')
-            text += ocr_text
+            text += pytesseract.image_to_string(img, config='--psm 6')
         return text
     except:
         return ""
