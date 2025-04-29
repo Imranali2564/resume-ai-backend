@@ -3,7 +3,9 @@ services:
     name: resume-fixer-backend
     env: python
     plan: free
-    buildCommand: "pip install -r requirements.txt"
+    buildCommand: |
+      apt-get update && apt-get install -y tesseract-ocr
+      pip install -r requirements.txt
     startCommand: "python app.py"
     envVars:
       - key: OPENAI_API_KEY
