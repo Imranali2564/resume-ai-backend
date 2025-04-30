@@ -147,9 +147,18 @@ Cover Letter:
             ]
         )
         cover_letter = response.choices[0].message.content.strip()
-        return jsonify({"cover_letter": cover_letter})
-    except:
-        return jsonify({'error': 'Failed to generate cover letter.'}), 500
+
+        # Save to .docx
+        filename = f"cover_letter_{uuid.uuid4().hex[:6]}.docx"
+        filepath = os.path.join(STATIC_FOLDER, filename)
+        doc = Document()
+        for line in cover_letter.split("\n"):
+            doc.add_paragraph(line.strip())
+        doc.save(filepath)
+
+        return send_from_directory(STATIC_FOLDER, filename, as_attachment=True)
+    except Exception as e:
+        return jsonify({'error': f'Failed to generate cover letter: {str(e)}'}), 500
 
 @app.route('/fix-suggestion', methods=['POST'])
 def fix_suggestion():
