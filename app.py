@@ -217,6 +217,7 @@ Now return the updated resume only, with the fix applied. Don't explain anything
 
     return send_from_directory(STATIC_FOLDER, filename, as_attachment=True)
 
+# ✅ FINAL RESUME CLEAN TEXT FIX
 @app.route('/final-resume', methods=['POST'])
 def final_resume():
     file = request.files.get('file')
