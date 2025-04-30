@@ -12,7 +12,7 @@ from resume_ai_analyzer import (
     extract_text_with_ocr
 )
 
-app = Flask(__name__)
+app = Flask(__name__, static_url_path='/static')
 CORS(app)
 
 UPLOAD_FOLDER = 'uploads'
