@@ -116,6 +116,56 @@ def check_ats():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/generate-cover-letter', methods=['POST'])
+def generate_cover_letter():
+    file = request.files.get('file')
+    job_title = request.form.get('job_title')
+    company_name = request.form.get('company_name')
+
+    if not file or not job_title or not company_name:
+        return jsonify({'error': 'File, job title, and company name are required'}), 400
+
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+
+    extension = os.path.splitext(filepath)[1].lower()
+    if extension == ".pdf":
+        resume_text = extract_text_from_pdf(filepath)
+        if not resume_text.strip():
+            resume_text = extract_text_with_ocr(filepath)
+    elif extension == ".docx":
+        resume_text = extract_text_from_docx(filepath)
+    else:
+        return jsonify({'error': 'Unsupported file format'}), 400
+
+    if not resume_text.strip():
+        return jsonify({'error': 'Resume text could not be extracted'}), 400
+
+    prompt = f"""
+You are a career coach and expert cover letter writer. Based on the resume content and the job title and company name below, write a compelling cover letter.
+
+Resume:
+{resume_text}
+
+Job Title: {job_title}
+Company Name: {company_name}
+
+Cover Letter:
+"""
+
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are a professional cover letter writing assistant."},
+            {"role": "user", "content": prompt}
+        ]
+    )
+
+    cover_letter = response.choices[0].message.content.strip()
+    return jsonify({"cover_letter": cover_letter})
+
 @app.route('/fix-suggestion', methods=['POST'])
 def fix_suggestion():
     file = request.files.get('file')
