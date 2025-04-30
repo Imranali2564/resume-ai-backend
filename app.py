@@ -23,16 +23,15 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(STATIC_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
 @app.route('/upload', methods=['POST'])
 def upload_resume():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file part'}), 400
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
+    file = request.files.get('file')
+    if not file or file.filename == '':
+        return jsonify({'error': 'No file uploaded'}), 400
 
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
     file.save(filepath)
 
     try:
@@ -47,24 +46,19 @@ def resume_score():
     if not file:
         return jsonify({'error': 'No file uploaded'}), 400
 
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
     file.save(filepath)
 
-    extension = os.path.splitext(filepath)[1].lower()
-    if extension == ".pdf":
-        resume_text = extract_text_from_pdf(filepath)
-        if not resume_text.strip():
-            resume_text = extract_text_with_ocr(filepath)
-    elif extension == ".docx":
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext == ".pdf":
+        resume_text = extract_text_from_pdf(filepath) or extract_text_with_ocr(filepath)
+    elif ext == ".docx":
         resume_text = extract_text_from_docx(filepath)
     else:
         return jsonify({'error': 'Unsupported file format'}), 400
 
     if not resume_text.strip():
         return jsonify({'error': 'No extractable text found in resume'}), 400
-
-    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
     prompt = f"""
 You are a professional resume reviewer. Give a resume score between 0 and 100 based on:
@@ -78,36 +72,29 @@ Resume:
 {resume_text}
 
 Just return a number between 0 and 100, nothing else.
-"""
+    """
 
-    response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "You are a strict but fair resume scoring assistant."},
-            {"role": "user", "content": prompt}
-        ]
-    )
-
-    score_raw = response.choices[0].message.content.strip()
     try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a strict but fair resume scoring assistant."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        score_raw = response.choices[0].message.content.strip()
         score = int(''.join(filter(str.isdigit, score_raw)))
-        score = max(0, min(score, 100))
+        return jsonify({"score": max(0, min(score, 100))})
     except:
-        score = 70
-
-    return jsonify({"score": score})
+        return jsonify({"score": 70})
 
 @app.route('/check-ats', methods=['POST'])
 def check_ats():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file part'}), 400
+    file = request.files.get('file')
+    if not file:
+        return jsonify({'error': 'No file uploaded'}), 400
 
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
-
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
     file.save(filepath)
 
     try:
@@ -125,16 +112,13 @@ def generate_cover_letter():
     if not file or not job_title or not company_name:
         return jsonify({'error': 'File, job title, and company name are required'}), 400
 
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
     file.save(filepath)
 
-    extension = os.path.splitext(filepath)[1].lower()
-    if extension == ".pdf":
-        resume_text = extract_text_from_pdf(filepath)
-        if not resume_text.strip():
-            resume_text = extract_text_with_ocr(filepath)
-    elif extension == ".docx":
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext == ".pdf":
+        resume_text = extract_text_from_pdf(filepath) or extract_text_with_ocr(filepath)
+    elif ext == ".docx":
         resume_text = extract_text_from_docx(filepath)
     else:
         return jsonify({'error': 'Unsupported file format'}), 400
@@ -152,19 +136,20 @@ Job Title: {job_title}
 Company Name: {company_name}
 
 Cover Letter:
-"""
+    """
 
-    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-    response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "You are a professional cover letter writing assistant."},
-            {"role": "user", "content": prompt}
-        ]
-    )
-
-    cover_letter = response.choices[0].message.content.strip()
-    return jsonify({"cover_letter": cover_letter})
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a professional cover letter writing assistant."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        cover_letter = response.choices[0].message.content.strip()
+        return jsonify({"cover_letter": cover_letter})
+    except:
+        return jsonify({'error': 'Failed to generate cover letter.'}), 500
 
 @app.route('/fix-suggestion', methods=['POST'])
 def fix_suggestion():
@@ -173,16 +158,13 @@ def fix_suggestion():
     if not file or not suggestion:
         return jsonify({'error': 'File and suggestion are required'}), 400
 
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
     file.save(filepath)
 
-    extension = os.path.splitext(filepath)[1].lower()
-    if extension == ".pdf":
-        resume_text = extract_text_from_pdf(filepath)
-        if not resume_text.strip():
-            resume_text = extract_text_with_ocr(filepath)
-    elif extension == ".docx":
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext == ".pdf":
+        resume_text = extract_text_from_pdf(filepath) or extract_text_with_ocr(filepath)
+    elif ext == ".docx":
         resume_text = extract_text_from_docx(filepath)
     else:
         return jsonify({'error': 'Unsupported file format'}), 400
@@ -190,7 +172,6 @@ def fix_suggestion():
     if not resume_text.strip():
         return jsonify({'error': 'Could not extract text from resume'}), 400
 
-    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     prompt = f"""
 You are an expert resume editor. Apply the following fix to this resume:
 
@@ -211,13 +192,13 @@ Now return the updated resume only, with the fix applied. Don't explain anything
     )
 
     fixed_text = response.choices[0].message.content.strip()
-    fixed_filename = f"fixed_resume_{uuid.uuid4().hex[:6]}.txt"
-    fixed_filepath = os.path.join(STATIC_FOLDER, fixed_filename)
+    filename = f"fixed_resume_{uuid.uuid4().hex[:6]}.txt"
+    filepath = os.path.join(STATIC_FOLDER, filename)
 
-    with open(fixed_filepath, 'w', encoding='utf-8') as f:
+    with open(filepath, 'w', encoding='utf-8') as f:
         f.write(fixed_text)
 
-    return send_from_directory(STATIC_FOLDER, fixed_filename, as_attachment=True)
+    return send_from_directory(STATIC_FOLDER, filename, as_attachment=True)
 
 @app.route('/final-resume', methods=['POST'])
 def final_resume():
@@ -231,16 +212,13 @@ def final_resume():
     except:
         return jsonify({'error': 'Fixes must be valid JSON'}), 400
 
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
     file.save(filepath)
 
-    extension = os.path.splitext(filepath)[1].lower()
-    if extension == ".pdf":
-        resume_text = extract_text_from_pdf(filepath)
-        if not resume_text.strip():
-            resume_text = extract_text_with_ocr(filepath)
-    elif extension == ".docx":
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext == ".pdf":
+        resume_text = extract_text_from_pdf(filepath) or extract_text_with_ocr(filepath)
+    elif ext == ".docx":
         resume_text = extract_text_from_docx(filepath)
     else:
         return jsonify({'error': 'Unsupported file format'}), 400
@@ -263,7 +241,6 @@ Fixes to Apply:
 {all_fixes_text}
     """
 
-    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
@@ -274,20 +251,20 @@ Fixes to Apply:
 
     fixed_text = response.choices[0].message.content.strip()
 
-    if extension == ".docx":
+    if ext == ".docx":
         doc = Document()
-        for line in fixed_text.split("\n"):
+        for line in fixed_text.splitlines():
             doc.add_paragraph(line.strip())
-        final_filename = f"final_resume_{uuid.uuid4().hex[:6]}.docx"
-        final_filepath = os.path.join(STATIC_FOLDER, final_filename)
-        doc.save(final_filepath)
+        filename = f"final_resume_{uuid.uuid4().hex[:6]}.docx"
+        filepath = os.path.join(STATIC_FOLDER, filename)
+        doc.save(filepath)
     else:
-        final_filename = f"final_resume_{uuid.uuid4().hex[:6]}.txt"
-        final_filepath = os.path.join(STATIC_FOLDER, final_filename)
-        with open(final_filepath, 'w', encoding='utf-8') as f:
+        filename = f"final_resume_{uuid.uuid4().hex[:6]}.txt"
+        filepath = os.path.join(STATIC_FOLDER, filename)
+        with open(filepath, 'w', encoding='utf-8') as f:
             f.write(fixed_text)
 
-    return send_from_directory(STATIC_FOLDER, final_filename, as_attachment=True)
+    return send_from_directory(STATIC_FOLDER, filename, as_attachment=True)
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
