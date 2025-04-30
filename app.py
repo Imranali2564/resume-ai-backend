@@ -3,6 +3,7 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import os
 import uuid
+import json
 from openai import OpenAI
 from resume_ai_analyzer import (
     analyze_resume_with_openai,
@@ -41,7 +42,7 @@ def upload_resume():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# ✅ New route to apply AI fix for individual suggestion
+# ✅ Fix single suggestion
 @app.route('/fix-suggestion', methods=['POST'])
 def fix_suggestion():
     file = request.files.get('file')
@@ -56,7 +57,6 @@ def fix_suggestion():
 
     extension = os.path.splitext(filepath)[1].lower()
 
-    # 1. Extract text from resume
     if extension == ".pdf":
         resume_text = extract_text_from_pdf(filepath)
         if not resume_text.strip():
@@ -69,9 +69,8 @@ def fix_suggestion():
     if not resume_text.strip():
         return jsonify({'error': 'Could not extract text from resume'}), 400
 
-    # 2. AI fix based on suggestion
     client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-    
+
     prompt = f"""
 You are an expert resume editor. Apply the following fix to this resume:
 
@@ -93,7 +92,6 @@ Now return the updated resume only, with the fix applied. Don't explain anything
 
     fixed_text = response.choices[0].message.content.strip()
 
-    # 3. Save as downloadable file
     fixed_filename = f"fixed_resume_{uuid.uuid4().hex[:6]}.txt"
     fixed_filepath = os.path.join(STATIC_FOLDER, fixed_filename)
 
@@ -101,6 +99,71 @@ Now return the updated resume only, with the fix applied. Don't explain anything
         f.write(fixed_text)
 
     return jsonify({'download_url': f'/static/{fixed_filename}'})
+
+# ✅ Final resume after multiple fixes
+@app.route('/final-resume', methods=['POST'])
+def final_resume():
+    file = request.files.get('file')
+    fixes = request.form.get('fixes')
+
+    if not file or not fixes:
+        return jsonify({'error': 'File and fixes are required'}), 400
+
+    try:
+        fixes_list = json.loads(fixes)
+    except:
+        return jsonify({'error': 'Fixes must be a valid JSON list'}), 400
+
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+
+    extension = os.path.splitext(filepath)[1].lower()
+
+    if extension == ".pdf":
+        resume_text = extract_text_from_pdf(filepath)
+        if not resume_text.strip():
+            resume_text = extract_text_with_ocr(filepath)
+    elif extension == ".docx":
+        resume_text = extract_text_from_docx(filepath)
+    else:
+        return jsonify({'error': 'Unsupported file format'}), 400
+
+    if not resume_text.strip():
+        return jsonify({'error': 'Could not extract resume text'}), 400
+
+    all_fixes_text = "\n".join(
+        f"- {fix['suggestion']}\n  Apply: {fix['fixedText']}" for fix in fixes_list
+    )
+
+    prompt = f"""
+You're an AI resume editor. Here's the original resume and a list of improvements to apply. Return only the final updated resume, no explanation.
+
+Resume:
+{resume_text}
+
+Fixes to Apply:
+{all_fixes_text}
+"""
+
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are a professional resume editing assistant."},
+            {"role": "user", "content": prompt}
+        ]
+    )
+
+    fixed_text = response.choices[0].message.content.strip()
+
+    final_filename = f"final_resume_{uuid.uuid4().hex[:6]}.txt"
+    final_filepath = os.path.join(STATIC_FOLDER, final_filename)
+
+    with open(final_filepath, 'w', encoding='utf-8') as f:
+        f.write(fixed_text)
+
+    return jsonify({'download_url': f'/static/{final_filename}'})
 
 # Run app on Render
 if __name__ == '__main__':
