@@ -128,12 +128,13 @@ def final_resume():
     if not resume_text.strip():
         return jsonify({'error': 'Could not extract resume text'}), 400
 
-    # 👇 Fix added here to limit input to OpenAI
-    resume_text = resume_text[:15000]
+    # ✅ Limit token size (resume + fixes)
+    resume_text = resume_text[:12000]
 
     all_fixes_text = "\n".join(
         f"- {fix['suggestion']}\n  Apply: {fix['fixedText']}" for fix in fixes_list
     )
+    all_fixes_text = all_fixes_text[:3000]
 
     prompt = f"""
 You're an AI resume editor. Here's the original resume and a list of improvements to apply. Return only the final updated resume, no explanation.
