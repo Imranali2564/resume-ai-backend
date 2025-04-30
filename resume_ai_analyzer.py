@@ -5,10 +5,7 @@ import pytesseract
 import docx
 import os
 
-client = OpenAI(
-    api_key=os.environ.get("OPENAI_API_KEY")
-)
-
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 POPPLER_PATH = r"C:\\Users\\Imran\\Downloads\\poppler-24.08.0\\Library\\bin"
 
 def extract_text_from_pdf(file_path):
@@ -39,6 +36,22 @@ def extract_text_with_ocr(file_path):
     except:
         return ""
 
+def get_stable_suggestions(resume_text):
+    prompt = (
+        "You're a professional resume reviewer. Analyze the resume and return improvement suggestions in clear, short bullet points.\n"
+        "Do NOT repeat suggestions, do NOT give generic advice. Focus on actual improvement areas only.\n\n"
+        f"Resume:\n{resume_text}\n\nSuggestions:"
+    )
+
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are a precise and helpful AI resume improvement assistant."},
+            {"role": "user", "content": prompt}
+        ]
+    )
+    return response.choices[0].message.content.strip()
+
 def analyze_resume_with_openai(file_path):
     extension = os.path.splitext(file_path)[1].lower()
 
@@ -61,30 +74,5 @@ def analyze_resume_with_openai(file_path):
             )
         }
 
-    # ✅ New Improved Prompt
-    prompt = (
-        "You're an AI resume optimization expert. Analyze the resume below and return improvement suggestions in bullet points.\n"
-        "Focus on:\n"
-        "• Improving grammar and spelling\n"
-        "• Using professional and action-oriented language\n"
-        "• Fixing tone inconsistencies\n"
-        "• Optimizing keywords for ATS (applicant tracking systems)\n"
-        "• Removing weak or filler statements\n"
-        "• Strengthening achievements and results\n"
-        "• Rewording passive voice to active voice\n"
-        "• Suggesting skills or sections to add if missing\n\n"
-        f"Resume:\n{resume_text}\n\n"
-        "Suggestions:"
-    )
-
-    response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "You are a top-tier AI resume reviewer and job application strategist."},
-            {"role": "user", "content": prompt}
-        ]
-    )
-
-    return {
-        "suggestions": response.choices[0].message.content.strip()
-    }
+    suggestions = get_stable_suggestions(resume_text)
+    return {"suggestions": suggestions}
