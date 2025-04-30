@@ -13,6 +13,14 @@ from resume_ai_analyzer import (
     extract_text_with_ocr
 )
 
+import re  # 🆕 For cleaning OCR text
+
+def clean_ocr_text(text):
+    text = re.sub(r'\n{2,}', '\n', text)
+    text = re.sub(r'[^\x00-\x7F]+', ' ', text)  # remove non-ASCII
+    text = re.sub(r'\s{2,}', ' ', text)
+    return text.strip()
+
 app = Flask(__name__, static_url_path='/static')
 CORS(app)
 
@@ -56,6 +64,7 @@ def fix_suggestion():
         resume_text = extract_text_from_pdf(filepath)
         if not resume_text.strip():
             resume_text = extract_text_with_ocr(filepath)
+        resume_text = clean_ocr_text(resume_text)  # 🧼 Clean OCR text
     elif extension == ".docx":
         resume_text = extract_text_from_docx(filepath)
     else:
@@ -114,6 +123,7 @@ def final_resume():
         resume_text = extract_text_from_pdf(filepath)
         if not resume_text.strip():
             resume_text = extract_text_with_ocr(filepath)
+        resume_text = clean_ocr_text(resume_text)  # 🧼 Clean OCR text
     elif extension == ".docx":
         resume_text = extract_text_from_docx(filepath)
     else:
