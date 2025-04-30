@@ -13,14 +13,6 @@ from resume_ai_analyzer import (
     extract_text_with_ocr
 )
 
-import re  # 🆕 For cleaning OCR text
-
-def clean_ocr_text(text):
-    text = re.sub(r'\n{2,}', '\n', text)
-    text = re.sub(r'[^\x00-\x7F]+', ' ', text)  # remove non-ASCII
-    text = re.sub(r'\s{2,}', ' ', text)
-    return text.strip()
-
 app = Flask(__name__, static_url_path='/static')
 CORS(app)
 
@@ -64,7 +56,6 @@ def fix_suggestion():
         resume_text = extract_text_from_pdf(filepath)
         if not resume_text.strip():
             resume_text = extract_text_with_ocr(filepath)
-        resume_text = clean_ocr_text(resume_text)  # 🧼 Clean OCR text
     elif extension == ".docx":
         resume_text = extract_text_from_docx(filepath)
     else:
@@ -94,11 +85,13 @@ Now return the updated resume only, with the fix applied. Don't explain anything
     )
 
     fixed_text = response.choices[0].message.content.strip()
-    fixed_filename = f"fixed_resume_{uuid.uuid4().hex[:6]}.txt"
+    fixed_filename = f"fixed_resume_{uuid.uuid4().hex[:6]}.docx"
     fixed_filepath = os.path.join(STATIC_FOLDER, fixed_filename)
 
-    with open(fixed_filepath, 'w', encoding='utf-8') as f:
-        f.write(fixed_text)
+    doc = Document()
+    for line in fixed_text.split('\n'):
+        doc.add_paragraph(line.strip())
+    doc.save(fixed_filepath)
 
     return send_from_directory(STATIC_FOLDER, fixed_filename, as_attachment=True)
 
@@ -123,7 +116,6 @@ def final_resume():
         resume_text = extract_text_from_pdf(filepath)
         if not resume_text.strip():
             resume_text = extract_text_with_ocr(filepath)
-        resume_text = clean_ocr_text(resume_text)  # 🧼 Clean OCR text
     elif extension == ".docx":
         resume_text = extract_text_from_docx(filepath)
     else:
@@ -157,19 +149,13 @@ Fixes to Apply:
     )
 
     fixed_text = response.choices[0].message.content.strip()
+    final_filename = f"final_resume_{uuid.uuid4().hex[:6]}.docx"
+    final_filepath = os.path.join(STATIC_FOLDER, final_filename)
 
-    if extension == ".docx":
-        doc = Document()
-        for line in fixed_text.split("\n"):
-            doc.add_paragraph(line.strip())
-        final_filename = f"final_resume_{uuid.uuid4().hex[:6]}.docx"
-        final_filepath = os.path.join(STATIC_FOLDER, final_filename)
-        doc.save(final_filepath)
-    else:
-        final_filename = f"final_resume_{uuid.uuid4().hex[:6]}.txt"
-        final_filepath = os.path.join(STATIC_FOLDER, final_filename)
-        with open(final_filepath, 'w', encoding='utf-8') as f:
-            f.write(fixed_text)
+    doc = Document()
+    for line in fixed_text.split('\n'):
+        doc.add_paragraph(line.strip())
+    doc.save(final_filepath)
 
     return send_from_directory(STATIC_FOLDER, final_filename, as_attachment=True)
 
