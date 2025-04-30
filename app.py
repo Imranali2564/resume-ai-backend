@@ -4,6 +4,7 @@ from werkzeug.utils import secure_filename
 import os
 import uuid
 import json
+import re
 from openai import OpenAI
 from docx import Document
 from resume_ai_analyzer import (
@@ -162,7 +163,8 @@ def download_cover_letter():
     filepath = os.path.join(STATIC_FOLDER, filename)
     doc = Document()
     for line in text.splitlines():
-        doc.add_paragraph(line.strip())
+        if line.strip():
+            doc.add_paragraph(line.strip())
     doc.save(filepath)
     return send_from_directory(STATIC_FOLDER, filename, as_attachment=True)
 
@@ -264,12 +266,14 @@ Fixes to Apply:
         ]
     )
 
-    fixed_text = response.choices[0].message.content.strip()
+    raw_text = response.choices[0].message.content.strip()
+    fixed_text = re.sub(r'[^\x09\x0A\x0D\x20-\x7E\u00A0-\uFFFF]', '', raw_text)
 
     if ext == ".docx":
         doc = Document()
         for line in fixed_text.splitlines():
-            doc.add_paragraph(line.strip())
+            if line.strip():
+                doc.add_paragraph(line.strip())
         filename = f"final_resume_{uuid.uuid4().hex[:6]}.docx"
         filepath = os.path.join(STATIC_FOLDER, filename)
         doc.save(filepath)
