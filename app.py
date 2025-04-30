@@ -15,14 +15,12 @@ from resume_ai_analyzer import (
 app = Flask(__name__)
 CORS(app)
 
-# Folder setup
 UPLOAD_FOLDER = 'uploads'
 STATIC_FOLDER = 'static'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(STATIC_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# Upload route (suggestions only)
 @app.route('/upload', methods=['POST'])
 def upload_resume():
     if 'file' not in request.files:
@@ -42,7 +40,6 @@ def upload_resume():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# ✅ Fix single suggestion
 @app.route('/fix-suggestion', methods=['POST'])
 def fix_suggestion():
     file = request.files.get('file')
@@ -100,7 +97,6 @@ Now return the updated resume only, with the fix applied. Don't explain anything
 
     return jsonify({'download_url': f'/static/{fixed_filename}'})
 
-# ✅ Final resume after multiple fixes
 @app.route('/final-resume', methods=['POST'])
 def final_resume():
     file = request.files.get('file')
@@ -131,6 +127,9 @@ def final_resume():
 
     if not resume_text.strip():
         return jsonify({'error': 'Could not extract resume text'}), 400
+
+    # 👇 Fix added here to limit input to OpenAI
+    resume_text = resume_text[:15000]
 
     all_fixes_text = "\n".join(
         f"- {fix['suggestion']}\n  Apply: {fix['fixedText']}" for fix in fixes_list
@@ -165,7 +164,6 @@ Fixes to Apply:
 
     return jsonify({'download_url': f'/static/{final_filename}'})
 
-# Run app on Render
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
