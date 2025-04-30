@@ -217,7 +217,6 @@ Now return the updated resume only, with the fix applied. Don't explain anything
 
     return send_from_directory(STATIC_FOLDER, filename, as_attachment=True)
 
-# ✅ FINAL RESUME CLEAN TEXT FIX
 @app.route('/final-resume', methods=['POST'])
 def final_resume():
     file = request.files.get('file')
@@ -268,21 +267,19 @@ Fixes to Apply:
     )
 
     raw_text = response.choices[0].message.content.strip()
-    fixed_text = re.sub(r'[^\x09\x0A\x0D\x20-\x7E\u00A0-\uFFFF]', '', raw_text)
+    clean_text = re.sub(r'[^\x09\x0A\x0D\x20-\x7E\u00A0-\uFFFF]', '', raw_text)
 
-    if ext == ".docx":
+    filename = f"final_resume_{uuid.uuid4().hex[:6]}.docx"
+    filepath = os.path.join(STATIC_FOLDER, filename)
+
+    try:
         doc = Document()
-        for line in fixed_text.splitlines():
+        for line in clean_text.splitlines():
             if line.strip():
                 doc.add_paragraph(line.strip())
-        filename = f"final_resume_{uuid.uuid4().hex[:6]}.docx"
-        filepath = os.path.join(STATIC_FOLDER, filename)
         doc.save(filepath)
-    else:
-        filename = f"final_resume_{uuid.uuid4().hex[:6]}.txt"
-        filepath = os.path.join(STATIC_FOLDER, filename)
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write(fixed_text)
+    except Exception as e:
+        return jsonify({'error': f'DOCX saving error: {str(e)}'}), 500
 
     return send_from_directory(STATIC_FOLDER, filename, as_attachment=True)
 
