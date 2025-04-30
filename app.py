@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import os
@@ -95,7 +95,8 @@ Now return the updated resume only, with the fix applied. Don't explain anything
     with open(fixed_filepath, 'w', encoding='utf-8') as f:
         f.write(fixed_text)
 
-    return jsonify({'download_url': f'/static/{fixed_filename}'})
+    # ✅ Serve the file directly
+    return send_from_directory(STATIC_FOLDER, fixed_filename, as_attachment=True)
 
 @app.route('/final-resume', methods=['POST'])
 def final_resume():
@@ -128,13 +129,12 @@ def final_resume():
     if not resume_text.strip():
         return jsonify({'error': 'Could not extract resume text'}), 400
 
-    # ✅ Limit token size (resume + fixes)
-    resume_text = resume_text[:12000]
+    resume_text = resume_text[:12000]  # ✅ token limit safety
 
     all_fixes_text = "\n".join(
         f"- {fix['suggestion']}\n  Apply: {fix['fixedText']}" for fix in fixes_list
     )
-    all_fixes_text = all_fixes_text[:3000]
+    all_fixes_text = all_fixes_text[:3000]  # ✅ token limit safety
 
     prompt = f"""
 You're an AI resume editor. Here's the original resume and a list of improvements to apply. Return only the final updated resume, no explanation.
@@ -163,7 +163,8 @@ Fixes to Apply:
     with open(final_filepath, 'w', encoding='utf-8') as f:
         f.write(fixed_text)
 
-    return jsonify({'download_url': f'/static/{final_filename}'})
+    # ✅ Serve the file directly
+    return send_from_directory(STATIC_FOLDER, final_filename, as_attachment=True)
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
