@@ -76,3 +76,37 @@ def analyze_resume_with_openai(file_path):
 
     suggestions = get_stable_suggestions(resume_text)
     return {"suggestions": suggestions}
+def check_ats_compatibility(file_path):
+    extension = os.path.splitext(file_path)[1].lower()
+
+    if extension == ".pdf":
+        resume_text = extract_text_from_pdf(file_path)
+        if not resume_text.strip():
+            resume_text = extract_text_with_ocr(file_path)
+    elif extension == ".docx":
+        resume_text = extract_text_from_docx(file_path)
+    else:
+        return "❌ Unsupported file format"
+
+    if not resume_text.strip():
+        return "⚠️ Could not extract text from your resume."
+
+    prompt = (
+        "You're an expert ATS resume reviewer. Review the following resume and provide a bullet-point list "
+        "with two sections:\n"
+        "1. ✅ ATS-Friendly Elements (such as readable fonts, keyword usage, section clarity)\n"
+        "2. ❌ ATS Blockers (like tables, graphics, headers/footers, fancy formatting)\n\n"
+        f"Resume:\n{resume_text}\n\n"
+        "Return only the two sections."
+    )
+
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are a professional ATS resume checker."},
+            {"role": "user", "content": prompt}
+        ]
+    )
+
+    return response.choices[0].message.content.strip()
+

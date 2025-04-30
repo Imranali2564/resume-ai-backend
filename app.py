@@ -10,7 +10,8 @@ from resume_ai_analyzer import (
     analyze_resume_with_openai,
     extract_text_from_pdf,
     extract_text_from_docx,
-    extract_text_with_ocr
+    extract_text_with_ocr,
+    check_ats_compatibility
 )
 
 app = Flask(__name__, static_url_path='/static')
@@ -95,6 +96,25 @@ Just return a number between 0 and 100, nothing else.
         score = 70
 
     return jsonify({"score": score})
+
+@app.route('/check-ats', methods=['POST'])
+def check_ats():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+
+    try:
+        ats_result = check_ats_compatibility(filepath)
+        return jsonify({'ats_report': ats_result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/fix-suggestion', methods=['POST'])
 def fix_suggestion():
