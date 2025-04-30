@@ -40,6 +40,62 @@ def upload_resume():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/resume-score', methods=['POST'])
+def resume_score():
+    file = request.files.get('file')
+    if not file:
+        return jsonify({'error': 'No file uploaded'}), 400
+
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+
+    extension = os.path.splitext(filepath)[1].lower()
+    if extension == ".pdf":
+        resume_text = extract_text_from_pdf(filepath)
+        if not resume_text.strip():
+            resume_text = extract_text_with_ocr(filepath)
+    elif extension == ".docx":
+        resume_text = extract_text_from_docx(filepath)
+    else:
+        return jsonify({'error': 'Unsupported file format'}), 400
+
+    if not resume_text.strip():
+        return jsonify({'error': 'No extractable text found in resume'}), 400
+
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
+    prompt = f"""
+You are a professional resume reviewer. Give a resume score between 0 and 100 based on:
+- Formatting and readability
+- Grammar and professionalism
+- Use of action verbs and achievements
+- Keyword optimization for ATS
+- Overall impression and completeness
+
+Resume:
+{resume_text}
+
+Just return a number between 0 and 100, nothing else.
+"""
+
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are a strict but fair resume scoring assistant."},
+            {"role": "user", "content": prompt}
+        ]
+    )
+
+    score_raw = response.choices[0].message.content.strip()
+    try:
+        score = int(''.join(filter(str.isdigit, score_raw)))
+        score = max(0, min(score, 100))
+    except:
+        score = 70
+
+    return jsonify({"score": score})
+
 @app.route('/fix-suggestion', methods=['POST'])
 def fix_suggestion():
     file = request.files.get('file')
@@ -85,13 +141,11 @@ Now return the updated resume only, with the fix applied. Don't explain anything
     )
 
     fixed_text = response.choices[0].message.content.strip()
-    fixed_filename = f"fixed_resume_{uuid.uuid4().hex[:6]}.docx"
+    fixed_filename = f"fixed_resume_{uuid.uuid4().hex[:6]}.txt"
     fixed_filepath = os.path.join(STATIC_FOLDER, fixed_filename)
 
-    doc = Document()
-    for line in fixed_text.split('\n'):
-        doc.add_paragraph(line.strip())
-    doc.save(fixed_filepath)
+    with open(fixed_filepath, 'w', encoding='utf-8') as f:
+        f.write(fixed_text)
 
     return send_from_directory(STATIC_FOLDER, fixed_filename, as_attachment=True)
 
@@ -149,13 +203,19 @@ Fixes to Apply:
     )
 
     fixed_text = response.choices[0].message.content.strip()
-    final_filename = f"final_resume_{uuid.uuid4().hex[:6]}.docx"
-    final_filepath = os.path.join(STATIC_FOLDER, final_filename)
 
-    doc = Document()
-    for line in fixed_text.split('\n'):
-        doc.add_paragraph(line.strip())
-    doc.save(final_filepath)
+    if extension == ".docx":
+        doc = Document()
+        for line in fixed_text.split("\n"):
+            doc.add_paragraph(line.strip())
+        final_filename = f"final_resume_{uuid.uuid4().hex[:6]}.docx"
+        final_filepath = os.path.join(STATIC_FOLDER, final_filename)
+        doc.save(final_filepath)
+    else:
+        final_filename = f"final_resume_{uuid.uuid4().hex[:6]}.txt"
+        final_filepath = os.path.join(STATIC_FOLDER, final_filename)
+        with open(final_filepath, 'w', encoding='utf-8') as f:
+            f.write(fixed_text)
 
     return send_from_directory(STATIC_FOLDER, final_filename, as_attachment=True)
 
