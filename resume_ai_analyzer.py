@@ -8,106 +8,115 @@ from openai import OpenAI
 
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-# ✅ Extract text from PDF
-def extract_text_from_pdf(pdf_path):
+# Extract text from PDF
+
+def extract_text_from_pdf(file_path):
+    try:
+        with fitz.open(file_path) as doc:
+            text = "\n".join([page.get_text() for page in doc])
+        return text.strip()
+    except Exception:
+        return ""
+
+# OCR if PDF fails
+
+def extract_text_with_ocr(file_path):
     try:
         text = ""
-        with fitz.open(pdf_path) as doc:
-            for page in doc:
-                text += page.get_text()
+        images = convert_pdf_to_images(file_path)
+        for image in images:
+            text += pytesseract.image_to_string(image)
         return text.strip()
-    except:
+    except Exception:
         return ""
 
-# ✅ OCR fallback for PDF images
-def extract_text_with_ocr(pdf_path):
+# PDF to images
+
+def convert_pdf_to_images(file_path):
+    from pdf2image import convert_from_path
+    return convert_from_path(file_path)
+
+# Extract text from DOCX
+
+def extract_text_from_docx(file_path):
     try:
-        text = ""
-        with fitz.open(pdf_path) as doc:
-            for page in doc:
-                pix = page.get_pixmap(dpi=300)
-                img_data = pix.tobytes("png")
-                image = Image.open(io.BytesIO(img_data))
-                text += pytesseract.image_to_string(image)
-        return text.strip()
-    except:
+        doc = docx.Document(file_path)
+        return "\n".join([para.text for para in doc.paragraphs]).strip()
+    except Exception:
         return ""
 
-# ✅ Extract text from DOCX
-def extract_text_from_docx(docx_path):
-    try:
-        doc = docx.Document(docx_path)
-        return "\n".join([para.text for para in doc.paragraphs])
-    except:
-        return ""
+# Analyze resume and give limited important suggestions
 
-# ✅ ATS Compatibility Checker
-def check_ats_compatibility(file_path):
-    extension = os.path.splitext(file_path)[1].lower()
-
-    if extension == ".pdf":
-        resume_text = extract_text_from_pdf(file_path) or extract_text_with_ocr(file_path)
-    elif extension == ".docx":
-        resume_text = extract_text_from_docx(file_path)
+def analyze_resume_with_openai(file_path):
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext == ".pdf":
+        text = extract_text_from_pdf(file_path) or extract_text_with_ocr(file_path)
+    elif ext == ".docx":
+        text = extract_text_from_docx(file_path)
     else:
-        return "❌ Unsupported file format."
+        raise ValueError("Unsupported file format")
 
-    if not resume_text:
-        return "⚠️ Could not extract text from resume."
+    if not text.strip():
+        raise ValueError("Could not extract text from resume")
 
     prompt = f"""
-You are an expert in ATS (Applicant Tracking System) resume optimization.
-Analyze the resume below and return an ATS compatibility report with positives and negatives.
+You are an AI resume coach. Analyze the resume below and return only the 5 to 7 most important and impactful improvement suggestions.
+
+Each suggestion must be:
+- Focused on things that significantly affect job selection
+- Easy to understand
+- Written in 1-2 lines
 
 Resume:
-{resume_text}
+{text}
 
-ATS Report:
-    """
-
-    response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "You are an ATS evaluation assistant."},
-            {"role": "user", "content": prompt}
-        ]
-    )
-
-    return response.choices[0].message.content.strip()
-
-# ✅ Main resume analyzer with atsfix toggle
-def analyze_resume_with_openai(file_path, atsfix=False):
-    extension = os.path.splitext(file_path)[1].lower()
-
-    if extension == ".pdf":
-        resume_text = extract_text_from_pdf(file_path) or extract_text_with_ocr(file_path)
-    elif extension == ".docx":
-        resume_text = extract_text_from_docx(file_path)
-    else:
-        return {"suggestions": "❌ Unsupported file format."}
-
-    if not resume_text:
-        return {"suggestions": "⚠️ No extractable text found in resume."}
-
-    if atsfix:
-        prompt = (
-            "You're an ATS optimization expert. Suggest only improvements related to ATS compatibility such as keyword optimization, "
-            "removal of graphics or tables, formatting structure, and correct section headers. Do NOT mention grammar, achievements, or general tips.\n\n"
-            f"Resume:\n{resume_text}\n\nATS Fix Suggestions:"
-        )
-    else:
-        prompt = (
-            "You're a professional resume reviewer. Suggest improvements in grammar, tone, clarity, and ATS compatibility. "
-            "Provide detailed, actionable suggestions to improve the overall quality of the resume.\n\n"
-            f"Resume:\n{resume_text}\n\nSuggestions:"
-        )
+Suggestions:
+"""
 
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
-            {"role": "system", "content": "You are a helpful resume improvement assistant."},
+            {"role": "system", "content": "You are a helpful and precise resume assistant."},
             {"role": "user", "content": prompt}
         ]
     )
+    content = response.choices[0].message.content.strip()
+    return {"suggestions": content}
 
-    return {"suggestions": response.choices[0].message.content.strip()}
+# ATS Compatibility Check
+
+def check_ats_compatibility(file_path):
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext == ".pdf":
+        text = extract_text_from_pdf(file_path) or extract_text_with_ocr(file_path)
+    elif ext == ".docx":
+        text = extract_text_from_docx(file_path)
+    else:
+        raise ValueError("Unsupported file format")
+
+    if not text.strip():
+        raise ValueError("Could not extract resume text")
+
+    prompt = f"""
+You're an ATS (Applicant Tracking System) expert. Analyze the resume below and return:
+
+✅ What is good for ATS compatibility (like clean formatting, keywords, fonts, sections)
+❌ What is bad or missing for ATS systems
+
+Be clear and short. Mention only what matters for ATS.
+
+Resume:
+{text}
+
+ATS Compatibility Report:
+"""
+
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are an expert in ATS resume reviewing."},
+            {"role": "user", "content": prompt}
+        ]
+    )
+    report = response.choices[0].message.content.strip()
+    return report
