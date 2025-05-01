@@ -29,6 +29,8 @@ client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 @app.route('/upload', methods=['POST'])
 def upload_resume():
     file = request.files.get('file')
+    atsfix_flag = request.form.get('atsfix')  # Expected from frontend
+
     if not file or file.filename == '':
         return jsonify({'error': 'No file uploaded'}), 400
 
@@ -36,7 +38,8 @@ def upload_resume():
     file.save(filepath)
 
     try:
-        result = analyze_resume_with_openai(filepath)
+        atsfix = atsfix_flag == 'true'
+        result = analyze_resume_with_openai(filepath, atsfix=atsfix)
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
