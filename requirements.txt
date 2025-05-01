@@ -7,3 +7,4 @@ python-dotenv
 PyPDF2
 pdf2image
 pytesseract
+PyMuPDF==1.22.5
