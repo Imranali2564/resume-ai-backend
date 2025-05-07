@@ -135,10 +135,11 @@ Write a 2-3 line professional summary for a resume.
         def section_html(title, content):
             if not content.strip():
                 return ""
+            html_content = content.strip().replace("\n", "<br>")
             return f"""
             <div class='section' style='margin-bottom:1.2rem;'>
               <h3 style='font-size:0.95rem; line-height:1.3; color:#222; margin-bottom:4px; border-bottom:1px solid #ccc;'>{title}</h3>
-              <div>{content.strip().replace('\n', '<br>')}</div>
+              <div>{html_content}</div>
             </div>
             """
 
