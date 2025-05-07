@@ -113,7 +113,68 @@ def generate_ai_resume():
         hobbies = data.get("hobbies", "")
         summary = data.get("summary", "")
 
-        if not summary.strip():
+        # Helper function to generate content for a section using AI
+        def generate_section_content(section_name, user_input, context=""):
+            if not user_input.strip():
+                return ""
+            prompts = {
+                "summary": f"""
+You are a resume writing assistant. Based on the following:
+Education: {education}
+Experience: {experience}
+Skills: {skills}
+Write a 2-3 line professional summary for a resume.
+""",
+                "education": f"""
+You are a resume writing assistant. The user has provided the following education details: '{user_input}'.
+Based on this, generate a professional education entry for a resume. Include degree, institution, and years (e.g., 2020-2024). If details are missing, make reasonable assumptions.
+Format the output as plain text, e.g., 'B.Tech in Computer Science, XYZ University, 2020-2024'.
+""",
+                "experience": f"""
+You are a resume writing assistant. The user has provided the following experience details: '{user_input}'.
+Based on this, generate a professional experience entry for a resume. Include job title, company, duration (e.g., June 2023 - August 2023), and a brief description of responsibilities (1-2 lines).
+Format the output as plain text, e.g., 'Software Intern, ABC Corp, June 2023 - August 2023, Developed web applications using React and Node.js'.
+""",
+                "skills": f"""
+You are a resume writing assistant. The user has provided the following skills: '{user_input}'.
+Based on this, generate a professional skills section for a resume. Expand the list by adding 2-3 relevant skills if possible, and format as a bullet list.
+Format the output as plain text with bullet points, e.g., '• Python\n• JavaScript\n• SQL'.
+""",
+                "certifications": f"""
+You are a resume writing assistant. The user has provided the following certifications: '{user_input}'.
+Based on this, generate a professional certifications section for a resume. Include the certification name, issuing organization, and year (e.g., 2023). If details are missing, make reasonable assumptions.
+Format the output as plain text, e.g., 'Certified Python Developer, XYZ Institute, 2023'.
+""",
+                "languages": f"""
+You are a resume writing assistant. The user has provided the following languages: '{user_input}'.
+Based on this, generate a professional languages section for a resume. Include proficiency levels (e.g., Fluent, Intermediate) and format as a list.
+Format the output as plain text, e.g., 'English (Fluent), Spanish (Intermediate)'.
+""",
+                "hobbies": f"""
+You are a resume writing assistant. The user has provided the following hobbies: '{user_input}'.
+Based on this, generate a professional hobbies section for a resume. Expand with 1-2 related hobbies if possible, and format as a list.
+Format the output as plain text with bullet points, e.g., '• Reading\n• Hiking'.
+"""
+            }
+            prompt = prompts.get(section_name, "")
+            if not prompt:
+                return user_input
+            try:
+                res = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "user", "content": prompt}
+                    ]
+                )
+                return res.choices[0].message.content.strip()
+            except:
+                return user_input
+
+        # Generate content for each section if user provided input
+        if summary.strip():
+            summary = generate_section_content("summary", summary)
+        else:
+            # Existing logic for generating summary if empty
             prompt = f"""
 You are a resume writing assistant. Based on the following:
 Education: {education}
@@ -131,6 +192,13 @@ Write a 2-3 line professional summary for a resume.
                 summary = res.choices[0].message.content.strip()
             except:
                 summary = ""
+
+        education = generate_section_content("education", education)
+        experience = generate_section_content("experience", experience)
+        skills = generate_section_content("skills", skills)
+        certifications = generate_section_content("certifications", certifications)
+        languages = generate_section_content("languages", languages)
+        hobbies = generate_section_content("hobbies", hobbies)
 
         def section_html(title, content):
             if not content.strip():
