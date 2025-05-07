@@ -231,55 +231,78 @@ Write a 2-3 line professional summary for a resume.
 
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
-    @app.route('/generate-cover-letter', methods=['POST'])
+   @app.route('/generate-cover-letter', methods=['POST'])
 def generate_cover_letter():
     file = request.files.get('file')
-    job_title = request.form.get('job_title', '')
-    company_name = request.form.get('company_name', '')
+    job_title = request.form.get('job_title')
+    company_name = request.form.get('company_name')
 
     if not file or not job_title or not company_name:
-        return jsonify({'error': 'Missing required fields'}), 400
+        return jsonify({'error': 'File, job title, and company name are required'}), 400
 
     filename = secure_filename(file.filename)
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    file.save(file_path)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
 
-    # Try to extract resume text
-    ext = os.path.splitext(file_path)[1].lower()
-    if ext == ".pdf":
-        resume_text = extract_text_from_pdf(file_path) or extract_text_with_ocr(file_path)
-    elif ext == ".docx":
-        resume_text = extract_text_from_docx(file_path)
+    ext = os.path.splitext(filename)[1].lower()
+    if ext == '.pdf':
+        resume_text = extract_text_from_pdf(filepath) or extract_text_with_ocr(filepath)
+    elif ext == '.docx':
+        resume_text = extract_text_from_docx(filepath)
     else:
-        return jsonify({'error': 'Unsupported file type'}), 400
+        return jsonify({'error': 'Unsupported file format'}), 400
 
     if not resume_text.strip():
-        return jsonify({'error': 'Resume text could not be extracted'}), 400
+        return jsonify({'error': 'Could not extract text from resume'}), 400
+
+    name = ""
+    email = ""
+    phone = ""
+    location = ""
+
+    for line in resume_text.splitlines():
+        line = line.strip()
+        if not name and re.search(r'^[A-Z][a-z]+\\s[A-Z][a-z]+', line):
+            name = line
+        if not email and re.search(r'[\\w\\.-]+@[\\w\\.-]+', line):
+            email = re.search(r'[\\w\\.-]+@[\\w\\.-]+', line).group()
+        if not phone and re.search(r'\\+?\\d[\\d\\s\\-]{8,}', line):
+            phone = re.search(r'\\+?\\d[\\d\\s\\-]{8,}', line).group()
+        if not location and re.search(r'\\b(?:[A-Z][a-z]+(?:,\\s*)?)+\\b', line):
+            location = re.search(r'\\b(?:[A-Z][a-z]+(?:,\\s*)?)+\\b', line).group()
+        if name and email and phone and location:
+            break
 
     prompt = f"""
-You are a career coach and expert cover letter writer. Based on the resume content below, and the provided job title and company name, write a personalized and professional cover letter.
+You are a career coach and expert cover letter writer. Based on the resume content and the job title and company name below, write a compelling cover letter.
+
+Candidate Details:
+Name: {name}
+Email: {email}
+Phone: {phone}
+Location: {location}
 
 Resume:
-{resume_text[:4000]}
+{resume_text}
 
 Job Title: {job_title}
 Company Name: {company_name}
 
 Cover Letter:
-    """
+"""
 
     try:
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "You are a cover letter generation assistant."},
+                {"role": "system", "content": "You are a professional cover letter writing assistant."},
                 {"role": "user", "content": prompt}
             ]
         )
-        letter = response.choices[0].message.content.strip()
-        return jsonify({"cover_letter": letter})
+        cover_letter = response.choices[0].message.content.strip()
+        return jsonify({"cover_letter": cover_letter})
     except Exception as e:
-        return jsonify({'error': f"Failed to generate cover letter: {str(e)}"}), 500
+        return jsonify({'error': f'Failed to generate cover letter: {str(e)}'}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
