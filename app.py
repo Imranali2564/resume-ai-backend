@@ -30,86 +30,38 @@ def generate_ai_resume_content(data):
     certifications = data.get("certifications", "")
     languages = data.get("languages", "")
     hobbies = data.get("hobbies", "")
-    summary = data.get("summary", "")
 
-    # Create dynamic AI content if fields are empty
-    prompt_parts = []
-    if not summary:
-        prompt_parts.append("Generate a 2-3 line professional summary for a resume.")
-    if not experience:
-        prompt_parts.append("Write 2-3 bullet points for professional experience suitable for a fresher.")
-    if not skills:
-        prompt_parts.append("List 5-6 technical and soft skills relevant for a resume.")
-    if not certifications:
-        prompt_parts.append("List 2-3 sample certifications.")
-    if not hobbies:
-        prompt_parts.append("List 2-3 hobbies for resume.")
+    prompt = f"""
+You are a professional resume writer. Using the following user details, generate clean, concise, and professional resume sections in HTML format.
+Use proper section titles like Summary, Education, Experience, Skills, Certifications, Languages, and Hobbies.
+Format all <h3> headings with inline style: font-size:0.95rem; line-height:1.3; color:#222; margin-bottom:4px; border-bottom:1px solid #ccc;
+Use <div> tags for content. Use <br> for line breaks. Only return HTML string.
 
-    ai_generated = {}
-    if prompt_parts:
-        full_prompt = "\n".join(prompt_parts)
-        try:
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant that creates clean, short resume content."},
-                    {"role": "user", "content": full_prompt}
-                ]
-            )
-            output = response.choices[0].message.content.strip()
-            outputs = output.split("\n\n")
-            idx = 0
-            if not summary:
-                ai_generated['summary'] = outputs[idx].strip() if idx < len(outputs) else ""
-                idx += 1
-            if not experience:
-                ai_generated['experience'] = outputs[idx].strip() if idx < len(outputs) else ""
-                idx += 1
-            if not skills:
-                ai_generated['skills'] = outputs[idx].strip() if idx < len(outputs) else ""
-                idx += 1
-            if not certifications:
-                ai_generated['certifications'] = outputs[idx].strip() if idx < len(outputs) else ""
-                idx += 1
-            if not hobbies:
-                ai_generated['hobbies'] = outputs[idx].strip() if idx < len(outputs) else ""
-        except Exception as e:
-            pass
+User Info:
+Name: {name}
+Email: {email}
+Phone: {phone}
+Location: {location}
+Education: {education}
+Experience: {experience}
+Skills: {skills}
+Certifications: {certifications}
+Languages: {languages}
+Hobbies: {hobbies}
+    """
 
-    def format_section(title, content):
-        if content.strip():
-            safe_content = content.replace("\n", "<br>")
-            return f"""
-            <div class=\"section\">
-              <h3 style='font-size:0.95rem; line-height:1.3; color:#222; margin-bottom:4px; border-bottom:1px solid #ccc;'>{title}</h3>
-              <div>{safe_content}</div>
-            </div>
-            """
-        return ""
-
-    sections = []
-
-    if name or email or phone or location:
-        sections.append(f"""
-        <div style=\"text-align:center; margin-bottom: 1.5rem;\">
-            <div style=\"font-size: 1.5rem; font-weight: bold; color: #1D75E5;\">{name}</div>
-            <div style=\"font-size: 0.95rem; color: #444;\">{email}<br>{phone}<br>{location}</div>
-        </div>
-        """)
-
-    sections.append(format_section("Summary", summary or ai_generated.get('summary', '')))
-    sections.append(format_section("Education", education))
-    sections.append(format_section("Experience", experience or ai_generated.get('experience', '')))
-    sections.append(format_section("Skills", skills or ai_generated.get('skills', '')))
-    sections.append(format_section("Certifications", certifications or ai_generated.get('certifications', '')))
-    sections.append(format_section("Languages", languages))
-    sections.append(format_section("Hobbies", hobbies or ai_generated.get('hobbies', '')))
-
-    resume_html = "\n".join(sections)
-    return {
-        "success": True,
-        "html": resume_html
-    }
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You generate structured HTML resumes."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        html = response.choices[0].message.content.strip()
+        return {"success": True, "html": html}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 @app.route('/generate-ai-resume', methods=['POST'])
 def generate_ai_resume():
