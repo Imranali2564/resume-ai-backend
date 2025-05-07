@@ -231,6 +231,55 @@ Write a 2-3 line professional summary for a resume.
 
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+@app.route('/generate-cover-letter', methods=['POST'])
+def generate_cover_letter():
+    file = request.files.get('file')
+    job_title = request.form.get('job_title')
+    company_name = request.form.get('company_name')
+    
+    if not file or not job_title or not company_name:
+        return jsonify({'error': 'File, job title, and company name are required'}), 400
+
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+
+    ext = os.path.splitext(filename)[1].lower()
+    if ext == '.pdf':
+        resume_text = extract_text_from_pdf(filepath) or extract_text_with_ocr(filepath)
+    elif ext == '.docx':
+        resume_text = extract_text_from_docx(filepath)
+    else:
+        return jsonify({'error': 'Unsupported file format'}), 400
+
+    if not resume_text.strip():
+        return jsonify({'error': 'Could not extract text from resume'}), 400
+
+    prompt = f"""
+You are a career coach and expert cover letter writer. Based on the resume content and the job title and company name below, write a compelling cover letter.
+
+Resume:
+{resume_text}
+
+Job Title: {job_title}
+Company Name: {company_name}
+
+Cover Letter:
+    """
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a professional cover letter writing assistant."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        cover_letter = response.choices[0].message.content.strip()
+        return jsonify({"cover_letter": cover_letter})
+    except Exception as e:
+        return jsonify({'error': 'Failed to generate cover letter.'}), 500
+
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
