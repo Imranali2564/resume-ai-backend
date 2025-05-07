@@ -27,6 +27,8 @@ from resume_ai_analyzer import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+logger.info("Starting Flask app initialization...")
+
 app = Flask(__name__, static_url_path='/static')
 CORS(app, resources={r"/*": {"origins": "https://resumefixerpro.com"}})
 
@@ -35,6 +37,7 @@ STATIC_FOLDER = 'static'
 try:
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     os.makedirs(STATIC_FOLDER, exist_ok=True)
+    logger.info(f"Successfully created directories: {UPLOAD_FOLDER}, {STATIC_FOLDER}")
 except Exception as e:
     logger.error(f"Failed to create directories: {str(e)}")
     raise RuntimeError(f"Failed to create directories: {str(e)}")
@@ -45,7 +48,12 @@ openai_api_key = os.environ.get("OPENAI_API_KEY")
 if not openai_api_key:
     logger.error("OPENAI_API_KEY environment variable is not set")
     raise ValueError("OPENAI_API_KEY environment variable is not set")
-client = OpenAI(api_key=openai_api_key)
+try:
+    client = OpenAI(api_key=openai_api_key)
+    logger.info("Successfully initialized OpenAI client")
+except Exception as e:
+    logger.error(f"Failed to initialize OpenAI client: {str(e)}")
+    raise RuntimeError(f"Failed to initialize OpenAI client: {str(e)}")
 
 @app.route('/upload', methods=['POST'])
 def upload_resume():
@@ -681,3 +689,5 @@ if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     logger.info(f"Starting Flask app on port {port}")
     app.run(host="0.0.0.0", port=port)
+
+logger.info("Flask app initialization complete.")
