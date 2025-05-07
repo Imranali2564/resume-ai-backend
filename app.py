@@ -255,8 +255,13 @@ def generate_cover_letter():
     if not resume_text.strip():
         return jsonify({'error': 'Could not extract text from resume'}), 400
 
-    prompt = f"""
+   prompt = f"""
 You are a career coach and expert cover letter writer. Based on the resume content and the job title and company name below, write a compelling cover letter.
+
+Candidate Name: {name}
+Email: {email}
+Phone: {phone}
+Location: {location}
 
 Resume:
 {resume_text}
@@ -265,7 +270,7 @@ Job Title: {job_title}
 Company Name: {company_name}
 
 Cover Letter:
-    """
+"""
 
     try:
         response = client.chat.completions.create(
