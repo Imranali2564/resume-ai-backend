@@ -231,6 +231,7 @@ Write a 2-3 line professional summary for a resume.
 
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+    
    @app.route('/generate-cover-letter', methods=['POST'])
 def generate_cover_letter():
     file = request.files.get('file')
