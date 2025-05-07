@@ -231,6 +231,55 @@ Write a 2-3 line professional summary for a resume.
 
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+    @app.route('/generate-cover-letter', methods=['POST'])
+def generate_cover_letter():
+    file = request.files.get('file')
+    job_title = request.form.get('job_title', '')
+    company_name = request.form.get('company_name', '')
+
+    if not file or not job_title or not company_name:
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    filename = secure_filename(file.filename)
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(file_path)
+
+    # Try to extract resume text
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext == ".pdf":
+        resume_text = extract_text_from_pdf(file_path) or extract_text_with_ocr(file_path)
+    elif ext == ".docx":
+        resume_text = extract_text_from_docx(file_path)
+    else:
+        return jsonify({'error': 'Unsupported file type'}), 400
+
+    if not resume_text.strip():
+        return jsonify({'error': 'Resume text could not be extracted'}), 400
+
+    prompt = f"""
+You are a career coach and expert cover letter writer. Based on the resume content below, and the provided job title and company name, write a personalized and professional cover letter.
+
+Resume:
+{resume_text[:4000]}
+
+Job Title: {job_title}
+Company Name: {company_name}
+
+Cover Letter:
+    """
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a cover letter generation assistant."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        letter = response.choices[0].message.content.strip()
+        return jsonify({"cover_letter": letter})
+    except Exception as e:
+        return jsonify({'error': f"Failed to generate cover letter: {str(e)}"}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
