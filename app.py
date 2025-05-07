@@ -17,15 +17,7 @@ from resume_ai_analyzer import (
 )
 
 app = Flask(__name__, static_url_path='/static')
-CORS(app, supports_credentials=True)  # ✅ Basic CORS enabled
-
-# ✅ CORS headers fix
-@app.after_request
-def apply_cors_headers(response):
-    response.headers["Access-Control-Allow-Origin"] = "https://resumefixerpro.com"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
-    response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
-    return response
+CORS(app, resources={r"/*": {"origins": "https://resumefixerpro.com"}})
 
 UPLOAD_FOLDER = 'uploads'
 STATIC_FOLDER = 'static'
@@ -39,13 +31,10 @@ client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 def upload_resume():
     file = request.files.get('file')
     atsfix = request.form.get('atsfix') == 'true'
-
     if not file or file.filename == '':
         return jsonify({'error': 'No file uploaded'}), 400
-
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
     file.save(filepath)
-
     try:
         result = analyze_resume_with_openai(filepath, atsfix=atsfix)
         return jsonify(result)
@@ -57,10 +46,8 @@ def resume_score():
     file = request.files.get('file')
     if not file:
         return jsonify({'error': 'No file uploaded'}), 400
-
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
     file.save(filepath)
-
     ext = os.path.splitext(filepath)[1].lower()
     if ext == ".pdf":
         resume_text = extract_text_from_pdf(filepath) or extract_text_with_ocr(filepath)
@@ -68,10 +55,8 @@ def resume_score():
         resume_text = extract_text_from_docx(filepath)
     else:
         return jsonify({'error': 'Unsupported file format'}), 400
-
     if not resume_text.strip():
         return jsonify({'error': 'No extractable text found in resume'}), 400
-
     prompt = f"""
 You are a professional resume reviewer. Give a resume score between 0 and 100 based on:
 - Formatting and readability
@@ -85,7 +70,6 @@ Resume:
 
 Just return a number between 0 and 100, nothing else.
     """
-
     try:
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -105,10 +89,8 @@ def check_ats():
     file = request.files.get('file')
     if not file:
         return jsonify({'error': 'No file uploaded'}), 400
-
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
     file.save(filepath)
-
     try:
         ats_result = check_ats_compatibility(filepath)
         return jsonify({'ats_report': ats_result})
@@ -120,13 +102,10 @@ def generate_cover_letter():
     file = request.files.get('file')
     job_title = request.form.get('job_title')
     company_name = request.form.get('company_name')
-
     if not file or not job_title or not company_name:
         return jsonify({'error': 'File, job title, and company name are required'}), 400
-
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
     file.save(filepath)
-
     ext = os.path.splitext(filepath)[1].lower()
     if ext == ".pdf":
         resume_text = extract_text_from_pdf(filepath) or extract_text_with_ocr(filepath)
@@ -134,10 +113,8 @@ def generate_cover_letter():
         resume_text = extract_text_from_docx(filepath)
     else:
         return jsonify({'error': 'Unsupported file format'}), 400
-
     if not resume_text.strip():
         return jsonify({'error': 'Resume text could not be extracted'}), 400
-
     prompt = f"""
 You are a career coach and expert cover letter writer. Based on the resume content and the job title and company name below, write a compelling cover letter.
 
@@ -149,7 +126,6 @@ Company Name: {company_name}
 
 Cover Letter:
     """
-
     try:
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -169,7 +145,6 @@ def download_cover_letter():
     text = data.get("cover_letter", "").strip()
     if not text:
         return jsonify({"error": "No content provided"}), 400
-
     filename = f"cover_letter_{uuid.uuid4().hex[:6]}.docx"
     filepath = os.path.join(STATIC_FOLDER, filename)
     doc = Document()
@@ -185,10 +160,8 @@ def fix_suggestion():
     suggestion = request.form.get('suggestion')
     if not file or not suggestion:
         return jsonify({'error': 'File and suggestion are required'}), 400
-
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
     file.save(filepath)
-
     ext = os.path.splitext(filepath)[1].lower()
     if ext == ".pdf":
         resume_text = extract_text_from_pdf(filepath) or extract_text_with_ocr(filepath)
@@ -196,10 +169,8 @@ def fix_suggestion():
         resume_text = extract_text_from_docx(filepath)
     else:
         return jsonify({'error': 'Unsupported file format'}), 400
-
     if not resume_text.strip():
         return jsonify({'error': 'Could not extract text from resume'}), 400
-
     prompt = f"""
 You are an expert resume editor. Apply the following fix to this resume:
 
@@ -210,7 +181,6 @@ Resume:
 
 Now return the updated resume only, with the fix applied. Don't explain anything.
     """
-
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
@@ -218,14 +188,11 @@ Now return the updated resume only, with the fix applied. Don't explain anything
             {"role": "user", "content": prompt}
         ]
     )
-
     fixed_text = response.choices[0].message.content.strip()
     filename = f"fixed_resume_{uuid.uuid4().hex[:6]}.txt"
     filepath = os.path.join(STATIC_FOLDER, filename)
-
     with open(filepath, 'w', encoding='utf-8') as f:
         f.write(fixed_text)
-
     return send_from_directory(STATIC_FOLDER, filename, as_attachment=True)
 
 @app.route('/final-resume', methods=['POST'])
@@ -234,15 +201,12 @@ def final_resume():
     fixes = request.form.get('fixes')
     if not file or not fixes:
         return jsonify({'error': 'File and fixes are required'}), 400
-
     try:
         fixes_list = json.loads(fixes)
     except:
         return jsonify({'error': 'Fixes must be valid JSON'}), 400
-
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
     file.save(filepath)
-
     ext = os.path.splitext(filepath)[1].lower()
     if ext == ".pdf":
         resume_text = extract_text_from_pdf(filepath) or extract_text_with_ocr(filepath)
@@ -250,15 +214,12 @@ def final_resume():
         resume_text = extract_text_from_docx(filepath)
     else:
         return jsonify({'error': 'Unsupported file format'}), 400
-
     if not resume_text.strip():
         return jsonify({'error': 'No extractable text found in resume'}), 400
-
     resume_text = resume_text[:12000]
     all_fixes_text = "\n".join(
         f"- {fix['suggestion']}\n  Apply: {fix['fixedText']}" for fix in fixes_list
     )[:3000]
-
     prompt = f"""
 You're an AI resume editor. Here's the original resume and a list of improvements to apply. Return only the final updated resume, no explanation.
 
@@ -268,7 +229,6 @@ Resume:
 Fixes to Apply:
 {all_fixes_text}
     """
-
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
@@ -276,13 +236,10 @@ Fixes to Apply:
             {"role": "user", "content": prompt}
         ]
     )
-
     raw_text = response.choices[0].message.content.strip()
     clean_text = re.sub(r'[^\x09\x0A\x0D\x20-\x7E\u00A0-\uFFFF]', '', raw_text)
-
     filename = f"final_resume_{uuid.uuid4().hex[:6]}.docx"
     filepath = os.path.join(STATIC_FOLDER, filename)
-
     try:
         doc = Document()
         for line in clean_text.splitlines():
@@ -291,11 +248,11 @@ Fixes to Apply:
         doc.save(filepath)
     except Exception as e:
         return jsonify({'error': f'DOCX saving error: {str(e)}'}), 500
-
     return send_from_directory(STATIC_FOLDER, filename, as_attachment=True)
 
-@app.route('/generate-resume', methods=['POST'])
-def generate_resume():
+# ✅ This is the missing endpoint
+@app.route('/generate-ai-resume', methods=['POST'])
+def generate_ai_resume():
     try:
         data = request.json
         result = generate_ai_resume_content(
@@ -312,21 +269,19 @@ def generate_resume():
             data.get("hobbies", "")
         )
         return jsonify({
-            "success": True,
-            "html": result,
             "name": data.get("name", ""),
             "email": data.get("email", ""),
             "phone": data.get("phone", ""),
             "location": data.get("location", ""),
-            "summary": result.split("<h3>")[1].split("</h3>")[1].strip() if "<h3>" in result else "",
-            "education": data.get("education", ""),
-            "experience": data.get("experience", ""),
-            "skills": data.get("skills", ""),
-            "certifications": data.get("certifications", ""),
-            "languages": data.get("languages", "")
+            "summary": result.get("summary", ""),
+            "education": result.get("education", ""),
+            "experience": result.get("experience", ""),
+            "certifications": result.get("certifications", ""),
+            "skills": result.get("skills", ""),
+            "languages": result.get("languages", "")
         })
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)})
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
