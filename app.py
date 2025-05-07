@@ -1,5 +1,4 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import os
@@ -15,6 +14,7 @@ from resume_ai_analyzer import (
     extract_text_with_ocr,
     check_ats_compatibility
 )
+
 
 app = Flask(__name__, static_url_path='/static')
 CORS(app, resources={r"/*": {"origins": "https://resumefixerpro.com"}})
