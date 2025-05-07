@@ -107,35 +107,53 @@ Resume:
     except:
         return {"error": "Failed to generate suggestions."}
 
-def generate_ai_resume_content(name, email, phone, location, summary, education, experience, certifications, skills, languages, hobbies):
-    prompt = f"""
-You are a professional resume builder AI. Using the following input data, generate a clean, professional and impactful resume content in simple HTML format, with heading sections and clear layout.
+def generate_ai_resume_content(data):
+    name = data.get("name", "")
+    email = data.get("email", "")
+    phone = data.get("phone", "")
+    location = data.get("location", "")
+    education = data.get("education", "")
+    experience = data.get("experience", "")
+    skills = data.get("skills", "")
+    certifications = data.get("certifications", "")
+    languages = data.get("languages", "")
+    hobbies = data.get("hobbies", "")
+    summary = data.get("summary", "")
 
-Name: {name}
-Email: {email}
-Phone: {phone}
-Location: {location}
-Summary: {summary}
-Education: {education}
-Experience: {experience}
-Certifications: {certifications}
-Skills: {skills}
-Languages: {languages}
-Hobbies: {hobbies}
+    def format_section(title, content):
+        if content.strip():
+            safe_content = content.replace("\n", "<br>")
+            return f"""
+            <div class="section">
+              <h3 style='font-size:0.95rem; line-height:1.3; color:#222; margin-bottom:4px; border-bottom:1px solid #ccc;'>{title}</h3>
+              <div>{safe_content}</div>
+            </div>
+            """
+        return ""
 
-Rules:
-- Start with name and contact at the top.
-- Each section must have a heading like <h3>Education</h3> and content below.
-- Use <ul> and <li> where suitable.
-- Make the tone professional and positive.
+    sections = []
 
-Respond only with HTML.
-"""
+    # Contact Header
+    if name or email or phone or location:
+        sections.append(f"""
+        <div style="text-align:center; margin-bottom: 1.5rem;">
+            <div style="font-size: 1.5rem; font-weight: bold; color: #1D75E5;">{name}</div>
+            <div style="font-size: 0.95rem; color: #444;">{email}<br>{phone}<br>{location}</div>
+        </div>
+        """)
 
-    response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=1200,
-        temperature=0.7,
-    )
-    return response.choices[0].message.content.strip()
+    # Content Sections
+    sections.append(format_section("Summary", summary))
+    sections.append(format_section("Education", education))
+    sections.append(format_section("Experience", experience))
+    sections.append(format_section("Skills", skills))
+    sections.append(format_section("Certifications", certifications))
+    sections.append(format_section("Languages", languages))
+    sections.append(format_section("Hobbies", hobbies))
+
+    resume_html = "\n".join(sections)
+
+    return {
+        "success": True,
+        "html": resume_html
+    }
