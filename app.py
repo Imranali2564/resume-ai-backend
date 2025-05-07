@@ -254,22 +254,10 @@ Fixes to Apply:
 def generate_ai_resume():
     try:
         data = request.json
-        html = generate_ai_resume_content(
-            data.get("name", ""),
-            data.get("email", ""),
-            data.get("phone", ""),
-            data.get("location", ""),
-            "",  # summary handled inside
-            data.get("education", ""),
-            data.get("experience", ""),
-            data.get("certifications", ""),
-            data.get("skills", ""),
-            data.get("languages", ""),
-            data.get("hobbies", "")
-        )
-        return jsonify({"success": True, "html": html})
+        result = generate_ai_resume_content(data)
+        return jsonify(result)
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)})
+        return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
