@@ -8,6 +8,13 @@ import json
 import re
 from openai import OpenAI
 from docx import Document
+from docx.shared import Pt, Inches
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml.ns import qn
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
 from resume_ai_analyzer import (
     analyze_resume_with_openai,
     extract_text_from_pdf,
@@ -203,6 +210,7 @@ Based on the suggestion, rewrite the content of this section to address the sugg
 def final_resume():
     file = request.files.get('file')
     fixes = json.loads(request.form.get('fixes', '[]'))
+    format_type = request.args.get('format', 'docx')  # Default to docx if format not specified
 
     if not file:
         return jsonify({'error': 'No file uploaded'}), 400
@@ -221,6 +229,10 @@ def final_resume():
     if not resume_text.strip():
         return jsonify({'error': 'No extractable text found in resume'}), 400
 
+    # Log the fixes for debugging
+    logger.info(f"Received fixes: {json.dumps(fixes, indent=2)}")
+
+    # Parse resume into sections
     sections = {
         "skills": "",
         "experience": "",
@@ -252,19 +264,19 @@ def final_resume():
         elif current_section:
             sections[current_section] += line + "\n"
 
+    # Apply fixes to the relevant sections
     for fix in fixes:
         section = fix.get('section')
         fixed_text = fix.get('fixedText')
         if section in sections:
             sections[section] = fixed_text
 
-    doc = Document()
+    # Extract contact information
     name = email = phone = location = ""
     for line in lines:
         line = line.strip()
         if not name and re.search(r'^[A-Z][a-z]+\s[A-Z][a-z]+', line):
             name = line
-            doc.add_heading(name, level=1).alignment = 1
         if not email and re.search(r'[\w\.-]+@[\w\.-]+', line):
             email = line
         if not phone and re.search(r'\+?\d[\d\s\-]{8,}', line):
@@ -272,20 +284,117 @@ def final_resume():
         if not location and re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', line):
             location = line
 
-    contact_info = f"{email} | {phone} | {location}"
-    doc.add_paragraph(contact_info).alignment = 1
-    doc.add_paragraph()
+    # Generate DOCX if requested
+    if format_type == 'docx':
+        doc = Document()
+        
+        # Set document margins
+        sections_doc = doc.sections
+        for section in sections_doc:
+            section.left_margin = Inches(1)
+            section.right_margin = Inches(1)
+            section.top_margin = Inches(1)
+            section.bottom_margin = Inches(1)
 
-    for section_name, content in sections.items():
-        if content.strip():
-            doc.add_heading(section_name.capitalize(), level=2)
-            for line in content.splitlines():
-                if line.strip():
-                    doc.add_paragraph(line.strip())
+        # Name (Heading)
+        name_paragraph = doc.add_heading(name, level=1)
+        name_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        name_run = name_paragraph.runs[0]
+        name_run.font.name = 'Times New Roman'
+        name_run._element.rPr.rFonts.set(qn('w:ascii'), 'Times New Roman')  # Ensure font fallback
+        name_run._element.rPr.rFonts.set(qn('w:hAnsi'), 'Times New Roman')
+        name_run.font.size = Pt(14)
+        name_run.bold = True
 
-    output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"fixed_resume_{uuid.uuid4()}.docx")
-    doc.save(output_path)
-    return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.docx")
+        # Contact Info
+        contact_info = f"{email} | {phone} | {location}"
+        contact_paragraph = doc.add_paragraph(contact_info)
+        contact_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        contact_run = contact_paragraph.runs[0]
+        contact_run.font.name = 'Times New Roman'
+        contact_run._element.rPr.rFonts.set(qn('w:ascii'), 'Times New Roman')
+        contact_run._element.rPr.rFonts.set(qn('w:hAnsi'), 'Times New Roman')
+        contact_run.font.size = Pt(10)
+
+        doc.add_paragraph()  # Spacer
+
+        # Add sections
+        for section_name, content in sections.items():
+            if content.strip():
+                # Section Heading
+                heading = doc.add_heading(section_name.capitalize(), level=2)
+                heading_run = heading.runs[0]
+                heading_run.font.name = 'Times New Roman'
+                heading_run._element.rPr.rFonts.set(qn('w:ascii'), 'Times New Roman')
+                heading_run._element.rPr.rFonts.set(qn('w:hAnsi'), 'Times New Roman')
+                heading_run.font.size = Pt(12)
+                heading_run.bold = True
+
+                # Section Content
+                for line in content.splitlines():
+                    line = line.strip()
+                    if line:
+                        if section_name in ["skills", "experience", "hobbies"]:  # Use bullets for these sections
+                            p = doc.add_paragraph(style='List Bullet')
+                            run = p.add_run(line)
+                        else:
+                            p = doc.add_paragraph()
+                            run = p.add_run(line)
+                        run.font.name = 'Times New Roman'
+                        run._element.rPr.rFonts.set(qn('w:ascii'), 'Times New Roman')
+                        run._element.rPr.rFonts.set(qn('w:hAnsi'), 'Times New Roman')
+                        run.font.size = Pt(11)
+
+        output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"fixed_resume_{uuid.uuid4()}.docx")
+        doc.save(output_path)
+        return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.docx")
+
+    # Generate PDF if requested
+    elif format_type == 'pdf':
+        output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"fixed_resume_{uuid.uuid4()}.pdf")
+        doc = SimpleDocTemplate(output_path, pagesize=letter, leftMargin=1*inch, rightMargin=1*inch, topMargin=1*inch, bottomMargin=1*inch)
+        styles = getSampleStyleSheet()
+
+        # Define custom styles
+        styles.add(ParagraphStyle(name='Name', fontName='Times-Roman', fontSize=14, alignment=1, spaceAfter=6, fontWeight='bold'))
+        styles.add(ParagraphStyle(name='Contact', fontName='Times-Roman', fontSize=10, alignment=1, spaceAfter=12))
+        styles.add(ParagraphStyle(name='SectionHeading', fontName='Times-Roman', fontSize=12, spaceAfter=6, fontWeight='bold'))
+        styles.add(ParagraphStyle(name='Body', fontName='Times-Roman', fontSize=11, spaceAfter=6))
+        styles.add(ParagraphStyle(name='Bullet', fontName='Times-Roman', fontSize=11, spaceAfter=6, leftIndent=0.5*inch, firstLineIndent=-0.25*inch, bulletFontName='Times-Roman', bulletFontSize=11, bulletIndent=0.25*inch))
+
+        story = []
+
+        # Name
+        story.append(Paragraph(name, styles['Name']))
+
+        # Contact Info
+        contact_info = f"{email} | {phone} | {location}"
+        story.append(Paragraph(contact_info, styles['Contact']))
+
+        # Spacer
+        story.append(Spacer(1, 12))
+
+        # Add sections
+        for section_name, content in sections.items():
+            if content.strip():
+                # Section Heading
+                story.append(Paragraph(section_name.capitalize(), styles['SectionHeading']))
+
+                # Section Content
+                for line in content.splitlines():
+                    line = line.strip()
+                    if line:
+                        if section_name in ["skills", "experience", "hobbies"]:  # Use bullets
+                            bullet_line = f"• {line}"
+                            story.append(Paragraph(bullet_line, styles['Bullet']))
+                        else:
+                            story.append(Paragraph(line, styles['Body']))
+
+        doc.build(story)
+        return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.pdf")
+
+    else:
+        return jsonify({'error': 'Invalid format specified'}), 400
 
 @app.route('/generate-ai-resume', methods=['POST'])
 def generate_ai_resume():
