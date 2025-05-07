@@ -24,14 +24,11 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(STATIC_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+import os
 from openai import OpenAI
 
-openai_api_key = os.environ.get("OPENAI_API_KEY")
-if not openai_api_key:
-    raise ValueError("OPENAI_API_KEY environment variable is not set")
-
-client = OpenAI(api_key=openai_api_key)
-
+# Automatically picked from environment variable
+client = OpenAI()
 
 @app.route('/upload', methods=['POST'])
 def upload_resume():
