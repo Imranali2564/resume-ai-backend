@@ -32,8 +32,12 @@ CORS(app, resources={r"/*": {"origins": "https://resumefixerpro.com"}})
 
 UPLOAD_FOLDER = 'uploads'
 STATIC_FOLDER = 'static'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(STATIC_FOLDER, exist_ok=True)
+try:
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    os.makedirs(STATIC_FOLDER, exist_ok=True)
+except Exception as e:
+    logger.error(f"Failed to create directories: {str(e)}")
+    raise RuntimeError(f"Failed to create directories: {str(e)}")
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # Validate OpenAI API key
@@ -50,7 +54,11 @@ def upload_resume():
     if not file or file.filename == '':
         return jsonify({'error': 'No file uploaded'}), 400
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
-    file.save(filepath)
+    try:
+        file.save(filepath)
+    except Exception as e:
+        logger.error(f"Error saving file: {str(e)}")
+        return jsonify({'error': f'Failed to save file: {str(e)}'}), 500
     try:
         result = analyze_resume_with_openai(filepath, atsfix=atsfix)
         return jsonify(result)
@@ -64,7 +72,11 @@ def resume_score():
     if not file:
         return jsonify({'error': 'No file uploaded'}), 400
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
-    file.save(filepath)
+    try:
+        file.save(filepath)
+    except Exception as e:
+        logger.error(f"Error saving file: {str(e)}")
+        return jsonify({'error': f'Failed to save file: {str(e)}'}), 500
     ext = os.path.splitext(filepath)[1].lower()
     if ext == ".pdf":
         resume_text = extract_text_from_pdf(filepath) or extract_text_with_ocr(filepath)
@@ -108,7 +120,11 @@ def check_ats():
     if not file:
         return jsonify({'error': 'No file uploaded'}), 400
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
-    file.save(filepath)
+    try:
+        file.save(filepath)
+    except Exception as e:
+        logger.error(f"Error saving file: {str(e)}")
+        return jsonify({'error': f'Failed to save file: {str(e)}'}), 500
     try:
         ats_result = check_ats_compatibility(filepath)
         return jsonify({'ats_report': ats_result})
@@ -122,7 +138,11 @@ def parse_resume():
     if not file:
         return jsonify({'error': 'No file uploaded'}), 400
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
-    file.save(filepath)
+    try:
+        file.save(filepath)
+    except Exception as e:
+        logger.error(f"Error saving file: {str(e)}")
+        return jsonify({'error': f'Failed to save file: {str(e)}'}), 500
 
     ext = os.path.splitext(filepath)[1].lower()
     if ext == ".pdf":
@@ -216,7 +236,11 @@ def final_resume():
         return jsonify({'error': 'No file uploaded'}), 400
 
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
-    file.save(filepath)
+    try:
+        file.save(filepath)
+    except Exception as e:
+        logger.error(f"Error saving file: {str(e)}")
+        return jsonify({'error': f'Failed to save file: {str(e)}'}), 500
 
     ext = os.path.splitext(filepath)[1].lower()
     if ext == ".pdf":
@@ -346,7 +370,11 @@ def final_resume():
                         run.font.size = Pt(11)
 
         output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"fixed_resume_{uuid.uuid4()}.docx")
-        doc.save(output_path)
+        try:
+            doc.save(output_path)
+        except Exception as e:
+            logger.error(f"Error saving DOCX file: {str(e)}")
+            return jsonify({'error': f'Failed to save DOCX file: {str(e)}'}), 500
         return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.docx")
 
     # Generate PDF if requested
@@ -356,16 +384,16 @@ def final_resume():
         styles = getSampleStyleSheet()
 
         # Define custom styles
-        styles.add(ParagraphStyle(name='Name', fontName='Times-Roman', fontSize=14, alignment=1, spaceAfter=6, fontWeight='bold'))
+        styles.add(ParagraphStyle(name='Name', fontName='Times-Roman', fontSize=14, alignment=1, spaceAfter=6))
         styles.add(ParagraphStyle(name='Contact', fontName='Times-Roman', fontSize=10, alignment=1, spaceAfter=12))
-        styles.add(ParagraphStyle(name='SectionHeading', fontName='Times-Roman', fontSize=12, spaceAfter=6, fontWeight='bold'))
+        styles.add(ParagraphStyle(name='SectionHeading', fontName='Times-Roman', fontSize=12, spaceAfter=6))
         styles.add(ParagraphStyle(name='Body', fontName='Times-Roman', fontSize=11, spaceAfter=6))
         styles.add(ParagraphStyle(name='Bullet', fontName='Times-Roman', fontSize=11, spaceAfter=6, leftIndent=0.5*inch, firstLineIndent=-0.25*inch, bulletFontName='Times-Roman', bulletFontSize=11, bulletIndent=0.25*inch))
 
         story = []
 
         # Name
-        story.append(Paragraph(name, styles['Name']))
+        story.append(Paragraph(f"<b>{name}</b>", styles['Name']))
 
         # Contact Info
         contact_info = f"{email} | {phone} | {location}"
@@ -378,7 +406,7 @@ def final_resume():
         for section_name, content in sections.items():
             if content.strip():
                 # Section Heading
-                story.append(Paragraph(section_name.capitalize(), styles['SectionHeading']))
+                story.append(Paragraph(f"<b>{section_name.capitalize()}</b>", styles['SectionHeading']))
 
                 # Section Content
                 for line in content.splitlines():
@@ -390,7 +418,11 @@ def final_resume():
                         else:
                             story.append(Paragraph(line, styles['Body']))
 
-        doc.build(story)
+        try:
+            doc.build(story)
+        except Exception as e:
+            logger.error(f"Error generating PDF file: {str(e)}")
+            return jsonify({'error': f'Failed to generate PDF file: {str(e)}'}), 500
         return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.pdf")
 
     else:
@@ -638,7 +670,11 @@ def download_cover_letter():
             doc.add_paragraph(line)
 
     output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"cover_letter_{uuid.uuid4()}.docx")
-    doc.save(output_path)
+    try:
+        doc.save(output_path)
+    except Exception as e:
+        logger.error(f"Error saving cover letter DOCX file: {str(e)}")
+        return jsonify({'error': f'Failed to save cover letter DOCX file: {str(e)}'}), 500
     return send_file(output_path, as_attachment=True, download_name="Cover_Letter.docx")
 
 if __name__ == '__main__':

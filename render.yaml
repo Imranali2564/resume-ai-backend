@@ -2,11 +2,15 @@ services:
   - type: web
     name: resume-fixer-backend
     env: python
+    runtime: python-3.9.6  # Specify Python version (optional if runtime.txt exists)
     plan: free
     buildCommand: |
-      apt-get update && apt-get install -y tesseract-ocr
+      apt-get update && apt-get install -y tesseract-ocr libfreetype6-dev libjpeg-dev
       pip install -r requirements.txt
-    startCommand: "python app.py"
+    startCommand: "gunicorn app:app --bind 0.0.0.0:$PORT"
     envVars:
       - key: OPENAI_API_KEY
         sync: false
+      - key: PORT
+        value: 5000  # Default port, Render will override this with its own PORT
+    autoDeploy: true
