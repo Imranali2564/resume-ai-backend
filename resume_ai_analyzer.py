@@ -146,4 +146,74 @@ Respond only with HTML.
         temperature=0.7,
     )
     return response.choices[0].message.content.strip()
+def generate_ai_resume_content(name, email, phone, location, education, experience, certifications, skills, languages):
+    prompt = f"""
+You are a professional resume writer. Based on the user's basic input, generate a polished, impactful resume. Use headings like "Professional Summary", "Education", etc. Respond in clean paragraph text (not HTML).
+
+Name: {name}
+Email: {email}
+Phone: {phone}
+Location: {location}
+Education: {education}
+Experience: {experience}
+Certifications: {certifications}
+Skills: {skills}
+Languages: {languages}
+"""
+
+    try:
+        from openai import OpenAI
+        import os
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        raw_text = response.choices[0].message.content.strip()
+
+        # Break raw text into sections
+        lines = raw_text.split("\n")
+        section_map = {
+            "summary": "",
+            "education": "",
+            "experience": "",
+            "certifications": "",
+            "skills": "",
+            "languages": ""
+        }
+        current_section = ""
+        for line in lines:
+            l = line.lower()
+            if "summary" in l:
+                current_section = "summary"
+            elif "education" in l:
+                current_section = "education"
+            elif "experience" in l:
+                current_section = "experience"
+            elif "certification" in l:
+                current_section = "certifications"
+            elif "skills" in l:
+                current_section = "skills"
+            elif "language" in l:
+                current_section = "languages"
+            elif current_section:
+                section_map[current_section] += line.strip() + "\n"
+
+        return {
+            "name": name,
+            "email": email,
+            "phone": phone,
+            "location": location,
+            "summary": section_map["summary"].strip(),
+            "education": section_map["education"].strip(),
+            "experience": section_map["experience"].strip(),
+            "certifications": section_map["certifications"].strip(),
+            "skills": section_map["skills"].strip(),
+            "languages": section_map["languages"].strip()
+        }
+
+    except Exception as e:
+        print("AI generation failed:", str(e))
+        return {"error": "AI failed to generate resume content."}
+
 

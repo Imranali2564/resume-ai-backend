@@ -354,4 +354,35 @@ def generate_ai_resume():
         return jsonify({"success": True, "html": result})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
+    @app.route("/generate-resume", methods=["POST"])
+def generate_resume():
+    try:
+        data = request.json
+        name = data.get("name", "")
+        email = data.get("email", "")
+        phone = data.get("phone", "")
+        location = data.get("location", "")
+        education = data.get("education", "")
+        experience = data.get("experience", "")
+        certifications = data.get("certifications", "")
+        skills = data.get("skills", "")
+        languages = data.get("languages", "")
+
+        result = generate_ai_resume_content(
+            name=name,
+            email=email,
+            phone=phone,
+            location=location,
+            education=education,
+            experience=experience,
+            certifications=certifications,
+            skills=skills,
+            languages=languages
+        )
+
+        return jsonify(result)
+    except Exception as e:
+        print("Error in /generate-resume:", str(e))
+        return jsonify({"error": "Failed to generate AI resume."})
+
 
