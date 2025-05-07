@@ -107,7 +107,7 @@ Resume:
     except:
         return {"error": "Failed to generate suggestions."}
 
-def generate_ai_resume_content(name, email, phone, location, summary, education, experience, certifications, skills, languages, hobbies=""):
+def generate_ai_resume_content(name, email, phone, location, summary, education, experience, certifications, skills, languages, hobbies):
     prompt = f"""
 You are a professional resume builder AI. Using the following input data, generate a clean, professional and impactful resume content in simple HTML format, with heading sections and clear layout.
 
@@ -132,14 +132,10 @@ Rules:
 Respond only with HTML.
 """
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=1200,
-            temperature=0.7,
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        print("AI generation failed:", str(e))
-        return "<p>❌ AI failed to generate resume content.</p>"
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=1200,
+        temperature=0.7,
+    )
+    return response.choices[0].message.content.strip()
