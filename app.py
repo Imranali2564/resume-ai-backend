@@ -250,17 +250,16 @@ Fixes to Apply:
         return jsonify({'error': f'DOCX saving error: {str(e)}'}), 500
     return send_from_directory(STATIC_FOLDER, filename, as_attachment=True)
 
-# ✅ This is the missing endpoint
 @app.route('/generate-ai-resume', methods=['POST'])
 def generate_ai_resume():
     try:
         data = request.json
-        result = generate_ai_resume_content(
+        html = generate_ai_resume_content(
             data.get("name", ""),
             data.get("email", ""),
             data.get("phone", ""),
             data.get("location", ""),
-            data.get("summary", ""),
+            "",  # summary handled inside
             data.get("education", ""),
             data.get("experience", ""),
             data.get("certifications", ""),
@@ -268,20 +267,9 @@ def generate_ai_resume():
             data.get("languages", ""),
             data.get("hobbies", "")
         )
-        return jsonify({
-            "name": data.get("name", ""),
-            "email": data.get("email", ""),
-            "phone": data.get("phone", ""),
-            "location": data.get("location", ""),
-            "summary": result.get("summary", ""),
-            "education": result.get("education", ""),
-            "experience": result.get("experience", ""),
-            "certifications": result.get("certifications", ""),
-            "skills": result.get("skills", ""),
-            "languages": result.get("languages", "")
-        })
+        return jsonify({"success": True, "html": html})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"success": False, "error": str(e)})
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
