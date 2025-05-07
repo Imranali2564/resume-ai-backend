@@ -12,9 +12,9 @@ from resume_ai_analyzer import (
     extract_text_from_pdf,
     extract_text_from_docx,
     extract_text_with_ocr,
-    check_ats_compatibility
+    check_ats_compatibility,
+    generate_ai_resume_content
 )
-
 
 app = Flask(__name__, static_url_path='/static')
 CORS(app, resources={r"/*": {"origins": "https://resumefixerpro.com"}})
@@ -285,57 +285,9 @@ Fixes to Apply:
         return jsonify({'error': f'DOCX saving error: {str(e)}'}), 500
 
     return send_from_directory(STATIC_FOLDER, filename, as_attachment=True)
-@app.route('/generate-ai-resume', methods=['POST'])
-def generate_ai_resume():
-    data = request.get_json()
-    name = data.get("name")
-    job_title = data.get("jobTitle")
-    industry = data.get("industry")
 
-    if not name or not job_title or not industry:
-        return jsonify({'error': 'Name, job title, and industry are required'}), 400
-
-    prompt = (
-        f"Generate a professional resume summary, education, experience, and skills for a person named {name} "
-        f"who is applying for the job title '{job_title}' in the '{industry}' industry. "
-        "Format output as:\n\nEducation:\n...\n\nExperience:\n...\n\nSkills:\n..."
-    )
-
-    try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are an expert resume writer."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        content = response.choices[0].message.content
-        sections = {"education": "", "experience": "", "skills": ""}
-        current_section = ""
-
-        for line in content.splitlines():
-            line = line.strip()
-            if line.lower().startswith("education"):
-                current_section = "education"
-            elif line.lower().startswith("experience"):
-                current_section = "experience"
-            elif line.lower().startswith("skills"):
-                current_section = "skills"
-            elif current_section and line:
-                sections[current_section] += line + "\n"
-
-        return jsonify(sections)
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
-    from resume_ai_analyzer import generate_ai_resume_content
-
-@app.route('/generate-ai-resume', methods=['POST'])
-def generate_ai_resume():
+@app.route('/generate-resume', methods=['POST'])
+def generate_resume():
     try:
         data = request.json
         result = generate_ai_resume_content(
@@ -354,35 +306,7 @@ def generate_ai_resume():
         return jsonify({"success": True, "html": result})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
-    @app.route("/generate-resume", methods=["POST"])
-def generate_resume():
-    try:
-        data = request.json
-        name = data.get("name", "")
-        email = data.get("email", "")
-        phone = data.get("phone", "")
-        location = data.get("location", "")
-        education = data.get("education", "")
-        experience = data.get("experience", "")
-        certifications = data.get("certifications", "")
-        skills = data.get("skills", "")
-        languages = data.get("languages", "")
 
-        result = generate_ai_resume_content(
-            name=name,
-            email=email,
-            phone=phone,
-            location=location,
-            education=education,
-            experience=experience,
-            certifications=certifications,
-            skills=skills,
-            languages=languages
-        )
-
-        return jsonify(result)
-    except Exception as e:
-        print("Error in /generate-resume:", str(e))
-        return jsonify({"error": "Failed to generate AI resume."})
-
-
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
