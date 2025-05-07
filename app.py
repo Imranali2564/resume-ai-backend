@@ -1,4 +1,5 @@
-from flask import Flask, request, jsonify, send_from_directory
+import logging
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import os
@@ -14,6 +15,10 @@ from resume_ai_analyzer import (
     extract_text_with_ocr,
     check_ats_compatibility
 )
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_url_path='/static')
 CORS(app, resources={r"/*": {"origins": "https://resumefixerpro.com"}})
@@ -96,6 +101,193 @@ def check_ats():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/parse-resume', methods=['POST'])
+def parse_resume():
+    file = request.files.get('file')
+    if not file:
+        return jsonify({'error': 'No file uploaded'}), 400
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
+    file.save(filepath)
+
+    # Extract text based on file type
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext == ".pdf":
+        resume_text = extract_text_from_pdf(filepath) or extract_text_with_ocr(filepath)
+    elif ext == ".docx":
+        resume_text = extract_text_from_docx(filepath)
+    else:
+        return jsonify({'error': 'Unsupported file format'}), 400
+
+    if not resume_text.strip():
+        return jsonify({'error': 'No extractable text found in resume'}), 400
+
+    # Parse resume into sections
+    sections = {
+        "skills": "",
+        "experience": "",
+        "education": "",
+        "certifications": "",
+        "languages": "",
+        "hobbies": ""
+    }
+    current_section = None
+    lines = resume_text.splitlines()
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        # Identify section headers
+        lower_line = line.lower()
+        if "skills" in lower_line:
+            current_section = "skills"
+        elif "experience" in lower_line:
+            current_section = "experience"
+        elif "education" in lower_line:
+            current_section = "education"
+        elif "certifications" in lower_line:
+            current_section = "certifications"
+        elif "languages" in lower_line:
+            current_section = "languages"
+        elif "hobbies" in lower_line:
+            current_section = "hobbies"
+        elif current_section:
+            # Append content to the current section
+            sections[current_section] += line + "\n"
+
+    # Clean up sections
+    for key in sections:
+        sections[key] = sections[key].strip()
+
+    return jsonify({"sections": sections})
+
+@app.route('/fix-suggestion', methods=['POST'])
+def fix_suggestion():
+    try:
+        data = request.get_json()
+        suggestion = data.get('suggestion')
+        section = data.get('section')
+        section_content = data.get('sectionContent')
+
+        if not suggestion or not section or not section_content:
+            return jsonify({'error': 'Missing suggestion, section, or section content'}), 400
+
+        # Generate a prompt for AI to fix the specific section based on the suggestion
+        prompt = f"""
+You are a resume writing assistant. The user has received the following suggestion for their resume:
+Suggestion: {suggestion}
+
+The suggestion applies to the following section of their resume:
+Section: {section}
+Content: {section_content}
+
+Based on the suggestion, rewrite the content of this section to address the suggestion. Return only the updated content for this section, nothing else.
+"""
+
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a professional resume writing assistant."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        fixed_content = response.choices[0].message.content.strip()
+        return jsonify({"fixedContent": fixed_content})
+    except Exception as e:
+        return jsonify({'error': f'Failed to fix suggestion: {str(e)}'}), 500
+
+@app.route('/final-resume', methods=['POST'])
+def final_resume():
+    file = request.files.get('file')
+    fixes = json.loads(request.form.get('fixes', '[]'))
+
+    if not file:
+        return jsonify({'error': 'No file uploaded'}), 400
+
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
+    file.save(filepath)
+
+    # Extract text based on file type
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext == ".pdf":
+        resume_text = extract_text_from_pdf(filepath) or extract_text_with_ocr(filepath)
+    elif ext == ".docx":
+        resume_text = extract_text_from_docx(filepath)
+    else:
+        return jsonify({'error': 'Unsupported file format'}), 400
+
+    if not resume_text.strip():
+        return jsonify({'error': 'No extractable text found in resume'}), 400
+
+    # Parse resume into sections
+    sections = {
+        "skills": "",
+        "experience": "",
+        "education": "",
+        "certifications": "",
+        "languages": "",
+        "hobbies": ""
+    }
+    current_section = None
+    lines = resume_text.splitlines()
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        lower_line = line.lower()
+        if "skills" in lower_line:
+            current_section = "skills"
+        elif "experience" in lower_line:
+            current_section = "experience"
+        elif "education" in lower_line:
+            current_section = "education"
+        elif "certifications" in lower_line:
+            current_section = "certifications"
+        elif "languages" in lower_line:
+            current_section = "languages"
+        elif "hobbies" in lower_line:
+            current_section = "hobbies"
+        elif current_section:
+            sections[current_section] += line + "\n"
+
+    # Apply fixes to the relevant sections
+    for fix in fixes:
+        section = fix.get('section')
+        fixed_text = fix.get('fixedText')
+        if section in sections:
+            sections[section] = fixed_text
+
+    # Generate DOCX
+    doc = Document()
+    name = email = phone = location = ""
+    for line in lines:
+        line = line.strip()
+        if not name and re.search(r'^[A-Z][a-z]+\s[A-Z][a-z]+', line):
+            name = line
+            doc.add_heading(name, level=1).alignment = 1
+        if not email and re.search(r'[\w\.-]+@[\w\.-]+', line):
+            email = line
+        if not phone and re.search(r'\+?\d[\d\s\-]{8,}', line):
+            phone = line
+        if not location and re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', line):
+            location = line
+
+    contact_info = f"{email} | {phone} | {location}"
+    doc.add_paragraph(contact_info).alignment = 1
+    doc.add_paragraph()
+
+    for section_name, content in sections.items():
+        if content.strip():
+            doc.add_heading(section_name.capitalize(), level=2)
+            for line in content.splitlines():
+                if line.strip():
+                    doc.add_paragraph(line.strip())
+
+    output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"fixed_resume_{uuid.uuid4()}.docx")
+    doc.save(output_path)
+    return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.docx")
+
 @app.route('/generate-ai-resume', methods=['POST'])
 def generate_ai_resume():
     try:
@@ -113,7 +305,6 @@ def generate_ai_resume():
         hobbies = data.get("hobbies", "")
         summary = data.get("summary", "")
 
-        # Helper function to generate content for a section using AI
         def generate_section_content(section_name, user_input, context=""):
             if not user_input.strip():
                 return ""
@@ -170,11 +361,9 @@ Format the output as plain text with bullet points, e.g., '• Reading\n• Hiki
             except:
                 return user_input
 
-        # Generate content for each section if user provided input
         if summary.strip():
             summary = generate_section_content("summary", summary)
         else:
-            # Existing logic for generating summary if empty
             prompt = f"""
 You are a resume writing assistant. Based on the following:
 Education: {education}
@@ -231,8 +420,8 @@ Write a 2-3 line professional summary for a resume.
 
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
-    
-   @app.route('/generate-cover-letter', methods=['POST'])
+
+@app.route('/generate-cover-letter', methods=['POST'])
 def generate_cover_letter():
     file = request.files.get('file')
     job_title = request.form.get('job_title')
@@ -263,14 +452,14 @@ def generate_cover_letter():
 
     for line in resume_text.splitlines():
         line = line.strip()
-        if not name and re.search(r'^[A-Z][a-z]+\\s[A-Z][a-z]+', line):
+        if not name and re.search(r'^[A-Z][a-z]+\s[A-Z][a-z]+', line):
             name = line
-        if not email and re.search(r'[\\w\\.-]+@[\\w\\.-]+', line):
-            email = re.search(r'[\\w\\.-]+@[\\w\\.-]+', line).group()
-        if not phone and re.search(r'\\+?\\d[\\d\\s\\-]{8,}', line):
-            phone = re.search(r'\\+?\\d[\\d\\s\\-]{8,}', line).group()
-        if not location and re.search(r'\\b(?:[A-Z][a-z]+(?:,\\s*)?)+\\b', line):
-            location = re.search(r'\\b(?:[A-Z][a-z]+(?:,\\s*)?)+\\b', line).group()
+        if not email and re.search(r'[\w\.-]+@[\w\.-]+', line):
+            email = re.search(r'[\w\.-]+@[\w\.-]+', line).group()
+        if not phone and re.search(r'\+?\d[\d\s\-]{8,}', line):
+            phone = re.search(r'\+?\d[\d\s\-]{8,}', line).group()
+        if not location and re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', line):
+            location = re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\\b', line).group()
         if name and email and phone and location:
             break
 
@@ -305,6 +494,26 @@ Cover Letter:
     except Exception as e:
         return jsonify({'error': f'Failed to generate cover letter: {str(e)}'}), 500
 
+@app.route('/download-cover-letter', methods=['POST'])
+def download_cover_letter():
+    data = request.get_json()
+    cover_letter = data.get('cover_letter')
+
+    if not cover_letter:
+        return jsonify({'error': 'No cover letter provided'}), 400
+
+    doc = Document()
+    doc.add_heading("Cover Letter", level=1)
+    for line in cover_letter.splitlines():
+        line = line.strip()
+        if line:
+            doc.add_paragraph(line)
+
+    output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"cover_letter_{uuid.uuid4()}.docx")
+    doc.save(output_path)
+    return send_file(output_path, as_attachment=True, download_name="Cover_Letter.docx")
+
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
+    logger.info(f"Starting Flask app on port {port}")
     app.run(host="0.0.0.0", port=port)
