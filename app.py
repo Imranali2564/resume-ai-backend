@@ -235,18 +235,19 @@ import re
 
 def extract_personal_info(text):
     lines = text.strip().splitlines()
-    top = "\n".join(lines[:15])  # Top 15 lines
+    top = "\n".join(lines[:20])  # Increase to 20 lines
 
-    name = lines[0] if lines else ""
-    email = re.search(r'[\w\.-]+@[\w\.-]+', top)
-    phone = re.search(r'(?:(?:\+91[-\s]?|0)?[6-9]\d{9})', top)
-    location = re.search(r'(Location:|Address:)?\s?([A-Za-z\s,]{5,})', top)
+    name = lines[0].strip() if lines else ""
+
+    email_match = re.search(r'[\w\.-]+@[\w\.-]+', top, re.IGNORECASE)
+    phone_match = re.search(r'(\+91[\s-]?)?[6-9]\d{9}', top)
+    location_match = re.search(r'(Location[:\-]?\s*|Address[:\-]?\s*)?([A-Za-z\s,]{5,})', top)
 
     return {
-        "name": name.strip(),
-        "email": email.group(0) if email else "",
-        "phone": phone.group(0) if phone else "",
-        "location": location.group(2).strip() if location else ""
+        "name": name,
+        "email": email_match.group(0) if email_match else "",
+        "phone": phone_match.group(0) if phone_match else "",
+        "location": location_match.group(2).strip() if location_match else ""
     }
 
 @app.route('/generate-cover-letter', methods=['POST'])
