@@ -8,22 +8,17 @@ from openai import OpenAI
 
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-POPPLER_PATH = r"C:\\Users\\Imran\\Downloads\\poppler-24.08.0\\Library\\bin"
-
 def extract_text_from_pdf(file_path):
     try:
         doc = fitz.open(file_path)
-        text = ""
-        for page in doc:
-            text += page.get_text()
-        return text.strip()
+        return "\n".join(page.get_text() for page in doc).strip()
     except Exception:
         return ""
 
 def extract_text_from_docx(file_path):
     try:
         doc = docx.Document(file_path)
-        return "\n".join([p.text for p in doc.paragraphs]).strip()
+        return "\n".join(p.text for p in doc.paragraphs).strip()
     except Exception:
         return ""
 
@@ -81,19 +76,19 @@ def analyze_resume_with_openai(file_path, atsfix=False):
     if not text.strip():
         return {"error": "No text found in resume"}
 
-    prompt = f"""
-You are a professional resume coach. Give improvement suggestions in short clear bullet points.
-Make suggestions specific, actionable, and impactful.
-Don't explain anything else. List one suggestion per line.
-
-Resume:
-{text[:4000]}
-    """
-
     if atsfix:
         prompt = f"""
 You are an ATS resume expert. Provide 5 to 7 most important and high-impact improvement suggestions that directly affect ATS compatibility and selection.
 List only important actionable suggestions in short bullet points. One suggestion per line. No intro or outro.
+
+Resume:
+{text[:4000]}
+        """
+    else:
+        prompt = f"""
+You are a professional resume coach. Give improvement suggestions in short clear bullet points.
+Make suggestions specific, actionable, and impactful.
+Don't explain anything else. List one suggestion per line.
 
 Resume:
 {text[:4000]}
@@ -111,7 +106,8 @@ Resume:
         return {"suggestions": suggestions}
     except:
         return {"error": "Failed to generate suggestions."}
-    def generate_ai_resume_content(name, email, phone, location, summary, education, experience, certifications, skills, languages, hobbies):
+
+def generate_ai_resume_content(name, email, phone, location, summary, education, experience, certifications, skills, languages, hobbies=""):
     prompt = f"""
 You are a professional resume builder AI. Using the following input data, generate a clean, professional and impactful resume content in simple HTML format, with heading sections and clear layout.
 
@@ -135,85 +131,15 @@ Rules:
 
 Respond only with HTML.
 """
-    import openai
-    import os
-    openai.api_key = os.getenv("OPENAI_API_KEY")
-    
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=1200,
-        temperature=0.7,
-    )
-    return response.choices[0].message.content.strip()
-def generate_ai_resume_content(name, email, phone, location, education, experience, certifications, skills, languages):
-    prompt = f"""
-You are a professional resume writer. Based on the user's basic input, generate a polished, impactful resume. Use headings like "Professional Summary", "Education", etc. Respond in clean paragraph text (not HTML).
-
-Name: {name}
-Email: {email}
-Phone: {phone}
-Location: {location}
-Education: {education}
-Experience: {experience}
-Certifications: {certifications}
-Skills: {skills}
-Languages: {languages}
-"""
 
     try:
-        from openai import OpenAI
-        import os
-        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=1200,
+            temperature=0.7,
         )
-        raw_text = response.choices[0].message.content.strip()
-
-        # Break raw text into sections
-        lines = raw_text.split("\n")
-        section_map = {
-            "summary": "",
-            "education": "",
-            "experience": "",
-            "certifications": "",
-            "skills": "",
-            "languages": ""
-        }
-        current_section = ""
-        for line in lines:
-            l = line.lower()
-            if "summary" in l:
-                current_section = "summary"
-            elif "education" in l:
-                current_section = "education"
-            elif "experience" in l:
-                current_section = "experience"
-            elif "certification" in l:
-                current_section = "certifications"
-            elif "skills" in l:
-                current_section = "skills"
-            elif "language" in l:
-                current_section = "languages"
-            elif current_section:
-                section_map[current_section] += line.strip() + "\n"
-
-        return {
-            "name": name,
-            "email": email,
-            "phone": phone,
-            "location": location,
-            "summary": section_map["summary"].strip(),
-            "education": section_map["education"].strip(),
-            "experience": section_map["experience"].strip(),
-            "certifications": section_map["certifications"].strip(),
-            "skills": section_map["skills"].strip(),
-            "languages": section_map["languages"].strip()
-        }
-
+        return response.choices[0].message.content.strip()
     except Exception as e:
         print("AI generation failed:", str(e))
-        return {"error": "AI failed to generate resume content."}
-
-
+        return "<p>❌ AI failed to generate resume content.</p>"
