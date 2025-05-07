@@ -111,3 +111,39 @@ Resume:
         return {"suggestions": suggestions}
     except:
         return {"error": "Failed to generate suggestions."}
+    def generate_ai_resume_content(name, email, phone, location, summary, education, experience, certifications, skills, languages, hobbies):
+    prompt = f"""
+You are a professional resume builder AI. Using the following input data, generate a clean, professional and impactful resume content in simple HTML format, with heading sections and clear layout.
+
+Name: {name}
+Email: {email}
+Phone: {phone}
+Location: {location}
+Summary: {summary}
+Education: {education}
+Experience: {experience}
+Certifications: {certifications}
+Skills: {skills}
+Languages: {languages}
+Hobbies: {hobbies}
+
+Rules:
+- Start with name and contact at the top.
+- Each section must have a heading like <h3>Education</h3> and content below.
+- Use <ul> and <li> where suitable.
+- Make the tone professional and positive.
+
+Respond only with HTML.
+"""
+    import openai
+    import os
+    openai.api_key = os.getenv("OPENAI_API_KEY")
+    
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=1200,
+        temperature=0.7,
+    )
+    return response.choices[0].message.content.strip()
+

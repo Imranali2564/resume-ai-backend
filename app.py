@@ -332,3 +332,26 @@ def generate_ai_resume():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+    from resume_ai_analyzer import generate_ai_resume_content
+
+@app.route('/generate-ai-resume', methods=['POST'])
+def generate_ai_resume():
+    try:
+        data = request.json
+        result = generate_ai_resume_content(
+            data.get("name", ""),
+            data.get("email", ""),
+            data.get("phone", ""),
+            data.get("location", ""),
+            data.get("summary", ""),
+            data.get("education", ""),
+            data.get("experience", ""),
+            data.get("certifications", ""),
+            data.get("skills", ""),
+            data.get("languages", ""),
+            data.get("hobbies", "")
+        )
+        return jsonify({"success": True, "html": result})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
