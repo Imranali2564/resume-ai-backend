@@ -29,7 +29,12 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(STATIC_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# Validate OpenAI API key
+openai_api_key = os.environ.get("OPENAI_API_KEY")
+if not openai_api_key:
+    logger.error("OPENAI_API_KEY environment variable is not set")
+    raise ValueError("OPENAI_API_KEY environment variable is not set")
+client = OpenAI(api_key=openai_api_key)
 
 @app.route('/upload', methods=['POST'])
 def upload_resume():
@@ -43,6 +48,7 @@ def upload_resume():
         result = analyze_resume_with_openai(filepath, atsfix=atsfix)
         return jsonify(result)
     except Exception as e:
+        logger.error(f"Error in /upload: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/resume-score', methods=['POST'])
@@ -85,7 +91,8 @@ Just return a number between 0 and 100, nothing else.
         score_raw = response.choices[0].message.content.strip()
         score = int(''.join(filter(str.isdigit, score_raw)))
         return jsonify({"score": max(0, min(score, 100))})
-    except:
+    except Exception as e:
+        logger.error(f"Error in /resume-score: {str(e)}")
         return jsonify({"score": 70})
 
 @app.route('/check-ats', methods=['POST'])
@@ -99,6 +106,7 @@ def check_ats():
         ats_result = check_ats_compatibility(filepath)
         return jsonify({'ats_report': ats_result})
     except Exception as e:
+        logger.error(f"Error in /check-ats: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/parse-resume', methods=['POST'])
@@ -109,7 +117,6 @@ def parse_resume():
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
     file.save(filepath)
 
-    # Extract text based on file type
     ext = os.path.splitext(filepath)[1].lower()
     if ext == ".pdf":
         resume_text = extract_text_from_pdf(filepath) or extract_text_with_ocr(filepath)
@@ -121,7 +128,6 @@ def parse_resume():
     if not resume_text.strip():
         return jsonify({'error': 'No extractable text found in resume'}), 400
 
-    # Parse resume into sections
     sections = {
         "skills": "",
         "experience": "",
@@ -137,7 +143,6 @@ def parse_resume():
         line = line.strip()
         if not line:
             continue
-        # Identify section headers
         lower_line = line.lower()
         if "skills" in lower_line:
             current_section = "skills"
@@ -152,10 +157,8 @@ def parse_resume():
         elif "hobbies" in lower_line:
             current_section = "hobbies"
         elif current_section:
-            # Append content to the current section
             sections[current_section] += line + "\n"
 
-    # Clean up sections
     for key in sections:
         sections[key] = sections[key].strip()
 
@@ -172,7 +175,6 @@ def fix_suggestion():
         if not suggestion or not section or not section_content:
             return jsonify({'error': 'Missing suggestion, section, or section content'}), 400
 
-        # Generate a prompt for AI to fix the specific section based on the suggestion
         prompt = f"""
 You are a resume writing assistant. The user has received the following suggestion for their resume:
 Suggestion: {suggestion}
@@ -194,6 +196,7 @@ Based on the suggestion, rewrite the content of this section to address the sugg
         fixed_content = response.choices[0].message.content.strip()
         return jsonify({"fixedContent": fixed_content})
     except Exception as e:
+        logger.error(f"Error in /fix-suggestion: {str(e)}")
         return jsonify({'error': f'Failed to fix suggestion: {str(e)}'}), 500
 
 @app.route('/final-resume', methods=['POST'])
@@ -207,7 +210,6 @@ def final_resume():
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
     file.save(filepath)
 
-    # Extract text based on file type
     ext = os.path.splitext(filepath)[1].lower()
     if ext == ".pdf":
         resume_text = extract_text_from_pdf(filepath) or extract_text_with_ocr(filepath)
@@ -219,7 +221,6 @@ def final_resume():
     if not resume_text.strip():
         return jsonify({'error': 'No extractable text found in resume'}), 400
 
-    # Parse resume into sections
     sections = {
         "skills": "",
         "experience": "",
@@ -251,14 +252,12 @@ def final_resume():
         elif current_section:
             sections[current_section] += line + "\n"
 
-    # Apply fixes to the relevant sections
     for fix in fixes:
         section = fix.get('section')
         fixed_text = fix.get('fixedText')
         if section in sections:
             sections[section] = fixed_text
 
-    # Generate DOCX
     doc = Document()
     name = email = phone = location = ""
     for line in lines:
@@ -358,7 +357,8 @@ Format the output as plain text with bullet points, e.g., '• Reading\n• Hiki
                     ]
                 )
                 return res.choices[0].message.content.strip()
-            except:
+            except Exception as e:
+                logger.error(f"Error generating {section_name}: {str(e)}")
                 return user_input
 
         if summary.strip():
@@ -379,7 +379,8 @@ Write a 2-3 line professional summary for a resume.
                     ]
                 )
                 summary = res.choices[0].message.content.strip()
-            except:
+            except Exception as e:
+                logger.error(f"Error generating summary: {str(e)}")
                 summary = ""
 
         education = generate_section_content("education", education)
@@ -419,6 +420,7 @@ Write a 2-3 line professional summary for a resume.
         return jsonify({"success": True, "html": html})
 
     except Exception as e:
+        logger.error(f"Error in /generate-ai-resume: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/generate-cover-letter', methods=['POST'])
@@ -432,15 +434,27 @@ def generate_cover_letter():
 
     filename = secure_filename(file.filename)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    file.save(filepath)
+    try:
+        file.save(filepath)
+        logger.info(f"Saved file to {filepath}")
+    except Exception as e:
+        logger.error(f"Error saving file: {str(e)}")
+        return jsonify({'error': f'Failed to save file: {str(e)}'}), 500
 
     ext = os.path.splitext(filename)[1].lower()
-    if ext == '.pdf':
-        resume_text = extract_text_from_pdf(filepath) or extract_text_with_ocr(filepath)
-    elif ext == '.docx':
-        resume_text = extract_text_from_docx(filepath)
-    else:
-        return jsonify({'error': 'Unsupported file format'}), 400
+    try:
+        if ext == '.pdf':
+            resume_text = extract_text_from_pdf(filepath)
+            if not resume_text:
+                logger.info("Falling back to OCR for PDF text extraction")
+                resume_text = extract_text_with_ocr(filepath)
+        elif ext == '.docx':
+            resume_text = extract_text_from_docx(filepath)
+        else:
+            return jsonify({'error': 'Unsupported file format'}), 400
+    except Exception as e:
+        logger.error(f"Error extracting text from file: {str(e)}")
+        return jsonify({'error': f'Failed to extract text: {str(e)}'}), 500
 
     if not resume_text.strip():
         return jsonify({'error': 'Could not extract text from resume'}), 400
@@ -450,18 +464,22 @@ def generate_cover_letter():
     phone = ""
     location = ""
 
-    for line in resume_text.splitlines():
-        line = line.strip()
-        if not name and re.search(r'^[A-Z][a-z]+\s[A-Z][a-z]+', line):
-            name = line
-        if not email and re.search(r'[\w\.-]+@[\w\.-]+', line):
-            email = re.search(r'[\w\.-]+@[\w\.-]+', line).group()
-        if not phone and re.search(r'\+?\d[\d\s\-]{8,}', line):
-            phone = re.search(r'\+?\d[\d\s\-]{8,}', line).group()
-        if not location and re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', line):
-            location = re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\\b', line).group()
-        if name and email and phone and location:
-            break
+    try:
+        for line in resume_text.splitlines():
+            line = line.strip()
+            if not name and re.search(r'^[A-Z][a-z]+\s[A-Z][a-z]+', line):
+                name = line
+            if not email and re.search(r'[\w\.-]+@[\w\.-]+', line):
+                email = re.search(r'[\w\.-]+@[\w\.-]+', line).group()
+            if not phone and re.search(r'\+?\d[\d\s\-]{8,}', line):
+                phone = re.search(r'\+?\d[\d\s\-]{8,}', line).group()
+            if not location and re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', line):
+                location = re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', line).group()
+            if name and email and phone and location:
+                break
+    except Exception as e:
+        logger.error(f"Error parsing resume text: {str(e)}")
+        return jsonify({'error': f'Failed to parse resume text: {str(e)}'}), 500
 
     prompt = f"""
 You are a career coach and expert cover letter writer. Based on the resume content and the job title and company name below, write a compelling cover letter.
@@ -492,6 +510,7 @@ Cover Letter:
         cover_letter = response.choices[0].message.content.strip()
         return jsonify({"cover_letter": cover_letter})
     except Exception as e:
+        logger.error(f"Error generating cover letter: {str(e)}")
         return jsonify({'error': f'Failed to generate cover letter: {str(e)}'}), 500
 
 @app.route('/download-cover-letter', methods=['POST'])
