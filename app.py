@@ -111,34 +111,53 @@ def generate_ai_resume():
         certifications = data.get("certifications", "")
         languages = data.get("languages", "")
         hobbies = data.get("hobbies", "")
+        summary = data.get("summary", "")
 
-        prompt = f"""
-You are a professional resume writer. Based on the following user input, write a professional resume in clean HTML.
-Use small, clean <h3> tags with style 'font-size:0.95rem; line-height:1.3; color:#222; margin-bottom:4px; border-bottom:1px solid #ccc;'.
-Return only the HTML body (no <html> or <body> tags). Format like a real resume.
-
-User Info:
-Name: {name}
-Email: {email}
-Phone: {phone}
-Location: {location}
+        if not summary.strip():
+            prompt = f"""
+You are a resume writing assistant. Based on the following:
 Education: {education}
 Experience: {experience}
 Skills: {skills}
-Certifications: {certifications}
-Languages: {languages}
-Hobbies: {hobbies}
+Write a 2-3 line professional summary for a resume.
+"""
+            try:
+                res = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "user", "content": prompt}
+                    ]
+                )
+                summary = res.choices[0].message.content.strip()
+            except:
+                summary = ""
+
+        def section_html(title, content):
+            if not content.strip():
+                return ""
+            return f"""
+            <div class='section' style='margin-bottom:1.2rem;'>
+              <h3 style='font-size:0.95rem; line-height:1.3; color:#222; margin-bottom:4px; border-bottom:1px solid #ccc;'>{title}</h3>
+              <div>{content.strip().replace('\n', '<br>')}</div>
+            </div>
+            """
+
+        top = f"""
+        <div style='text-align:center; margin-bottom: 1.2rem;'>
+          <div style='font-size:1.3rem; font-weight:bold; color:#1D75E5;'>{name}</div>
+          <div style='font-size:0.9rem; color:#333;'>{email} | {phone} | {location}</div>
+        </div>
         """
 
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are an expert HTML resume generator."},
-                {"role": "user", "content": prompt}
-            ]
-        )
+        html = top
+        html += section_html("Summary", summary)
+        html += section_html("Education", education)
+        html += section_html("Experience", experience)
+        html += section_html("Skills", skills)
+        html += section_html("Certifications", certifications)
+        html += section_html("Languages", languages)
+        html += section_html("Hobbies", hobbies)
 
-        html = response.choices[0].message.content.strip()
         return jsonify({"success": True, "html": html})
 
     except Exception as e:
