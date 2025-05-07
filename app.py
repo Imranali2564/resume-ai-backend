@@ -231,12 +231,30 @@ Write a 2-3 line professional summary for a resume.
 
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+import re
+
+def extract_personal_info(text):
+    lines = text.strip().splitlines()
+    top = "\n".join(lines[:15])  # Top 15 lines
+
+    name = lines[0] if lines else ""
+    email = re.search(r'[\w\.-]+@[\w\.-]+', top)
+    phone = re.search(r'(?:(?:\+91[-\s]?|0)?[6-9]\d{9})', top)
+    location = re.search(r'(Location:|Address:)?\s?([A-Za-z\s,]{5,})', top)
+
+    return {
+        "name": name.strip(),
+        "email": email.group(0) if email else "",
+        "phone": phone.group(0) if phone else "",
+        "location": location.group(2).strip() if location else ""
+    }
+
 @app.route('/generate-cover-letter', methods=['POST'])
 def generate_cover_letter():
     file = request.files.get('file')
     job_title = request.form.get('job_title')
     company_name = request.form.get('company_name')
-    
+
     if not file or not job_title or not company_name:
         return jsonify({'error': 'File, job title, and company name are required'}), 400
 
@@ -255,10 +273,18 @@ def generate_cover_letter():
     if not resume_text.strip():
         return jsonify({'error': 'Could not extract text from resume'}), 400
 
-   prompt = f"""
+    # Extract personal info
+    info = extract_personal_info(resume_text)
+    name = info["name"]
+    email = info["email"]
+    phone = info["phone"]
+    location = info["location"]
+
+    prompt = f"""
 You are a career coach and expert cover letter writer. Based on the resume content and the job title and company name below, write a compelling cover letter.
 
-Candidate Name: {name}
+Candidate Details:
+Name: {name}
 Email: {email}
 Phone: {phone}
 Location: {location}
@@ -271,6 +297,19 @@ Company Name: {company_name}
 
 Cover Letter:
 """
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a professional cover letter writing assistant."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        cover_letter = response.choices[0].message.content.strip()
+        return jsonify({"cover_letter": cover_letter})
+    except Exception as e:
+        return jsonify({'error': f'Failed to generate cover letter: {str(e)}'}), 500
 
     try:
         response = client.chat.completions.create(
