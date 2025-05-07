@@ -1,17 +1,19 @@
 import os
-import fitz  # PyMuPDF
 import docx
 import pytesseract
+import pdfplumber
 from PIL import Image
 import io
+from pdf2image import convert_from_path
 from openai import OpenAI
 
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 def extract_text_from_pdf(file_path):
     try:
-        doc = fitz.open(file_path)
-        return "\n".join(page.get_text() for page in doc).strip()
+        with pdfplumber.open(file_path) as pdf:
+            text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+        return text.strip()
     except Exception:
         return ""
 
@@ -24,11 +26,9 @@ def extract_text_from_docx(file_path):
 
 def extract_text_with_ocr(file_path):
     try:
-        images = fitz.open(file_path)
+        images = convert_from_path(file_path, dpi=300)
         text = ""
-        for page_num in range(len(images)):
-            pix = images[page_num].get_pixmap(dpi=300)
-            img = Image.open(io.BytesIO(pix.tobytes()))
+        for img in images:
             text += pytesseract.image_to_string(img)
         return text.strip()
     except Exception:
