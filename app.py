@@ -32,11 +32,37 @@ def upload_resume():
     atsfix = request.form.get('atsfix') == 'true'
     if not file or file.filename == '':
         return jsonify({'error': 'No file uploaded'}), 400
+
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
     file.save(filepath)
+
     try:
         result = analyze_resume_with_openai(filepath, atsfix=atsfix)
+
+        ext = os.path.splitext(filepath)[1].lower()
+        resume_text = ""
+        if ext == ".pdf":
+            resume_text = extract_text_from_pdf(filepath) or extract_text_with_ocr(filepath)
+        elif ext == ".docx":
+            resume_text = extract_text_from_docx(filepath)
+
+        def extract_section(text, keyword):
+            pattern = rf"{keyword}[:\-]?\s*(.*?)(\n\n|\Z)"
+            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+            return match.group(1).strip() if match else ""
+
+        sections = {
+            "skills": extract_section(resume_text, "skills"),
+            "experience": extract_section(resume_text, "experience"),
+            "education": extract_section(resume_text, "education"),
+            "certifications": extract_section(resume_text, "certifications"),
+            "languages": extract_section(resume_text, "languages"),
+            "hobbies": extract_section(resume_text, "hobbies"),
+        }
+
+        result["sections"] = sections
         return jsonify(result)
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
