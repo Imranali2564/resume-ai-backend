@@ -108,6 +108,7 @@ Resume:
         return {"suggestions": suggestions}
     except Exception as e:
         print("❌ [OpenAI ERROR]", str(e))
+        print("📤 Prompt Sent to OpenAI:\n", prompt[:500])  # For debugging only first 500 chars
         return {"error": "Failed to generate suggestions."}
 
 def generate_ai_resume_content(data):
