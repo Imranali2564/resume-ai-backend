@@ -213,23 +213,7 @@ Format the output as plain text with bullet points, e.g., '• Reading\n• Hiki
         if summary.strip():
             summary = generate_section_content("summary", summary)
         else:
-            prompt = f"""
-You are a resume writing assistant. Based on the following:
-Education: {education}
-Experience: {experience}
-Skills: {skills}
-Write a 2-3 line professional summary for a resume.
-"""
-            try:
-                res = openai.ChatCompletion.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "user", "content": prompt}
-                    ]
-                )
-                summary = res.choices[0].message.content.strip()
-            except:
-                summary = ""
+            summary = generate_section_content("summary", "")
 
         education = generate_section_content("education", education)
         experience = generate_section_content("experience", experience)
