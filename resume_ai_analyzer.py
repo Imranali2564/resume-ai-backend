@@ -93,21 +93,22 @@ Don't explain anything else. List one suggestion per line.
 Resume:
 {text[:4000]}
         """
-try:
-    print("✅ [OpenAI] Sending resume for suggestion generation...")
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "You are a professional resume suggestion assistant."},
-            {"role": "user", "content": prompt}
-        ]
-    )
-    print("✅ [OpenAI] Response received.")
-    suggestions = response.choices[0].message.content.strip()
-    return {"suggestions": suggestions}
-except Exception as e:
-    print("❌ [OpenAI ERROR]", str(e))
-    return {"error": "Failed to generate suggestions."}
+
+    try:
+        print("✅ [OpenAI] Sending resume for suggestion generation...")
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a professional resume suggestion assistant."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        print("✅ [OpenAI] Response received.")
+        suggestions = response.choices[0].message.content.strip()
+        return {"suggestions": suggestions}
+    except Exception as e:
+        print("❌ [OpenAI ERROR]", str(e))
+        return {"error": "Failed to generate suggestions."}
 
 def generate_ai_resume_content(data):
     name = data.get("name", "")
