@@ -95,6 +95,7 @@ Resume:
         """
 
     try:
+        print("✅ [OpenAI] Sending resume for suggestion generation...")
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
@@ -102,9 +103,11 @@ Resume:
                 {"role": "user", "content": prompt}
             ]
         )
+        print("✅ [OpenAI] Response received.")
         suggestions = response.choices[0].message.content.strip()
         return {"suggestions": suggestions}
-    except:
+    except Exception as e:
+        print("❌ [OpenAI ERROR]", str(e))
         return {"error": "Failed to generate suggestions."}
 
 def generate_ai_resume_content(data):
@@ -133,7 +136,6 @@ def generate_ai_resume_content(data):
 
     sections = []
 
-    # Contact Header
     if name or email or phone or location:
         sections.append(f"""
         <div style="text-align:center; margin-bottom: 1.5rem;">
@@ -142,7 +144,6 @@ def generate_ai_resume_content(data):
         </div>
         """)
 
-    # Content Sections
     sections.append(format_section("Summary", summary))
     sections.append(format_section("Education", education))
     sections.append(format_section("Experience", experience))
