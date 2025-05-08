@@ -12,7 +12,7 @@ try:
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.oxml.ns import qn
     from docx.oxml import parse_xml
-from docx.oxml.ns import nsdecls
+    from docx.oxml.ns import nsdecls
 except ImportError as e:
     logging.error(f"Failed to import python-docx: {str(e)}")
     raise
