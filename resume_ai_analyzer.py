@@ -95,6 +95,7 @@ Resume:
         """
 
     try:
+
     print("✅ [OpenAI] Sending resume for suggestion generation...")
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
@@ -107,7 +108,7 @@ Resume:
     suggestions = response.choices[0].message.content.strip()
     return {"suggestions": suggestions}
 except Exception as e:
-    print("❌ [OpenAI ERROR]", str(e))   # 👈 This will finally show actual reason
+    print("❌ [OpenAI ERROR]", str(e))
     return {"error": "Failed to generate suggestions."}
 
 def generate_ai_resume_content(data):
