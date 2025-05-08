@@ -1,1 +1,9 @@
-Flask==2.0.1 Flask-Cors==3.0.10 werkzeug==2.0.1 openai>=1.0.0 python-docx==0.8.11 pdfplumber==0.7.4 pdf2image==1.16.0 reportlab==3.6.12 Pillow==9.5.0
+flask
+flask-cors
+openai
+python-docx
+pdfplumber
+pytesseract
+pdf2image
+reportlab
+gunicorn

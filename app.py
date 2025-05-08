@@ -22,8 +22,9 @@ from resume_ai_analyzer import (
     check_ats_compatibility
 )
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging (reduce verbosity in production)
+logging_level = logging.INFO if os.environ.get("FLASK_ENV") != "development" else logging.DEBUG
+logging.basicConfig(level=logging_level)
 logger = logging.getLogger(__name__)
 
 logger.info("Starting Flask app initialization...")
@@ -36,7 +37,7 @@ STATIC_FOLDER = 'static'
 try:
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     os.makedirs(STATIC_FOLDER, exist_ok=True)
-    logger.info(f"Successfully created directories: {UPLOAD_FOLDER}, {STATIC_FOLDER}")
+    logger.info(f"Directories created: {UPLOAD_FOLDER}, {STATIC_FOLDER}")
 except Exception as e:
     logger.error(f"Failed to create directories: {str(e)}")
     raise RuntimeError(f"Failed to create directories: {str(e)}")
@@ -46,7 +47,7 @@ def cleanup_file(filepath):
     try:
         if os.path.exists(filepath):
             os.remove(filepath)
-            logger.info(f"Cleaned up file: {filepath}")
+            logger.debug(f"Cleaned up file: {filepath}")
     except Exception as e:
         logger.error(f"Error cleaning up file: {filepath}, {str(e)}")
 
@@ -125,7 +126,6 @@ Just return a number between 0 and 100, nothing else.
 
 @app.route('/check-ats', methods=['POST'])
 def check_ats():
-    # Check if file is present in the request
     if 'file' not in request.files:
         logger.error("No file part in the request")
         return jsonify({'error': 'No file part in the request'}), 400
@@ -135,26 +135,23 @@ def check_ats():
         logger.error("No file selected for upload")
         return jsonify({'error': 'No file selected for upload'}), 400
 
-    # Validate file extension
     ext = os.path.splitext(file.filename)[1].lower()
     allowed_extensions = {'.pdf', '.docx'}
     if ext not in allowed_extensions:
         logger.error(f"Unsupported file format: {ext}")
         return jsonify({'error': f'Unsupported file format: {ext}. Please upload a PDF or DOCX file.'}), 400
 
-    # Log file details
     filename = secure_filename(file.filename)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     try:
         file.save(filepath)
         file_size = os.path.getsize(filepath) / 1024  # Size in KB
-        logger.info(f"File saved successfully: {filepath}, Size: {file_size:.2f} KB, Extension: {ext}")
+        logger.debug(f"File saved: {filepath}, Size: {file_size:.2f} KB, Extension: {ext}")
 
-        # Extract text to validate file readability
         if ext == ".pdf":
             resume_text = extract_text_from_pdf(filepath)
             if not resume_text:
-                logger.info("Falling back to OCR for PDF text extraction")
+                logger.debug("Falling back to OCR for PDF text extraction")
                 resume_text = extract_text_with_ocr(filepath)
         elif ext == ".docx":
             resume_text = extract_text_from_docx(filepath)
@@ -165,9 +162,8 @@ def check_ats():
         if not resume_text or not resume_text.strip():
             logger.warning("No extractable text found in resume")
             return jsonify({'error': 'No extractable text found in resume. The file might be empty or unreadable.'}), 400
-        logger.info(f"Extracted text length: {len(resume_text)} characters")
+        logger.debug(f"Extracted text length: {len(resume_text)} characters")
 
-        # Process the file for ATS compatibility
         ats_result = check_ats_compatibility(filepath)
         if not ats_result or "Failed to analyze" in ats_result:
             logger.warning("ATS check returned empty or failed result")
@@ -301,10 +297,8 @@ def final_resume():
         if not resume_text.strip():
             return jsonify({'error': 'No extractable text found in resume'}), 400
 
-        # Log the fixes for debugging
-        logger.info(f"Received fixes: {json.dumps(fixes, indent=2)}")
+        logger.debug(f"Received fixes: {json.dumps(fixes, indent=2)}")
 
-        # Parse resume into sections
         sections = {
             "skills": "",
             "experience": "",
@@ -336,14 +330,12 @@ def final_resume():
             elif current_section:
                 sections[current_section] += line + "\n"
 
-        # Apply fixes to the relevant sections
         for fix in fixes:
             section = fix.get('section')
             fixed_text = fix.get('fixedText')
             if section in sections:
                 sections[section] = fixed_text
 
-        # Extract contact information
         name = email = phone = location = ""
         for line in lines:
             line = line.strip()
@@ -356,11 +348,8 @@ def final_resume():
             if not location and re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', line):
                 location = line
 
-        # Generate DOCX if requested
         if format_type == 'docx':
             doc = Document()
-            
-            # Set document margins
             sections_doc = doc.sections
             for section in sections_doc:
                 section.left_margin = Inches(1)
@@ -368,17 +357,15 @@ def final_resume():
                 section.top_margin = Inches(1)
                 section.bottom_margin = Inches(1)
 
-            # Name (Heading)
             name_paragraph = doc.add_heading(name, level=1)
             name_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
             name_run = name_paragraph.runs[0]
             name_run.font.name = 'Times New Roman'
-            name_run._element.rPr.rFonts.set(qn('w:ascii'), 'Times New Roman')  # Ensure font fallback
+            name_run._element.rPr.rFonts.set(qn('w:ascii'), 'Times New Roman')
             name_run._element.rPr.rFonts.set(qn('w:hAnsi'), 'Times New Roman')
             name_run.font.size = Pt(14)
             name_run.bold = True
 
-            # Contact Info
             contact_info = f"{email} | {phone} | {location}"
             contact_paragraph = doc.add_paragraph(contact_info)
             contact_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -388,12 +375,10 @@ def final_resume():
             contact_run._element.rPr.rFonts.set(qn('w:hAnsi'), 'Times New Roman')
             contact_run.font.size = Pt(10)
 
-            doc.add_paragraph()  # Spacer
+            doc.add_paragraph()
 
-            # Add sections
             for section_name, content in sections.items():
                 if content.strip():
-                    # Section Heading
                     heading = doc.add_heading(section_name.capitalize(), level=2)
                     heading_run = heading.runs[0]
                     heading_run.font.name = 'Times New Roman'
@@ -402,11 +387,10 @@ def final_resume():
                     heading_run.font.size = Pt(12)
                     heading_run.bold = True
 
-                    # Section Content
                     for line in content.splitlines():
                         line = line.strip()
                         if line:
-                            if section_name in ["skills", "experience", "hobbies"]:  # Use bullets for these sections
+                            if section_name in ["skills", "experience", "hobbies"]:
                                 p = doc.add_paragraph(style='List Bullet')
                                 run = p.add_run(line)
                             else:
@@ -420,12 +404,10 @@ def final_resume():
             doc.save(output_path)
             return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.docx")
 
-        # Generate PDF if requested
         elif format_type == 'pdf':
             doc = SimpleDocTemplate(output_path, pagesize=letter, leftMargin=1*inch, rightMargin=1*inch, topMargin=1*inch, bottomMargin=1*inch)
             styles = getSampleStyleSheet()
 
-            # Define custom styles
             styles.add(ParagraphStyle(name='Name', fontName='Times-Roman', fontSize=14, alignment=1, spaceAfter=6))
             styles.add(ParagraphStyle(name='Contact', fontName='Times-Roman', fontSize=10, alignment=1, spaceAfter=12))
             styles.add(ParagraphStyle(name='SectionHeading', fontName='Times-Roman', fontSize=12, spaceAfter=6))
@@ -434,27 +416,21 @@ def final_resume():
 
             story = []
 
-            # Name
             story.append(Paragraph(f"<b>{name}</b>", styles['Name']))
 
-            # Contact Info
             contact_info = f"{email} | {phone} | {location}"
             story.append(Paragraph(contact_info, styles['Contact']))
 
-            # Spacer
             story.append(Spacer(1, 12))
 
-            # Add sections
             for section_name, content in sections.items():
                 if content.strip():
-                    # Section Heading
                     story.append(Paragraph(f"<b>{section_name.capitalize()}</b>", styles['SectionHeading']))
 
-                    # Section Content
                     for line in content.splitlines():
                         line = line.strip()
                         if line:
-                            if section_name in ["skills", "experience", "hobbies"]:  # Use bullets
+                            if section_name in ["skills", "experience", "hobbies"]:
                                 bullet_line = f"• {line}"
                                 story.append(Paragraph(bullet_line, styles['Bullet']))
                             else:
@@ -625,12 +601,12 @@ def generate_cover_letter():
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     try:
         file.save(filepath)
-        logger.info(f"Saved file to {filepath}")
+        logger.debug(f"Saved file to {filepath}")
         ext = os.path.splitext(filename)[1].lower()
         if ext == '.pdf':
             resume_text = extract_text_from_pdf(filepath)
             if not resume_text:
-                logger.info("Falling back to OCR for PDF text extraction")
+                logger.debug("Falling back to OCR for PDF text extraction")
                 resume_text = extract_text_with_ocr(filepath)
         elif ext == '.docx':
             resume_text = extract_text_from_docx(filepath)
