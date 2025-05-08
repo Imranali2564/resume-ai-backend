@@ -5,8 +5,8 @@ import os
 import uuid
 import json
 import re
-from openai import OpenAI
 from docx import Document
+import openai
 from resume_ai_analyzer import (
     analyze_resume_with_openai,
     extract_text_from_pdf,
@@ -14,6 +14,8 @@ from resume_ai_analyzer import (
     extract_text_with_ocr,
     check_ats_compatibility
 )
+
+openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 app = Flask(__name__, static_url_path='/static')
 CORS(app, resources={r"/*": {"origins": "https://resumefixerpro.com"}})
@@ -23,12 +25,6 @@ STATIC_FOLDER = 'static'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(STATIC_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-import os
-from openai import OpenAI
-
-# Automatically picked from environment variable
-client = OpenAI()
 
 @app.route('/upload', methods=['POST'])
 def upload_resume():
@@ -74,7 +70,7 @@ Resume:
 Just return a number between 0 and 100, nothing else.
     """
     try:
-        response = client.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are a strict but fair resume scoring assistant."},
@@ -117,7 +113,6 @@ def generate_ai_resume():
         hobbies = data.get("hobbies", "")
         summary = data.get("summary", "")
 
-        # Helper function to generate content for a section using AI
         def generate_section_content(section_name, user_input, context=""):
             if not user_input.strip():
                 return ""
@@ -164,7 +159,7 @@ Format the output as plain text with bullet points, e.g., '• Reading\n• Hiki
             if not prompt:
                 return user_input
             try:
-                res = client.chat.completions.create(
+                res = openai.ChatCompletion.create(
                     model="gpt-3.5-turbo",
                     messages=[
                         {"role": "user", "content": prompt}
@@ -174,11 +169,9 @@ Format the output as plain text with bullet points, e.g., '• Reading\n• Hiki
             except:
                 return user_input
 
-        # Generate content for each section if user provided input
         if summary.strip():
             summary = generate_section_content("summary", summary)
         else:
-            # Existing logic for generating summary if empty
             prompt = f"""
 You are a resume writing assistant. Based on the following:
 Education: {education}
@@ -187,7 +180,7 @@ Skills: {skills}
 Write a 2-3 line professional summary for a resume.
 """
             try:
-                res = client.chat.completions.create(
+                res = openai.ChatCompletion.create(
                     model="gpt-3.5-turbo",
                     messages=[
                         {"role": "user", "content": prompt}

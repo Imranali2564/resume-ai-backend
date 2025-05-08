@@ -5,9 +5,9 @@ import pdfplumber
 from PIL import Image
 import io
 from pdf2image import convert_from_path
-from openai import OpenAI
+import openai
 
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 def extract_text_from_pdf(file_path):
     try:
@@ -54,7 +54,7 @@ Resume:
 {text[:4000]}
     """
     try:
-        response = client.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are an ATS resume expert."},
@@ -95,7 +95,7 @@ Resume:
         """
 
     try:
-        response = client.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are a professional resume suggestion assistant."},
