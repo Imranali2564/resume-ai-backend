@@ -673,4 +673,53 @@ Resume:
 Job Title: {job_title}
 Company Name: {company_name}
 
-Cover
+Cover Letter:
+"""
+
+        from openai import OpenAI
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a professional cover letter writing assistant."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        cover_letter = response.choices[0].message.content.strip()
+        return jsonify({"cover_letter": cover_letter})
+    except Exception as e:
+        logger.error(f"Error generating cover letter: {str(e)}")
+        return jsonify({"cover_letter": "Unable to generate cover letter. Please check if the API key is set."})
+    finally:
+        cleanup_file(filepath)
+
+@app.route('/download-cover-letter', methods=['POST'])
+def download_cover_letter():
+    data = request.get_json()
+    cover_letter = data.get('cover_letter')
+
+    if not cover_letter:
+        return jsonify({'error': 'No cover letter provided'}), 400
+
+    output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"cover_letter_{uuid.uuid4()}.docx")
+    try:
+        doc = Document()
+        doc.add_heading("Cover Letter", level=1)
+        for line in cover_letter.splitlines():
+            line = line.strip()
+            if line:
+                doc.add_paragraph(line)
+        doc.save(output_path)
+        return send_file(output_path, as_attachment=True, download_name="Cover_Letter.docx")
+    except Exception as e:
+        logger.error(f"Error saving cover letter DOCX file: {str(e)}")
+        return jsonify({'error': f'Failed to save cover letter DOCX file: {str(e)}'}), 500
+    finally:
+        cleanup_file(output_path)
+
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
+    logger.info(f"Starting Flask app on port {port}")
+    app.run(host="0.0.0.0", port=port)
+
+logger.info("Flask app initialization complete.")
