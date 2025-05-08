@@ -63,11 +63,11 @@ def upload_resume():
         result = analyze_resume_with_openai(filepath, atsfix=atsfix)
         if "error" in result:
             logger.warning(f"Failed to analyze resume: {result['error']}")
-            return jsonify({"suggestions": "Unable to generate suggestions due to an API error."})
+            return jsonify({"suggestions": "Unable to generate suggestions. Please check if the API key is set."})
         return jsonify(result)
     except Exception as e:
         logger.error(f"Error in /upload: {str(e)}")
-        return jsonify({"suggestions": "Unable to generate suggestions due to an API error."})
+        return jsonify({"suggestions": "Unable to generate suggestions. Please check if the API key is set."})
 
 @app.route('/resume-score', methods=['POST'])
 def resume_score():
@@ -175,12 +175,12 @@ def check_ats():
         ats_result = check_ats_compatibility(filepath)
         if not ats_result or "Failed to analyze" in ats_result:
             logger.warning("ATS check returned empty or failed result")
-            return jsonify({'ats_report': "Unable to perform ATS check due to an API error."})
+            return jsonify({'ats_report': "Unable to perform ATS check. Please check if the API key is set."})
         logger.info("ATS check completed successfully")
         return jsonify({'ats_report': ats_result})
     except Exception as e:
         logger.error(f"Error in check_ats_compatibility: {str(e)}")
-        return jsonify({'ats_report': "Unable to perform ATS check due to an API error."})
+        return jsonify({'ats_report': "Unable to perform ATS check. Please check if the API key is set."})
     finally:
         # Clean up the uploaded file to save space
         try:
@@ -284,7 +284,7 @@ Based on the suggestion, rewrite the content of this section to address the sugg
         return jsonify({"fixedContent": fixed_content})
     except Exception as e:
         logger.error(f"Error in /fix-suggestion: {str(e)}")
-        return jsonify({"fixedContent": "Unable to apply suggestion due to an API error."})
+        return jsonify({"fixedContent": "Unable to apply suggestion. Please check if the API key is set."})
 
 @app.route('/final-resume', methods=['POST'])
 def final_resume():
@@ -586,7 +586,7 @@ Write a 2-3 line professional summary for a resume.
                 summary = res.choices[0].message.content.strip()
             except Exception as e:
                 logger.error(f"Error generating summary: {str(e)}")
-                summary = "Unable to generate summary due to an API error."
+                summary = "Unable to generate summary. Please check if the API key is set."
 
         education = generate_section_content("education", education)
         experience = generate_section_content("experience", experience)
@@ -718,7 +718,7 @@ Cover Letter:
         return jsonify({"cover_letter": cover_letter})
     except Exception as e:
         logger.error(f"Error generating cover letter: {str(e)}")
-        return jsonify({"cover_letter": "Unable to generate cover letter due to an API error."})
+        return jsonify({"cover_letter": "Unable to generate cover letter. Please check if the API key is set."})
 
 @app.route('/download-cover-letter', methods=['POST'])
 def download_cover_letter():

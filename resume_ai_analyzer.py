@@ -6,8 +6,17 @@ from PIL import Image
 from pdf2image import convert_from_path
 from openai import OpenAI
 
-# Initialize OpenAI client
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# Do not initialize the client at the module level
+client = None
+
+def get_openai_client():
+    global client
+    if client is None:
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable is not set")
+        client = OpenAI(api_key=api_key)
+    return client
 
 def extract_text_from_pdf(file_path):
     try:
@@ -54,6 +63,7 @@ Resume:
 {text[:4000]}
     """
     try:
+        client = get_openai_client()
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
@@ -98,6 +108,7 @@ Resume:
             """
 
         print("✅ [OpenAI] Sending resume for suggestion generation...")
+        client = get_openai_client()
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
