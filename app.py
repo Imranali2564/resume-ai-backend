@@ -7,13 +7,14 @@ import uuid
 import json
 import re
 from docx import Document
-from docx.shared import Pt, Inches
+from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
+from reportlab.lib.colors import HexColor
 from resume_ai_analyzer import (
     analyze_resume_with_openai,
     extract_text_from_pdf,
@@ -352,20 +353,23 @@ def final_resume():
             doc = Document()
             sections_doc = doc.sections
             for section in sections_doc:
-                section.left_margin = Inches(1)
-                section.right_margin = Inches(1)
-                section.top_margin = Inches(1)
-                section.bottom_margin = Inches(1)
+                section.left_margin = Inches(0.75)
+                section.right_margin = Inches(0.75)
+                section.top_margin = Inches(0.5)
+                section.bottom_margin = Inches(0.5)
 
+            # Name (Heading)
             name_paragraph = doc.add_heading(name, level=1)
             name_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
             name_run = name_paragraph.runs[0]
             name_run.font.name = 'Times New Roman'
             name_run._element.rPr.rFonts.set(qn('w:ascii'), 'Times New Roman')
             name_run._element.rPr.rFonts.set(qn('w:hAnsi'), 'Times New Roman')
-            name_run.font.size = Pt(14)
+            name_run.font.size = Pt(16)
             name_run.bold = True
+            name_run.font.color.rgb = RGBColor(0, 113, 188)  # Blue color
 
+            # Contact Info
             contact_info = f"{email} | {phone} | {location}"
             contact_paragraph = doc.add_paragraph(contact_info)
             contact_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -374,19 +378,28 @@ def final_resume():
             contact_run._element.rPr.rFonts.set(qn('w:ascii'), 'Times New Roman')
             contact_run._element.rPr.rFonts.set(qn('w:hAnsi'), 'Times New Roman')
             contact_run.font.size = Pt(10)
+            contact_run.font.color.rgb = RGBColor(80, 80, 80)  # Dark gray
 
-            doc.add_paragraph()
+            doc.add_paragraph()  # Spacer
 
+            # Add sections
             for section_name, content in sections.items():
                 if content.strip():
-                    heading = doc.add_heading(section_name.capitalize(), level=2)
-                    heading_run = heading.runs[0]
-                    heading_run.font.name = 'Times New Roman'
-                    heading_run._element.rPr.rFonts.set(qn('w:ascii'), 'Times New Roman')
-                    heading_run._element.rPr.rFonts.set(qn('w:hAnsi'), 'Times New Roman')
-                    heading_run.font.size = Pt(12)
-                    heading_run.bold = True
+                    # Section Heading (in a shaded box)
+                    p = doc.add_paragraph()
+                    p.paragraph_format.space_before = Pt(10)
+                    p.paragraph_format.space_after = Pt(5)
+                    run = p.add_run(section_name.upper())
+                    run.font.name = 'Times New Roman'
+                    run._element.rPr.rFonts.set(qn('w:ascii'), 'Times New Roman')
+                    run._element.rPr.rFonts.set(qn('w:hAnsi'), 'Times New Roman')
+                    run.font.size = Pt(12)
+                    run.bold = True
+                    run.font.color.rgb = RGBColor(255, 255, 255)  # White text
+                    shading_elm = parse_xml(r'<w:shd {} w:fill="0071BC"/>'.format(nsdecls('w')))
+                    p._element.get_or_add_pPr().append(shading_elm)
 
+                    # Section Content
                     for line in content.splitlines():
                         line = line.strip()
                         if line:
@@ -400,33 +413,53 @@ def final_resume():
                             run._element.rPr.rFonts.set(qn('w:ascii'), 'Times New Roman')
                             run._element.rPr.rFonts.set(qn('w:hAnsi'), 'Times New Roman')
                             run.font.size = Pt(11)
+                            run.font.color.rgb = RGBColor(50, 50, 50)  # Dark gray
 
             doc.save(output_path)
             return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.docx")
 
         elif format_type == 'pdf':
-            doc = SimpleDocTemplate(output_path, pagesize=letter, leftMargin=1*inch, rightMargin=1*inch, topMargin=1*inch, bottomMargin=1*inch)
+            doc = SimpleDocTemplate(output_path, pagesize=letter, leftMargin=0.75*inch, rightMargin=0.75*inch, topMargin=0.5*inch, bottomMargin=0.5*inch)
             styles = getSampleStyleSheet()
 
-            styles.add(ParagraphStyle(name='Name', fontName='Times-Roman', fontSize=14, alignment=1, spaceAfter=6))
-            styles.add(ParagraphStyle(name='Contact', fontName='Times-Roman', fontSize=10, alignment=1, spaceAfter=12))
-            styles.add(ParagraphStyle(name='SectionHeading', fontName='Times-Roman', fontSize=12, spaceAfter=6))
-            styles.add(ParagraphStyle(name='Body', fontName='Times-Roman', fontSize=11, spaceAfter=6))
-            styles.add(ParagraphStyle(name='Bullet', fontName='Times-Roman', fontSize=11, spaceAfter=6, leftIndent=0.5*inch, firstLineIndent=-0.25*inch, bulletFontName='Times-Roman', bulletFontSize=11, bulletIndent=0.25*inch))
+            styles.add(ParagraphStyle(name='Name', fontName='Times-Roman', fontSize=16, alignment=1, spaceAfter=6, textColor=HexColor('#0071BC')))
+            styles.add(ParagraphStyle(name='Contact', fontName='Times-Roman', fontSize=10, alignment=1, spaceAfter=12, textColor=HexColor('#505050')))
+            styles.add(ParagraphStyle(name='SectionHeading', fontName='Times-Roman', fontSize=12, spaceBefore=10, spaceAfter=5, textColor=HexColor('#FFFFFF')))
+            styles.add(ParagraphStyle(name='Body', fontName='Times-Roman', fontSize=11, spaceAfter=6, textColor=HexColor('#323232')))
+            styles.add(ParagraphStyle(name='Bullet', fontName='Times-Roman', fontSize=11, spaceAfter=6, leftIndent=0.5*inch, firstLineIndent=-0.25*inch, bulletFontName='Times-Roman', bulletFontSize=11, bulletIndent=0.25*inch, textColor=HexColor('#323232')))
 
             story = []
 
+            # Name
             story.append(Paragraph(f"<b>{name}</b>", styles['Name']))
 
+            # Contact Info
             contact_info = f"{email} | {phone} | {location}"
             story.append(Paragraph(contact_info, styles['Contact']))
 
+            # Spacer
             story.append(Spacer(1, 12))
 
+            # Add sections
             for section_name, content in sections.items():
                 if content.strip():
-                    story.append(Paragraph(f"<b>{section_name.capitalize()}</b>", styles['SectionHeading']))
+                    # Section Heading (in a shaded box)
+                    heading_table = Table([[Paragraph(f"<b>{section_name.upper()}</b>", styles['SectionHeading'])]], colWidths=[6.5*inch])
+                    heading_table.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, -1), HexColor('#0071BC')),
+                        ('TEXTCOLOR', (0, 0), (-1, -1), HexColor('#FFFFFF')),
+                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                        ('FONTNAME', (0, 0), (-1, -1), 'Times-Roman'),
+                        ('FONTSIZE', (0, 0), (-1, -1), 12),
+                        ('LEFTPADDING', (0, 0), (-1, -1), 10),
+                        ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+                        ('TOPPADDING', (0, 0), (-1, -1), 5),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                    ]))
+                    story.append(heading_table)
 
+                    # Section Content
                     for line in content.splitlines():
                         line = line.strip()
                         if line:
