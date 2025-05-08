@@ -253,6 +253,9 @@ Format the output as plain text with bullet points, e.g., '• Reading\n• Hiki
 
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+@app.route('/parse-resume', methods=['POST'])
+def parse_resume_legacy():
+    return upload_resume()
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
