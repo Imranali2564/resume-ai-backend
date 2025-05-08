@@ -96,6 +96,21 @@ def check_ats():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/generate-suggestions', methods=['POST'])
+def generate_suggestions():
+    try:
+        file = request.files["file"]
+        temp_path = os.path.join("temp", file.filename)
+        os.makedirs("temp", exist_ok=True)
+        file.save(temp_path)
+
+        result = analyze_resume_with_openai(temp_path)
+        os.remove(temp_path)
+        return jsonify(result)
+    except Exception as e:
+        print("❌ [OpenAI ERROR - /generate-suggestions]", str(e))
+        return jsonify({"error": "Failed to generate suggestions."})
+
 @app.route('/generate-ai-resume', methods=['POST'])
 def generate_ai_resume():
     try:
