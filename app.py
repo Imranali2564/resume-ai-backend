@@ -10,6 +10,7 @@ from docx import Document
 from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
+from docx.oxml import parse_xml, nsdecls  # Added missing imports for DOCX shading
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -281,6 +282,7 @@ def final_resume():
     format_type = request.args.get('format', 'docx')  # Default to docx if format not specified
 
     if not file:
+        logger.error("No file uploaded in /final-resume")
         return jsonify({'error': 'No file uploaded'}), 400
 
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
@@ -293,13 +295,16 @@ def final_resume():
         elif ext == ".docx":
             resume_text = extract_text_from_docx(filepath)
         else:
+            logger.error(f"Unsupported file format: {ext}")
             return jsonify({'error': 'Unsupported file format'}), 400
 
         if not resume_text.strip():
+            logger.warning("No extractable text found in resume")
             return jsonify({'error': 'No extractable text found in resume'}), 400
 
         logger.debug(f"Received fixes: {json.dumps(fixes, indent=2)}")
 
+        # Initialize sections with the fixes provided by the frontend
         sections = {
             "skills": "",
             "experience": "",
@@ -308,36 +313,18 @@ def final_resume():
             "languages": "",
             "hobbies": ""
         }
-        current_section = None
-        lines = resume_text.splitlines()
 
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            lower_line = line.lower()
-            if "skills" in lower_line:
-                current_section = "skills"
-            elif "experience" in lower_line:
-                current_section = "experience"
-            elif "education" in lower_line:
-                current_section = "education"
-            elif "certifications" in lower_line:
-                current_section = "certifications"
-            elif "languages" in lower_line:
-                current_section = "languages"
-            elif "hobbies" in lower_line:
-                current_section = "hobbies"
-            elif current_section:
-                sections[current_section] += line + "\n"
-
+        # Apply fixes directly to the sections
         for fix in fixes:
             section = fix.get('section')
             fixed_text = fix.get('fixedText')
-            if section in sections:
-                sections[section] = fixed_text
+            if section in sections and fixed_text:
+                sections[section] = fixed_text.strip()
+                logger.debug(f"Applied fix to section {section}: {fixed_text[:50]}...")
 
+        # Extract personal information (name, email, phone, location) from the resume text
         name = email = phone = location = ""
+        lines = resume_text.splitlines()
         for line in lines:
             line = line.strip()
             if not name and re.search(r'^[A-Z][a-z]+\s[A-Z][a-z]+', line):
@@ -416,7 +403,8 @@ def final_resume():
                             run.font.color.rgb = RGBColor(50, 50, 50)  # Dark gray
 
             doc.save(output_path)
-            return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.docx")
+            logger.info(f"Generated DOCX file: {output_path}")
+            return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.docx", mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
         elif format_type == 'pdf':
             doc = SimpleDocTemplate(output_path, pagesize=letter, leftMargin=0.75*inch, rightMargin=0.75*inch, topMargin=0.5*inch, bottomMargin=0.5*inch)
@@ -470,9 +458,11 @@ def final_resume():
                                 story.append(Paragraph(line, styles['Body']))
 
             doc.build(story)
-            return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.pdf")
+            logger.info(f"Generated PDF file: {output_path}")
+            return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.pdf", mimetype="application/pdf")
 
         else:
+            logger.error(f"Invalid format specified: {format_type}")
             return jsonify({'error': 'Invalid format specified'}), 400
     except Exception as e:
         logger.error(f"Error in /final-resume: {str(e)}")
