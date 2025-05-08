@@ -6,7 +6,6 @@ import os
 import uuid
 import json
 import re
-from openai import OpenAI
 from docx import Document
 from docx.shared import Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -48,20 +47,6 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 def health_check():
     return jsonify({"status": "healthy", "message": "App is running successfully"}), 200
 
-# Function to initialize OpenAI client
-def get_openai_client():
-    openai_api_key = os.environ.get("OPENAI_API_KEY")
-    if not openai_api_key:
-        logger.error("OPENAI_API_KEY environment variable is not set")
-        raise ValueError("OPENAI_API_KEY environment variable is not set")
-    try:
-        client = OpenAI(api_key=openai_api_key)
-        logger.info("Successfully initialized OpenAI client")
-        return client
-    except Exception as e:
-        logger.error(f"Failed to initialize OpenAI client: {str(e)}")
-        raise RuntimeError(f"Failed to initialize OpenAI client: {str(e)}")
-
 @app.route('/upload', methods=['POST'])
 def upload_resume():
     file = request.files.get('file')
@@ -76,10 +61,13 @@ def upload_resume():
         return jsonify({'error': f'Failed to save file: {str(e)}'}), 500
     try:
         result = analyze_resume_with_openai(filepath, atsfix=atsfix)
+        if "error" in result:
+            logger.warning(f"Failed to analyze resume: {result['error']}")
+            return jsonify({"suggestions": "Unable to generate suggestions due to an API error."})
         return jsonify(result)
     except Exception as e:
         logger.error(f"Error in /upload: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"suggestions": "Unable to generate suggestions due to an API error."})
 
 @app.route('/resume-score', methods=['POST'])
 def resume_score():
@@ -115,7 +103,8 @@ Resume:
 Just return a number between 0 and 100, nothing else.
     """
     try:
-        client = get_openai_client()
+        from openai import OpenAI
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
@@ -170,7 +159,6 @@ def check_ats():
         elif ext == ".docx":
             resume_text = extract_text_from_docx(filepath)
         else:
-            # This shouldn't happen due to earlier validation, but added for safety
             logger.error(f"Unexpected file extension: {ext}")
             return jsonify({'error': f'Unexpected file format: {ext}'}), 400
 
@@ -185,14 +173,14 @@ def check_ats():
     # Process the file for ATS compatibility
     try:
         ats_result = check_ats_compatibility(filepath)
-        if not ats_result:
-            logger.warning("ATS check returned empty result")
-            return jsonify({'error': 'ATS check returned no results. The file might be unreadable or incompatible.'}), 500
+        if not ats_result or "Failed to analyze" in ats_result:
+            logger.warning("ATS check returned empty or failed result")
+            return jsonify({'ats_report': "Unable to perform ATS check due to an API error."})
         logger.info("ATS check completed successfully")
         return jsonify({'ats_report': ats_result})
     except Exception as e:
         logger.error(f"Error in check_ats_compatibility: {str(e)}")
-        return jsonify({'error': f'Failed to perform ATS check: {str(e)}'}), 500
+        return jsonify({'ats_report': "Unable to perform ATS check due to an API error."})
     finally:
         # Clean up the uploaded file to save space
         try:
@@ -283,7 +271,8 @@ Content: {section_content}
 Based on the suggestion, rewrite the content of this section to address the suggestion. Return only the updated content for this section, nothing else.
 """
 
-        client = get_openai_client()
+        from openai import OpenAI
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
@@ -295,7 +284,7 @@ Based on the suggestion, rewrite the content of this section to address the sugg
         return jsonify({"fixedContent": fixed_content})
     except Exception as e:
         logger.error(f"Error in /fix-suggestion: {str(e)}")
-        return jsonify({'error': f'Failed to fix suggestion: {str(e)}'}), 500
+        return jsonify({"fixedContent": "Unable to apply suggestion due to an API error."})
 
 @app.route('/final-resume', methods=['POST'])
 def final_resume():
@@ -562,7 +551,8 @@ Format the output as plain text with bullet points, e.g., '• Reading\n• Hiki
             if not prompt:
                 return user_input
             try:
-                client = get_openai_client()
+                from openai import OpenAI
+                client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
                 res = client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[
@@ -585,7 +575,8 @@ Skills: {skills}
 Write a 2-3 line professional summary for a resume.
 """
             try:
-                client = get_openai_client()
+                from openai import OpenAI
+                client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
                 res = client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[
@@ -595,7 +586,7 @@ Write a 2-3 line professional summary for a resume.
                 summary = res.choices[0].message.content.strip()
             except Exception as e:
                 logger.error(f"Error generating summary: {str(e)}")
-                summary = ""
+                summary = "Unable to generate summary due to an API error."
 
         education = generate_section_content("education", education)
         experience = generate_section_content("experience", experience)
@@ -714,7 +705,8 @@ Cover Letter:
 """
 
     try:
-        client = get_openai_client()
+        from openai import OpenAI
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
@@ -726,7 +718,7 @@ Cover Letter:
         return jsonify({"cover_letter": cover_letter})
     except Exception as e:
         logger.error(f"Error generating cover letter: {str(e)}")
-        return jsonify({'error': f'Failed to generate cover letter: {str(e)}'}), 500
+        return jsonify({"cover_letter": "Unable to generate cover letter due to an API error."})
 
 @app.route('/download-cover-letter', methods=['POST'])
 def download_cover_letter():

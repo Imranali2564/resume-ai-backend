@@ -4,9 +4,10 @@ import pytesseract
 import pdfplumber
 from PIL import Image
 from pdf2image import convert_from_path
-import openai
+from openai import OpenAI
 
-openai.api_key = os.environ.get("OPENAI_API_KEY")
+# Initialize OpenAI client
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 def extract_text_from_pdf(file_path):
     try:
@@ -53,7 +54,7 @@ Resume:
 {text[:4000]}
     """
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are an ATS resume expert."},
@@ -61,8 +62,9 @@ Resume:
             ]
         )
         return response.choices[0].message.content.strip()
-    except:
-        return "❌ Failed to analyze ATS compatibility."
+    except Exception as e:
+        print(f"❌ [OpenAI ERROR in check_ats_compatibility]: {str(e)}")
+        return "❌ Failed to analyze ATS compatibility due to an API error."
 
 def analyze_resume_with_openai(file_path, atsfix=False):
     try:
@@ -96,7 +98,7 @@ Resume:
             """
 
         print("✅ [OpenAI] Sending resume for suggestion generation...")
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are a professional resume suggestion assistant."},
@@ -107,5 +109,5 @@ Resume:
         suggestions = response.choices[0].message.content.strip()
         return {"suggestions": suggestions}
     except Exception as e:
-        print("❌ [OpenAI ERROR]", str(e))
-        return {"error": "Failed to generate suggestions."}
+        print(f"❌ [OpenAI ERROR in analyze_resume_with_openai]: {str(e)}")
+        return {"error": "Failed to generate suggestions due to an API error."}
