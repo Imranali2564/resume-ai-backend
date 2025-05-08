@@ -93,9 +93,7 @@ Don't explain anything else. List one suggestion per line.
 Resume:
 {text[:4000]}
         """
-
-    try:
-
+try:
     print("✅ [OpenAI] Sending resume for suggestion generation...")
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
