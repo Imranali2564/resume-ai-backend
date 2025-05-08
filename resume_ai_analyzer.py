@@ -1,6 +1,5 @@
 import os
 import docx
-import pytesseract
 import pdfplumber
 from PIL import Image
 from pdf2image import convert_from_path
@@ -35,12 +34,17 @@ def extract_text_from_docx(file_path):
 
 def extract_text_with_ocr(file_path):
     try:
+        import pytesseract
         images = convert_from_path(file_path, dpi=300)
         text = ""
         for img in images:
             text += pytesseract.image_to_string(img)
         return text.strip()
-    except Exception:
+    except ImportError:
+        print("OCR not available: pytesseract is not installed.")
+        return ""
+    except Exception as e:
+        print(f"Error in OCR: {str(e)}")
         return ""
 
 def check_ats_compatibility(file_path):
