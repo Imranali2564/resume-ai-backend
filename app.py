@@ -227,7 +227,7 @@ def parse_resume():
             "certifications": ["certifications", "certificates", "credentials", "achievements"],
             "languages": ["languages", "language skills", "language proficiency"],
             "hobbies": ["hobbies", "interests", "personal interests", "extracurricular activities"],
-            "additional_courses": ["additional courses", "courses", "additional training", "training", "professional training"]
+            "additional_courses": ["additional courses", "courses", "additional training", "training", "professional training", "certifications & additional training"]
         }
 
         sections = {
@@ -250,7 +250,9 @@ def parse_resume():
             if not line:
                 continue
             # Clean the line to handle OCR errors (e.g., extra spaces, special characters)
-            lower_line = " ".join(line.lower().split())  # Normalize spaces
+            # Remove common OCR prefixes like "- " or "• " for sub-headings
+            cleaned_line = re.sub(r'^[-\•\s]+', '', line).strip()
+            lower_line = " ".join(cleaned_line.lower().split())  # Normalize spaces
 
             # Check for section headers
             found_section = False
@@ -302,23 +304,23 @@ def fix_suggestion():
                 logger.warning("Section not provided but section_content is present; attempting to infer section")
                 # Infer section from suggestion if not provided
                 suggestion_lower = suggestion.lower()
-                if "personal" in suggestion_lower or "contact" in suggestion_lower:
+                if "personal" in suggestion_lower or "contact" in suggestion_lower or "email" in suggestion_lower or "phone" in suggestion_lower:
                     section = "personal_details"
-                elif "objective" in suggestion_lower or "summary" in suggestion_lower:
+                elif "objective" in suggestion_lower or "summary" in suggestion_lower or "professional summary" in suggestion_lower:
                     section = "objective"
-                elif "skill" in suggestion_lower:
+                elif "skill" in suggestion_lower or "abilities" in suggestion_lower or "competencies" in suggestion_lower:
                     section = "skills"
-                elif "experience" in suggestion_lower or "work" in suggestion_lower:
+                elif "experience" in suggestion_lower or "work" in suggestion_lower or "employment" in suggestion_lower or "career" in suggestion_lower:
                     section = "experience"
-                elif "education" in suggestion_lower or "qualification" in suggestion_lower:
+                elif "education" in suggestion_lower or "qualification" in suggestion_lower or "academic" in suggestion_lower:
                     section = "education"
-                elif "certification" in suggestion_lower:
+                elif "certification" in suggestion_lower or "certificate" in suggestion_lower or "credential" in suggestion_lower:
                     section = "certifications"
-                elif "language" in suggestion_lower:
+                elif "language" in suggestion_lower or "proficiency" in suggestion_lower:
                     section = "languages"
-                elif "hobbie" in suggestion_lower or "interest" in suggestion_lower:
+                elif "hobbie" in suggestion_lower or "interest" in suggestion_lower or "extracurricular" in suggestion_lower:
                     section = "hobbies"
-                elif "course" in suggestion_lower or "training" in suggestion_lower:
+                elif "course" in suggestion_lower or "training" in suggestion_lower or "additional courses" in suggestion_lower:
                     section = "additional_courses"
                 else:
                     section = "miscellaneous"
@@ -387,7 +389,7 @@ Please return only the improved version of this section, no explanation.
                 "certifications": ["certifications", "certificates", "credentials", "achievements"],
                 "languages": ["languages", "language skills", "language proficiency"],
                 "hobbies": ["hobbies", "interests", "personal interests", "extracurricular activities"],
-                "additional_courses": ["additional courses", "courses", "additional training", "training", "professional training"]
+                "additional_courses": ["additional courses", "courses", "additional training", "training", "professional training", "certifications & additional training"]
             }
 
             sections = {
@@ -409,7 +411,8 @@ Please return only the improved version of this section, no explanation.
                 line = line.strip()
                 if not line:
                     continue
-                lower_line = " ".join(line.lower().split())
+                cleaned_line = re.sub(r'^[-\•\s]+', '', line).strip()
+                lower_line = " ".join(cleaned_line.lower().split())
                 found_section = False
                 for sec, variations in section_headers.items():
                     for variation in variations:
@@ -442,7 +445,7 @@ Please return only the improved version of this section, no explanation.
             section_content = sections.get(target_section, "")
             if not section_content.strip():
                 logger.warning(f"No content found for inferred section {target_section}")
-                return jsonify({"error": f"Could not identify content for section related to this suggestion: {target_section}. Please ensure the section exists in the resume."}), 400
+                return jsonify({"error": f"Could not identify content for section related to this suggestion: {target_section}. Suggestion: {suggestion}"}), 400
 
             prompt = f"""
 You are an AI resume assistant. Improve the following section of a resume based on this suggestion.
@@ -507,13 +510,18 @@ def final_resume():
         if not resume_text.strip():
             return jsonify({'error': 'No extractable text found in resume'}), 400
 
+        # Support all possible sections
         sections = {
+            "personal_details": "",
+            "objective": "",
             "skills": "",
             "experience": "",
             "education": "",
             "certifications": "",
             "languages": "",
-            "hobbies": ""
+            "hobbies": "",
+            "additional_courses": "",
+            "miscellaneous": ""
         }
 
         for fix in fixes:
@@ -553,10 +561,25 @@ def final_resume():
 
             doc.add_paragraph()
 
-            for section, content in sections.items():
+            # Map section keys to display names
+            section_display_names = {
+                "personal_details": "Personal Details",
+                "objective": "Professional Summary",
+                "skills": "Skills",
+                "experience": "Experience",
+                "education": "Education",
+                "certifications": "Certifications",
+                "languages": "Languages",
+                "hobbies": "Hobbies",
+                "additional_courses": "Additional Courses",
+                "miscellaneous": "Miscellaneous"
+            }
+
+            for section_key, content in sections.items():
                 if content:
+                    display_name = section_display_names.get(section_key, section_key.upper())
                     p = doc.add_paragraph()
-                    run = p.add_run(section.upper())
+                    run = p.add_run(display_name.upper())
                     run.bold = True
                     run.font.color.rgb = RGBColor(255, 255, 255)
                     shading = parse_xml(r'<w:shd {} w:fill="0071BC"/>'.format(nsdecls('w')))
@@ -564,7 +587,7 @@ def final_resume():
 
                     for line in content.splitlines():
                         if line:
-                            para = doc.add_paragraph(style='List Bullet' if section in ["skills", "experience", "hobbies"] else None)
+                            para = doc.add_paragraph(style='List Bullet' if section_key in ["skills", "experience", "hobbies", "additional_courses"] else None)
                             para.add_run(line)
 
             doc.save(output_path)
@@ -599,9 +622,24 @@ def final_resume():
                 Spacer(1, 12)
             ]
 
-            for section, content in sections.items():
+            # Map section keys to display names
+            section_display_names = {
+                "personal_details": "Personal Details",
+                "objective": "Professional Summary",
+                "skills": "Skills",
+                "experience": "Experience",
+                "education": "Education",
+                "certifications": "Certifications",
+                "languages": "Languages",
+                "hobbies": "Hobbies",
+                "additional_courses": "Additional Courses",
+                "miscellaneous": "Miscellaneous"
+            }
+
+            for section_key, content in sections.items():
                 if content:
-                    heading = Table([[Paragraph(f"<b>{section.upper()}</b>", styles['SectionHeading'])]], colWidths=[6.5 * inch])
+                    display_name = section_display_names.get(section_key, section_key.upper())
+                    heading = Table([[Paragraph(f"<b>{display_name.upper()}</b>", styles['SectionHeading'])]], colWidths=[6.5 * inch])
                     heading.setStyle(TableStyle([
                         ('BACKGROUND', (0, 0), (-1, -1), HexColor('#0071BC')),
                         ('TEXTCOLOR', (0, 0), (-1, -1), HexColor('#FFFFFF')),
@@ -617,7 +655,7 @@ def final_resume():
 
                     for line in content.splitlines():
                         if line:
-                            if section in ["skills", "experience", "hobbies"]:
+                            if section_key in ["skills", "experience", "hobbies", "additional_courses"]:
                                 story.append(Paragraph(f"• {line}", styles['Bullet']))
                             else:
                                 story.append(Paragraph(line, styles['Body']))
