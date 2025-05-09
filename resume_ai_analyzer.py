@@ -197,38 +197,20 @@ def generate_section_content(suggestion, full_resume_text):
         if detected_section not in sections:
             # If it's a new section, ask OpenAI to generate it
             prompt = f"""
-You are an AI resume assistant. Write a new section for a resume based on the following suggestion.
-Only output the improved section content, no explanation.
+You are an AI resume assistant. Your task is to write or improve a specific section of a resume based on the user's suggestion.
 
-Suggestion: {suggestion}
-"""
-            client = get_openai_client()
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are an expert resume section creator."},
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            return {
-                "section": detected_section,
-                "fixedContent": response.choices[0].message.content.strip()
-            }
+Full Resume Context:
+{full_resume_text}
 
-        original_content = sections[detected_section]
-        if not original_content.strip():
-            return {"error": "No content found in the detected section."}
+User's Suggestion:
+{suggestion}
 
-        prompt = f"""
-You are an AI resume improvement assistant. Improve the following section of a resume based on this suggestion.
-
-Suggestion: {suggestion}
-
-Current Content:
+Current Section Content:
 {original_content}
 
-Please return only the improved version of this section, do not include any explanation or headers.
-        """
+Please return only the improved content for this section, no explanations or headers.
+"""
+
 
         client = get_openai_client()
         response = client.chat.completions.create(
