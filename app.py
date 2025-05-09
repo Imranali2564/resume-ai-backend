@@ -317,7 +317,7 @@ def fix_suggestion():
             "objective": ["objective", "career objective", "professional objective", "summary", "professional summary"],
             "skills": ["skills", "technical skills", "key skills", "core competencies", "abilities"],
             "experience": ["experience", "professional experience", "work experience", "work history", "employment history", "career history", "telecaller", "role"],
-            "education": ["education", "academic background", "educational qualifications", "academic history", "qualifications"],
+            "education": ["education", "academic background", "educational qualifications", "academic history", "qualifications", "degree", "university", "school"],
             "certifications": ["certifications", "certificates", "credentials", "achievements"],
             "languages": ["languages", "language skills", "language proficiency"],
             "hobbies": ["hobbies", "interests", "personal interests", "extracurricular activities", "extracurricular"],
@@ -655,14 +655,97 @@ def final_resume():
         if not resume_text.strip():
             return jsonify({'error': 'No extractable text found in resume'}), 400
 
-        # Use a dynamic dictionary to support any section
-        sections = {}
-        for fix in fixes:
-            section = fix.get('section')
-            fixed_text = fix.get('fixedText')
-            if section and fixed_text:
-                sections[section] = fixed_text.strip()
+        # Parse the original resume to get all sections
+        section_headers = {
+            "personal_details": ["personal details", "personal information", "contact details", "contact information", "about me"],
+            "objective": ["objective", "career objective", "professional objective", "summary", "professional summary"],
+            "skills": ["skills", "technical skills", "key skills", "core competencies", "abilities"],
+            "experience": ["experience", "professional experience", "work experience", "work history", "employment history", "career history"],
+            "education": ["education", "academic background", "educational qualifications", "academic history", "qualifications"],
+            "certifications": ["certifications", "certificates", "credentials", "achievements"],
+            "languages": ["languages", "language skills", "language proficiency"],
+            "hobbies": ["hobbies", "interests", "personal interests", "extracurricular activities"],
+            "additional_courses": ["additional courses", "courses", "additional training", "training", "professional training", "certifications & additional training"],
+            "projects": ["projects", "technical projects", "key projects", "portfolio"],
+            "volunteer_experience": ["volunteer experience", "volunteer work", "community service"],
+            "achievements": ["achievements", "accomplishments", "awards", "honors"],
+            "publications": ["publications", "research papers", "articles"],
+            "references": ["references", "professional references"]
+        }
 
+        original_sections = {
+            "personal_details": "",
+            "objective": "",
+            "skills": "",
+            "experience": "",
+            "education": "",
+            "certifications": "",
+            "languages": "",
+            "hobbies": "",
+            "additional_courses": "",
+            "projects": "",
+            "volunteer_experience": "",
+            "achievements": "",
+            "publications": "",
+            "references": "",
+            "miscellaneous": ""
+        }
+        current_section = None
+        lines = resume_text.splitlines()
+
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            cleaned_line = re.sub(r'^[-\•\s]+', '', line).strip()
+            lower_line = " ".join(cleaned_line.lower().split())
+            found_section = False
+            for section, variations in section_headers.items():
+                for variation in variations:
+                    if variation in lower_line:
+                        current_section = section
+                        found_section = True
+                        break
+                if found_section:
+                    break
+            if not found_section and current_section:
+                original_sections[current_section] += line + "\n"
+            elif not found_section:
+                original_sections["miscellaneous"] += line + "\n"
+
+        for key in original_sections:
+            original_sections[key] = original_sections[key].strip()
+
+        # Log the original sections for debugging
+        logger.debug(f"Original sections: {json.dumps(original_sections, indent=2)}")
+
+        # Process the fixes
+        fixed_sections = {}
+        for fix in fixes:
+            # Handle both single-section and multi-section fixes
+            if "section" in fix:
+                # Single section fix
+                section = fix.get('section')
+                fixed_text = fix.get('fixedText') or fix.get('fixedContent')  # Handle both keys
+                if section and fixed_text:
+                    fixed_sections[section] = fixed_text.strip()
+            elif "sections" in fix:
+                # Multi-section fix (e.g., from general suggestions like proofreading)
+                for section_fix in fix.get('sections', []):
+                    section = section_fix.get('section')
+                    fixed_text = section_fix.get('fixedContent')
+                    if section and fixed_text:
+                        fixed_sections[section] = fixed_text.strip()
+
+        # Log the fixes for debugging
+        logger.debug(f"Fixed sections: {json.dumps(fixed_sections, indent=2)}")
+
+        # Merge original sections with fixed sections
+        final_sections = original_sections.copy()
+        for section, content in fixed_sections.items():
+            final_sections[section] = content
+
+        # Extract personal details for the header
         name = email = phone = location = ""
         for line in resume_text.splitlines():
             line = line.strip()
@@ -713,7 +796,7 @@ def final_resume():
                 "miscellaneous": "Miscellaneous"
             }
 
-            for section_key, content in sections.items():
+            for section_key, content in final_sections.items():
                 if content:
                     # Use the display name if available, otherwise capitalize the section key
                     display_name = section_display_names.get(section_key, ' '.join(word.capitalize() for word in section_key.split('_')))
@@ -782,7 +865,7 @@ def final_resume():
                 "miscellaneous": "Miscellaneous"
             }
 
-            for section_key, content in sections.items():
+            for section_key, content in final_sections.items():
                 if content:
                     display_name = section_display_names.get(section_key, ' '.join(word.capitalize() for word in section_key.split('_')))
                     heading = Table([[Paragraph(f"<b>{display_name.upper()}</b>", styles['SectionHeading'])]], colWidths=[6.5 * inch])
@@ -813,6 +896,7 @@ def final_resume():
         else:
             return jsonify({'error': 'Invalid format specified'}), 400
     except Exception as e:
+        logger.error(f"Error in /final-resume: {str(e)}")
         return jsonify({'error': f'Failed to generate resume: {str(e)}'}), 500
     finally:
         cleanup_file(filepath)
