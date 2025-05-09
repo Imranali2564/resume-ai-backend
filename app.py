@@ -17,7 +17,7 @@ except ImportError as e:
     logging.error(f"Failed to import python-docx: {str(e)}")
     raise
 try:
-    from reportlab.lib.pagesizes import letter
+        from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import inch
@@ -259,7 +259,6 @@ def optimize_keywords():
     results = compare_resume_with_keywords(resume_text, jd_keywords)
 
     return jsonify(results)
-
 
 @app.route('/final-resume', methods=['POST'])
 def final_resume():
