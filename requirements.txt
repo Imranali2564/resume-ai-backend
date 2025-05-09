@@ -8,3 +8,5 @@ pdf2image
 reportlab
 gunicorn
 scikit-learn
+pdfkit
+PyMuPDF
