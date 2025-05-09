@@ -132,6 +132,43 @@ Resume:
     except Exception as e:
         logger.error(f"[OpenAI ERROR in analyze_resume_with_openai]: {str(e)}")
         return {"error": "Failed to generate suggestions due to an API error."}
+    
+def analyze_job_description(jd_text):
+    import re
+    from sklearn.feature_extraction.text import CountVectorizer
+
+    vectorizer = CountVectorizer(stop_words='english', max_features=10)
+    words = vectorizer.fit([jd_text]).get_feature_names_out()
+    skills = list(words)
+
+    common_tools = ['excel', 'power bi', 'tableau', 'sql', 'git', 'aws', 'google analytics', 'jira', 'python', 'r', 'tensorflow', 'hadoop']
+    tools_found = [tool for tool in common_tools if tool in jd_text.lower()]
+
+    summary_prompt = f"""
+Given this job description:
+
+\"\"\"{jd_text}\"\"\"
+
+Write a 2-3 line summary describing the ideal candidate (skills, experience level, background). Keep it brief and clear.
+"""
+
+    summary = "An ideal candidate should have relevant technical and soft skills mentioned above."
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": summary_prompt}]
+        )
+        summary = response.choices[0].message.content.strip()
+    except Exception as e:
+        summary += f" (AI summary failed: {str(e)})"
+
+    return {
+        "skills": skills,
+        "tools": tools_found,
+        "summary": summary
+    }
 
 def extract_resume_sections(text):
     sections = {

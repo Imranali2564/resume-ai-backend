@@ -791,6 +791,23 @@ def download_cover_letter():
         return jsonify({'error': f'Failed to save cover letter DOCX file: {str(e)}'}), 500
     finally:
         cleanup_file(output_path)
+        
+@app.route('/analyze-jd', methods=['POST'])
+def analyze_jd():
+    try:
+        data = request.get_json()
+        jd_text = data.get('job_description', '')
+
+        if not jd_text:
+            return jsonify({'error': 'No job description provided'}), 400
+
+        from resume_ai_analyzer import analyze_job_description
+        result = analyze_job_description(jd_text)
+
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({'error': f'Failed to analyze job description: {str(e)}'}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
