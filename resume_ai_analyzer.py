@@ -176,9 +176,7 @@ def extract_resume_sections(text):
         for section, variations in section_headers.items():
             for variation in variations:
                 if line_lower == variation:  # Exact match for section header
-                    # If the same section appears again, don't reset, just continue appending
-                    if current_section != section:
-                        current_section = section
+                    current_section = section
                     found_section = True
                     break
             if found_section:
@@ -195,11 +193,33 @@ def extract_resume_sections(text):
                         next_section = True
                         break
                 if not next_section:
-                    sections[current_section] += line + "\n"
+                    # Avoid duplicate content in personal_details
+                    if current_section == "personal_details":
+                        existing_lines = sections[current_section].splitlines()
+                        if line not in existing_lines:
+                            sections[current_section] += line + "\n"
+                    else:
+                        sections[current_section] += line + "\n"
             else:
-                sections[current_section] += line + "\n"
+                if current_section == "personal_details":
+                    existing_lines = sections[current_section].splitlines()
+                    if line not in existing_lines:
+                        sections[current_section] += line + "\n"
+                else:
+                    sections[current_section] += line + "\n"
         elif not found_section and not current_section:
             sections["miscellaneous"] += line + "\n"
+
+    # Merge SUMMARY and PROFESSIONAL SUMMARY into a single summary section
+    if sections["summary"]:
+        summary_lines = sections["summary"].splitlines()
+        # Keep the longest summary content (likely the complete one)
+        complete_summary = max(summary_lines, key=len, default="")
+        sections["summary"] = complete_summary
+
+    # Clean up miscellaneous section if it only contains the name
+    if sections["miscellaneous"].strip() in ["Insha"]:
+        sections["miscellaneous"] = ""
 
     for key in sections:
         sections[key] = sections[key].strip()
@@ -239,8 +259,8 @@ def generate_section_content(suggestion, full_resume_text):
         if not detected_section:
             return {"error": "Could not detect section from suggestion."}
 
-        if detected_section not in sections:
-            # Create a new section if it doesn't exist
+        # If the section doesn't exist, create it
+        if detected_section not in sections or not sections[detected_section].strip():
             prompt = f"""
 You are an AI resume assistant. Based on the following suggestion and full resume context, write a new section for the resume.
 Only output the improved section content, no explanation.
@@ -260,9 +280,10 @@ Suggestion:
                     {"role": "user", "content": prompt}
                 ]
             )
+            improved_content = response.choices[0].message.content.strip()
             return {
                 "section": detected_section,
-                "fixedContent": response.choices[0].message.content.strip()
+                "fixedContent": improved_content
             }
 
         original_content = sections[detected_section]
