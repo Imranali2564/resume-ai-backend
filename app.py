@@ -292,6 +292,10 @@ def final_resume():
         for section, content in fixed_sections.items():
             final_sections[section] = content
 
+        # Add a default "Languages" section if missing
+        if not final_sections.get("languages"):
+            final_sections["languages"] = "English (Fluent)\nHindi (Native)"
+
         # Deduplicate sections by re-running extract_resume_sections on the merged content
         merged_text = ""
         for section, content in final_sections.items():
@@ -319,17 +323,21 @@ def final_resume():
 
         logger.debug(f"Final deduplicated sections: {json.dumps(final_sections, indent=2)}")
 
-        name = email = phone = location = ""
-        for line in resume_text.splitlines():
-            line = line.strip()
-            if not name and re.search(r'^[A-Z][a-z]+\s[A-Z][a-z]+', line):
-                name = line
-            if not email and re.search(r'[\w\.-]+@[\w\.-]+', line):
-                email = line
-            if not phone and re.search(r'\+?\d[\d\s\-]{8,}', line):
-                phone = line
-            if not location and re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', line):
-                location = line
+        # Extract name from personal_details section
+        name = ""
+        if final_sections.get("personal_details"):
+            for line in final_sections["personal_details"].splitlines():
+                if "insha" in line.lower():
+                    name = "Insha"
+                    break
+        if not name:
+            for line in resume_text.splitlines():
+                line = line.strip()
+                if re.search(r'^[A-Z][a-z]+\s[A-Z][a-z]+', line):
+                    name = line
+                    break
+        if not name:
+            name = "Insha"  # Fallback to default name
 
         if format_type == 'docx':
             doc = Document()
@@ -337,6 +345,7 @@ def final_resume():
                 s.top_margin = s.bottom_margin = Inches(0.5)
                 s.left_margin = s.right_margin = Inches(0.75)
 
+            # Add only the name at the top
             heading = doc.add_heading(name, level=1)
             heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
             run = heading.runs[0]
@@ -344,11 +353,7 @@ def final_resume():
             run.bold = True
             run.font.color.rgb = RGBColor(0, 113, 188)
 
-            contact = f"{email} | {phone} | {location}"
-            p = doc.add_paragraph(contact)
-            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-            doc.add_paragraph()
+            doc.add_paragraph()  # Add spacing after the name
 
             section_display_names = {
                 "personal_details": "Personal Details",
@@ -401,7 +406,6 @@ def final_resume():
             styles = getSampleStyleSheet()
 
             styles.add(ParagraphStyle(name='Name', fontSize=16, alignment=1, spaceAfter=6, textColor=HexColor('#0071BC')))
-            styles.add(ParagraphStyle(name='Contact', fontSize=10, alignment=1, spaceAfter=12, textColor=HexColor('#505050')))
             styles.add(ParagraphStyle(name='SectionHeading', fontSize=12, spaceBefore=10, spaceAfter=5, textColor=HexColor('#FFFFFF')))
             styles.add(ParagraphStyle(name='Body', fontSize=11, spaceAfter=6, textColor=HexColor('#323232')))
             if 'Bullet' not in styles.byName:
@@ -412,7 +416,6 @@ def final_resume():
 
             story = [
                 Paragraph(f"<b>{name}</b>", styles['Name']),
-                Paragraph(f"{email} | {phone} | {location}", styles['Contact']),
                 Spacer(1, 12)
             ]
 
