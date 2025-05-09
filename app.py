@@ -246,7 +246,7 @@ def fix_suggestion():
     except Exception as e:
         return jsonify({"error": f"Failed to process suggestion: {str(e)}"}), 500
     
-    @app.route('/optimize-keywords', methods=['POST'])
+@app.route('/optimize-keywords', methods=['POST'])
 def optimize_keywords():
     resume_file = request.files.get('resume')
     job_description = request.form.get('job_description', '')
@@ -254,13 +254,12 @@ def optimize_keywords():
     if not resume_file or not job_description:
         return jsonify({'error': 'Missing resume or job description'}), 400
 
-    from resume_ai_analyzer import extract_keywords_from_jd, extract_text_from_resume, compare_resume_with_keywords
-
     resume_text = extract_text_from_resume(resume_file)
     jd_keywords = extract_keywords_from_jd(job_description)
     results = compare_resume_with_keywords(resume_text, jd_keywords)
 
     return jsonify(results)
+
 
 @app.route('/final-resume', methods=['POST'])
 def final_resume():
