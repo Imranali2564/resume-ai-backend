@@ -255,46 +255,60 @@ def parse_resume():
     finally:
         cleanup_file(filepath)
 
-@app.route('/fix-suggestion', methods=['POST'])
+@app.route("/fix-suggestion", methods=["POST"])
 def fix_suggestion():
     try:
         data = request.get_json()
-        suggestion = data.get('suggestion')
-        section = data.get('section')
-        section_content = data.get('sectionContent')
+        suggestion = data.get("suggestion")
+        section = data.get("section", "")
+        section_content = data.get("sectionContent", "")
 
-        if not suggestion or not section or not section_content:
-            return jsonify({'error': 'Missing suggestion, section, or section content'}), 400
+        if not suggestion:
+            return jsonify({"error": "Missing suggestion"}), 400
 
-        prompt = f"""
-You are a resume writing assistant. The user has received the following suggestion for their resume:
+        if not section_content.strip():
+            file = request.files.get("file")
+            if not file:
+                return jsonify({"error": "No resume provided"}), 400
+
+            if file.filename.lower().endswith(".pdf"):
+                full_text = extract_text_from_pdf(file) or extract_text_with_ocr(file)
+            elif file.filename.lower().endswith(".docx"):
+                full_text = extract_text_from_docx(file)
+            else:
+                return jsonify({"error": "Unsupported file format"}), 400
+
+            from resume_ai_analyzer import generate_section_content
+            fix_result = generate_section_content(suggestion, full_text)
+            if "fixedContent" in fix_result:
+                return jsonify(fix_result)
+            else:
+                return jsonify({"error": fix_result.get("error", "Unknown error")})
+        else:
+            prompt = f"""
+You are an AI resume assistant. Improve the following section of a resume based on this suggestion.
+
 Suggestion: {suggestion}
 
-The suggestion applies to the following section of their resume:
-Section: {section}
-Content: {section_content}
+Current Content:
+{section_content}
 
-Based on the suggestion, rewrite the content of this section to address the suggestion. Return only the updated content for this section, nothing else.
-"""
-
-        try:
-            from openai import OpenAI
-            client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+Please return only the improved version of this section, no explanation.
+            """
+            from resume_ai_analyzer import get_openai_client
+            client = get_openai_client()
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "You are a professional resume writing assistant."},
+                    {"role": "system", "content": "You are an expert resume fixer."},
                     {"role": "user", "content": prompt}
                 ]
             )
-            fixed_content = response.choices[0].message.content.strip()
-            return jsonify({"fixedContent": fixed_content})
-        except Exception as e:
-            logger.error(f"Error in OpenAI API call for /fix-suggestion: {str(e)}")
-            return jsonify({"fixedContent": "Unable to apply suggestion. Please check if the API key is set."})
+            fixed = response.choices[0].message.content.strip()
+            return jsonify({"section": section, "fixedContent": fixed})
     except Exception as e:
-        logger.error(f"Error in /fix-suggestion: {str(e)}")
-        return jsonify({"fixedContent": "Unable to apply suggestion. Please check if the API key is set."})
+        print("❌ Error in /fix-suggestion:", str(e))
+        return jsonify({"error": "Failed to fix suggestion"}), 500
 
 @app.route('/final-resume', methods=['POST'])
 def final_resume():
