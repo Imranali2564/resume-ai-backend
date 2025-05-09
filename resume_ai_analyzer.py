@@ -195,9 +195,37 @@ def generate_section_content(suggestion, full_resume_text):
             return {"error": "Could not detect section from suggestion."}
 
         if detected_section not in sections:
-            # If it's a new section, ask OpenAI to generate it
+            # Create a new section if it doesn't exist
             prompt = f"""
-You are an AI resume assistant. Your task is to write or improve a specific section of a resume based on the user's suggestion.
+You are an AI resume assistant. Based on the following suggestion and full resume context, write a new section for the resume.
+Only output the improved section content, no explanation.
+
+Resume:
+{full_resume_text}
+
+Suggestion:
+{suggestion}
+"""
+            print("🧠 Prompt for new section:\n", prompt)
+            client = get_openai_client()
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are an expert resume section creator."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            return {
+                "section": detected_section,
+                "fixedContent": response.choices[0].message.content.strip()
+            }
+
+        original_content = sections[detected_section]
+        if not original_content.strip():
+            return {"error": "No content found in the detected section."}
+
+        prompt = f"""
+You are an AI resume assistant. Your task is to improve the following section of a resume based on a suggestion.
 
 Full Resume Context:
 {full_resume_text}
@@ -208,9 +236,10 @@ User's Suggestion:
 Current Section Content:
 {original_content}
 
-Please return only the improved content for this section, no explanations or headers.
+Please return only the improved content for this section. Do not include any explanation or headers.
 """
 
+        print("🧠 Prompt for fix:\n", prompt)
 
         client = get_openai_client()
         response = client.chat.completions.create(
@@ -222,6 +251,8 @@ Please return only the improved content for this section, no explanations or hea
         )
 
         improved_content = response.choices[0].message.content.strip()
+        print("✅ AI Response:", improved_content)
+
         return {
             "section": detected_section,
             "fixedContent": improved_content
