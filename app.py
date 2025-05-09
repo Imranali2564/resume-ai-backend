@@ -821,11 +821,25 @@ def convert_format():
     ext = os.path.splitext(filename)[1]
 
     try:
-        # IMAGE to TEXT
-        if ext in ['.jpg', '.jpeg', '.png'] and target_format == 'text':
-            return jsonify({'text': 'OCR is not supported on this server. Please use PDF or DOCX instead.'})
+        # ✅ TEXT extraction from PDF / DOCX
+        if target_format == 'text':
+            if ext == '.pdf':
+                import fitz
+                doc = fitz.open("pdf", file.read())
+                text = "\n".join([page.get_text() for page in doc])
+                return jsonify({'text': text})
 
-        # DOCX to PDF
+            elif ext == '.docx':
+                from docx import Document
+                from io import BytesIO
+                doc = Document(BytesIO(file.read()))
+                text = "\n".join([para.text for para in doc.paragraphs])
+                return jsonify({'text': text})
+
+            else:
+                return jsonify({'error': 'Only PDF and DOCX files are supported for text extraction'}), 400
+
+        # ✅ DOCX to PDF
         elif ext == '.docx' and target_format == 'pdf':
             from docx import Document
             import pdfkit
@@ -840,7 +854,7 @@ def convert_format():
             pdfkit.from_file(html_file, pdf_file)
             return send_file(pdf_file, as_attachment=True)
 
-        # PDF to DOCX
+        # ✅ PDF to DOCX
         elif ext == '.pdf' and target_format == 'docx':
             import fitz
             from docx import Document
@@ -855,7 +869,7 @@ def convert_format():
             return send_file(output_path, as_attachment=True)
 
         else:
-            return jsonify({'error': 'Unsupported conversion type'}), 400
+            return jsonify({'error': 'Only PDF and DOCX files are supported'}), 400
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
