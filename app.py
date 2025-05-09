@@ -214,13 +214,24 @@ def parse_resume():
         if not resume_text.strip():
             return jsonify({'error': 'No extractable text found in resume'}), 400
 
+        # Define possible variations of section headers
+        section_headers = {
+            "skills": ["skills", "technical skills", "key skills", "core competencies", "abilities"],
+            "experience": ["experience", "professional experience", "work experience", "work history", "employment history", "career history"],
+            "education": ["education", "academic background", "educational qualifications", "academic history"],
+            "certifications": ["certifications", "certificates", "credentials", "achievements"],
+            "languages": ["languages", "language skills", "language proficiency"],
+            "hobbies": ["hobbies", "interests", "personal interests", "extracurricular activities"]
+        }
+
         sections = {
             "skills": "",
             "experience": "",
             "education": "",
             "certifications": "",
             "languages": "",
-            "hobbies": ""
+            "hobbies": "",
+            "miscellaneous": ""  # Fallback section for unclassified content
         }
         current_section = None
         lines = resume_text.splitlines()
@@ -229,24 +240,32 @@ def parse_resume():
             line = line.strip()
             if not line:
                 continue
-            lower_line = line.lower()
-            if "skills" in lower_line:
-                current_section = "skills"
-            elif "experience" in lower_line:
-                current_section = "experience"
-            elif "education" in lower_line:
-                current_section = "education"
-            elif "certifications" in lower_line:
-                current_section = "certifications"
-            elif "languages" in lower_line:
-                current_section = "languages"
-            elif "hobbies" in lower_line:
-                current_section = "hobbies"
-            elif current_section:
-                sections[current_section] += line + "\n"
+            # Clean the line to handle OCR errors (e.g., extra spaces)
+            lower_line = " ".join(line.lower().split())  # Normalize spaces
 
+            # Check for section headers
+            found_section = False
+            for section, variations in section_headers.items():
+                for variation in variations:
+                    if variation in lower_line:
+                        current_section = section
+                        found_section = True
+                        break
+                if found_section:
+                    break
+
+            # If no section header is found, assign to current section or miscellaneous
+            if not found_section and current_section:
+                sections[current_section] += line + "\n"
+            elif not found_section:
+                sections["miscellaneous"] += line + "\n"
+
+        # Clean up sections by stripping extra whitespace
         for key in sections:
             sections[key] = sections[key].strip()
+
+        # Log the detected sections for debugging
+        logger.debug(f"Detected sections: {json.dumps(sections, indent=2)}")
 
         return jsonify({"sections": sections})
     except Exception as e:
@@ -264,27 +283,30 @@ def fix_suggestion():
         section_content = data.get("sectionContent", "")
 
         if not suggestion:
+            logger.error("Missing suggestion in /fix-suggestion request")
             return jsonify({"error": "Missing suggestion"}), 400
 
-        if not section_content.strip():
-            file = request.files.get("file")
-            if not file:
-                return jsonify({"error": "No resume provided"}), 400
+        # If section_content is provided and non-empty, use it directly
+        if section_content and section_content.strip():
+            if not section:
+                logger.warning("Section not provided but section_content is present; attempting to infer section")
+                # Infer section from suggestion if not provided
+                suggestion_lower = suggestion.lower()
+                if "skill" in suggestion_lower:
+                    section = "skills"
+                elif "experience" in suggestion_lower or "work" in suggestion_lower:
+                    section = "experience"
+                elif "education" in suggestion_lower:
+                    section = "education"
+                elif "certification" in suggestion_lower:
+                    section = "certifications"
+                elif "language" in suggestion_lower:
+                    section = "languages"
+                elif "hobbie" in suggestion_lower or "interest" in suggestion_lower:
+                    section = "hobbies"
+                else:
+                    section = "miscellaneous"
 
-            if file.filename.lower().endswith(".pdf"):
-                full_text = extract_text_from_pdf(file) or extract_text_with_ocr(file)
-            elif file.filename.lower().endswith(".docx"):
-                full_text = extract_text_from_docx(file)
-            else:
-                return jsonify({"error": "Unsupported file format"}), 400
-
-            from resume_ai_analyzer import generate_section_content
-            fix_result = generate_section_content(suggestion, full_text)
-            if "fixedContent" in fix_result:
-                return jsonify(fix_result)
-            else:
-                return jsonify({"error": fix_result.get("error", "Unknown error")})
-        else:
             prompt = f"""
 You are an AI resume assistant. Improve the following section of a resume based on this suggestion.
 
@@ -295,19 +317,147 @@ Current Content:
 
 Please return only the improved version of this section, no explanation.
             """
-            from resume_ai_analyzer import get_openai_client
-            client = get_openai_client()
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are an expert resume fixer."},
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            fixed = response.choices[0].message.content.strip()
-            return jsonify({"section": section, "fixedContent": fixed})
+            try:
+                from openai import OpenAI
+                client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": "You are an expert resume fixer."},
+                        {"role": "user", "content": prompt}
+                    ]
+                )
+                fixed = response.choices[0].message.content.strip()
+                logger.debug(f"Fixed content for section {section}: {fixed[:50]}...")
+                return jsonify({"section": section, "fixedContent": fixed})
+            except Exception as e:
+                logger.error(f"Error in OpenAI API call for /fix-suggestion: {str(e)}")
+                error_message = str(e).lower()
+                if "rate limit" in error_message:
+                    return jsonify({"error": "Rate limit exceeded. Please try again later."}), 429
+                elif "authentication" in error_message:
+                    return jsonify({"error": "Invalid API key. Please check if the API key is set correctly."}), 401
+                else:
+                    return jsonify({"error": "Failed to fix suggestion due to an API error."}), 500
+
+        # If section_content is empty, re-parse the resume and infer the section
+        file = request.files.get("file")
+        if not file:
+            logger.error("No resume file provided in /fix-suggestion request")
+            return jsonify({"error": "No resume provided"}), 400
+
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
+        try:
+            file.save(filepath)
+            if file.filename.lower().endswith(".pdf"):
+                full_text = extract_text_from_pdf(filepath) or extract_text_with_ocr(filepath)
+            elif file.filename.lower().endswith(".docx"):
+                full_text = extract_text_from_docx(filepath)
+            else:
+                logger.error(f"Unsupported file format: {file.filename}")
+                return jsonify({"error": "Unsupported file format"}), 400
+
+            if not full_text or not full_text.strip():
+                logger.warning("No extractable text found in resume")
+                return jsonify({"error": "No extractable text found in resume"}), 400
+
+            # Parse the resume to identify sections
+            section_headers = {
+                "skills": ["skills", "technical skills", "key skills", "core competencies", "abilities"],
+                "experience": ["experience", "professional experience", "work experience", "work history", "employment history", "career history"],
+                "education": ["education", "academic background", "educational qualifications", "academic history"],
+                "certifications": ["certifications", "certificates", "credentials", "achievements"],
+                "languages": ["languages", "language skills", "language proficiency"],
+                "hobbies": ["hobbies", "interests", "personal interests", "extracurricular activities"]
+            }
+
+            sections = {
+                "skills": "",
+                "experience": "",
+                "education": "",
+                "certifications": "",
+                "languages": "",
+                "hobbies": "",
+                "miscellaneous": ""
+            }
+            current_section = None
+            lines = full_text.splitlines()
+
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                lower_line = " ".join(line.lower().split())
+                found_section = False
+                for sec, variations in section_headers.items():
+                    for variation in variations:
+                        if variation in lower_line:
+                            current_section = sec
+                            found_section = True
+                            break
+                    if found_section:
+                        break
+                if not found_section and current_section:
+                    sections[current_section] += line + "\n"
+                elif not found_section:
+                    sections["miscellaneous"] += line + "\n"
+
+            for key in sections:
+                sections[key] = sections[key].strip()
+
+            # Infer the section from the suggestion
+            suggestion_lower = suggestion.lower()
+            target_section = "miscellaneous"  # Default to miscellaneous
+            for sec, variations in section_headers.items():
+                for variation in variations:
+                    if variation in suggestion_lower:
+                        target_section = sec
+                        break
+                if target_section != "miscellaneous":
+                    break
+
+            # Use the content of the inferred section
+            section_content = sections.get(target_section, "")
+            if not section_content.strip():
+                logger.warning(f"No content found for inferred section {target_section}")
+                return jsonify({"error": f"Could not identify content for section related to this suggestion: {target_section}"}), 400
+
+            prompt = f"""
+You are an AI resume assistant. Improve the following section of a resume based on this suggestion.
+
+Suggestion: {suggestion}
+
+Current Content:
+{section_content}
+
+Please return only the improved version of this section, no explanation.
+            """
+            try:
+                from openai import OpenAI
+                client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": "You are an expert resume fixer."},
+                        {"role": "user", "content": prompt}
+                    ]
+                )
+                fixed = response.choices[0].message.content.strip()
+                logger.debug(f"Fixed content for inferred section {target_section}: {fixed[:50]}...")
+                return jsonify({"section": target_section, "fixedContent": fixed})
+            except Exception as e:
+                logger.error(f"Error in OpenAI API call for /fix-suggestion (inferred section): {str(e)}")
+                error_message = str(e).lower()
+                if "rate limit" in error_message:
+                    return jsonify({"error": "Rate limit exceeded. Please try again later."}), 429
+                elif "authentication" in error_message:
+                    return jsonify({"error": "Invalid API key. Please check if the API key is set correctly."}), 401
+                else:
+                    return jsonify({"error": "Failed to fix suggestion due to an API error."}), 500
+        finally:
+            cleanup_file(filepath)
     except Exception as e:
-        print("❌ Error in /fix-suggestion:", str(e))
+        logger.error(f"Error in /fix-suggestion: {str(e)}")
         return jsonify({"error": "Failed to fix suggestion"}), 500
 
 @app.route('/final-resume', methods=['POST'])
