@@ -42,6 +42,9 @@ logging_level = logging.INFO if os.environ.get("FLASK_ENV") != "development" els
 logging.basicConfig(level=logging_level)
 logger = logging.getLogger(__name__)
 
+# Suppress pdfminer warnings to reduce log noise
+logging.getLogger("pdfminer").setLevel(logging.ERROR)
+
 logger.info("Starting Flask app initialization...")
 
 app = Flask(__name__, static_url_path='/static')
@@ -216,21 +219,27 @@ def parse_resume():
 
         # Define possible variations of section headers
         section_headers = {
+            "personal_details": ["personal details", "personal information", "contact details", "contact information", "about me"],
+            "objective": ["objective", "career objective", "professional objective", "summary", "professional summary"],
             "skills": ["skills", "technical skills", "key skills", "core competencies", "abilities"],
             "experience": ["experience", "professional experience", "work experience", "work history", "employment history", "career history"],
-            "education": ["education", "academic background", "educational qualifications", "academic history"],
+            "education": ["education", "academic background", "educational qualifications", "academic history", "qualifications"],
             "certifications": ["certifications", "certificates", "credentials", "achievements"],
             "languages": ["languages", "language skills", "language proficiency"],
-            "hobbies": ["hobbies", "interests", "personal interests", "extracurricular activities"]
+            "hobbies": ["hobbies", "interests", "personal interests", "extracurricular activities"],
+            "additional_courses": ["additional courses", "courses", "additional training", "training", "professional training"]
         }
 
         sections = {
+            "personal_details": "",
+            "objective": "",
             "skills": "",
             "experience": "",
             "education": "",
             "certifications": "",
             "languages": "",
             "hobbies": "",
+            "additional_courses": "",
             "miscellaneous": ""  # Fallback section for unclassified content
         }
         current_section = None
@@ -240,7 +249,7 @@ def parse_resume():
             line = line.strip()
             if not line:
                 continue
-            # Clean the line to handle OCR errors (e.g., extra spaces)
+            # Clean the line to handle OCR errors (e.g., extra spaces, special characters)
             lower_line = " ".join(line.lower().split())  # Normalize spaces
 
             # Check for section headers
@@ -256,6 +265,7 @@ def parse_resume():
 
             # If no section header is found, assign to current section or miscellaneous
             if not found_section and current_section:
+                # Handle table-like structures (e.g., Education section with "|")
                 sections[current_section] += line + "\n"
             elif not found_section:
                 sections["miscellaneous"] += line + "\n"
@@ -292,11 +302,15 @@ def fix_suggestion():
                 logger.warning("Section not provided but section_content is present; attempting to infer section")
                 # Infer section from suggestion if not provided
                 suggestion_lower = suggestion.lower()
-                if "skill" in suggestion_lower:
+                if "personal" in suggestion_lower or "contact" in suggestion_lower:
+                    section = "personal_details"
+                elif "objective" in suggestion_lower or "summary" in suggestion_lower:
+                    section = "objective"
+                elif "skill" in suggestion_lower:
                     section = "skills"
                 elif "experience" in suggestion_lower or "work" in suggestion_lower:
                     section = "experience"
-                elif "education" in suggestion_lower:
+                elif "education" in suggestion_lower or "qualification" in suggestion_lower:
                     section = "education"
                 elif "certification" in suggestion_lower:
                     section = "certifications"
@@ -304,6 +318,8 @@ def fix_suggestion():
                     section = "languages"
                 elif "hobbie" in suggestion_lower or "interest" in suggestion_lower:
                     section = "hobbies"
+                elif "course" in suggestion_lower or "training" in suggestion_lower:
+                    section = "additional_courses"
                 else:
                     section = "miscellaneous"
 
@@ -363,21 +379,27 @@ Please return only the improved version of this section, no explanation.
 
             # Parse the resume to identify sections
             section_headers = {
+                "personal_details": ["personal details", "personal information", "contact details", "contact information", "about me"],
+                "objective": ["objective", "career objective", "professional objective", "summary", "professional summary"],
                 "skills": ["skills", "technical skills", "key skills", "core competencies", "abilities"],
                 "experience": ["experience", "professional experience", "work experience", "work history", "employment history", "career history"],
-                "education": ["education", "academic background", "educational qualifications", "academic history"],
+                "education": ["education", "academic background", "educational qualifications", "academic history", "qualifications"],
                 "certifications": ["certifications", "certificates", "credentials", "achievements"],
                 "languages": ["languages", "language skills", "language proficiency"],
-                "hobbies": ["hobbies", "interests", "personal interests", "extracurricular activities"]
+                "hobbies": ["hobbies", "interests", "personal interests", "extracurricular activities"],
+                "additional_courses": ["additional courses", "courses", "additional training", "training", "professional training"]
             }
 
             sections = {
+                "personal_details": "",
+                "objective": "",
                 "skills": "",
                 "experience": "",
                 "education": "",
                 "certifications": "",
                 "languages": "",
                 "hobbies": "",
+                "additional_courses": "",
                 "miscellaneous": ""
             }
             current_section = None
@@ -420,7 +442,7 @@ Please return only the improved version of this section, no explanation.
             section_content = sections.get(target_section, "")
             if not section_content.strip():
                 logger.warning(f"No content found for inferred section {target_section}")
-                return jsonify({"error": f"Could not identify content for section related to this suggestion: {target_section}"}), 400
+                return jsonify({"error": f"Could not identify content for section related to this suggestion: {target_section}. Please ensure the section exists in the resume."}), 400
 
             prompt = f"""
 You are an AI resume assistant. Improve the following section of a resume based on this suggestion.
