@@ -126,64 +126,95 @@ Resume:
     except Exception as e:
         print(f"❌ [OpenAI ERROR in analyze_resume_with_openai]: {str(e)}")
         return {"error": "Failed to generate suggestions due to an API error."}
+
 def extract_resume_sections(text):
     sections = {
+        "personal_details": "",
         "summary": "",
         "education": "",
         "experience": "",
         "skills": "",
         "certifications": "",
         "languages": "",
-        "hobbies": ""
+        "hobbies": "",
+        "additional_courses": "",
+        "projects": "",
+        "volunteer_experience": "",
+        "achievements": "",
+        "publications": "",
+        "references": "",
+        "miscellaneous": ""
+    }
+
+    section_headers = {
+        "personal_details": ["personal details", "personal information", "contact details", "contact information", "about me"],
+        "summary": ["summary", "objective", "professional summary", "career objective", "profile"],
+        "education": ["education", "academic background", "educational qualifications", "academic history", "qualifications"],
+        "experience": ["experience", "professional experience", "work experience", "work history", "employment history", "career history"],
+        "skills": ["skills", "technical skills", "key skills", "core competencies", "abilities"],
+        "certifications": ["certifications", "certificates", "credentials", "achievements"],
+        "languages": ["languages", "language skills", "language proficiency"],
+        "hobbies": ["hobbies", "interests", "personal interests", "extracurricular activities"],
+        "additional_courses": ["additional courses", "courses", "additional training", "training", "professional training"],
+        "projects": ["projects", "technical projects", "key projects", "portfolio"],
+        "volunteer_experience": ["volunteer experience", "volunteer work", "community service"],
+        "achievements": ["achievements", "accomplishments", "awards", "honors"],
+        "publications": ["publications", "research papers", "articles"],
+        "references": ["references", "professional references"]
     }
 
     current_section = None
-    for line in text.splitlines():
-        line_lower = line.lower().strip()
+    lines = text.splitlines()
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        line_lower = " ".join(line.lower().split())  # Normalize spaces
 
         # Detect section headings
-        if "education" in line_lower:
-            current_section = "education"
-        elif "experience" in line_lower or "employment" in line_lower:
-            current_section = "experience"
-        elif "skill" in line_lower:
-            current_section = "skills"
-        elif "certification" in line_lower or "course" in line_lower:
-            current_section = "certifications"
-        elif "language" in line_lower:
-            current_section = "languages"
-        elif "hobby" in line_lower or "interest" in line_lower:
-            current_section = "hobbies"
-        elif "summary" in line_lower or "objective" in line_lower or "profile" in line_lower:
-            current_section = "summary"
-        elif len(line.strip()) == 0:
-            continue
-        elif current_section:
-            sections[current_section] += line.strip() + "\n"
+        found_section = False
+        for section, variations in section_headers.items():
+            for variation in variations:
+                if variation in line_lower:
+                    current_section = section
+                    found_section = True
+                    break
+            if found_section:
+                break
+
+        if not found_section and current_section:
+            sections[current_section] += line + "\n"
+        elif not found_section:
+            sections["miscellaneous"] += line + "\n"
 
     for key in sections:
         sections[key] = sections[key].strip()
 
     return sections
 
-
 def detect_section_from_suggestion(suggestion):
     suggestion = suggestion.lower()
     section_keywords = {
-    "skills": ["skill", "proficiency", "tools", "technologies", "software", "languages known"],
-    "experience": ["experience", "worked", "responsibility", "role", "company", "job title", "employment"],
-    "education": ["education", "degree", "university", "college", "academic", "school"],
-    "certifications": ["certification", "course", "certified", "training", "diploma"],
-    "languages": ["language", "fluent", "spoken", "bilingual", "multilingual"],
-    "hobbies": ["hobby", "interest", "extracurricular", "leisure", "passion"],
-    "summary": ["summary", "objective", "profile", "career goal", "introduction"]
-}
+        "personal_details": ["personal details", "contact", "email", "phone", "address", "name"],
+        "summary": ["summary", "objective", "professional summary", "career goal", "profile", "introduction"],
+        "skills": ["skill", "proficiency", "tools", "technologies", "software", "languages known", "abilities", "technical skills", "core competencies"],
+        "experience": ["experience", "worked", "responsibility", "role", "company", "job title", "employment", "career", "achievement", "accomplished", "performed"],
+        "education": ["education", "degree", "university", "college", "academic", "school", "qualification", "graduation"],
+        "certifications": ["certification", "course", "certified", "training", "diploma", "credential", "achievement"],
+        "languages": ["language", "fluent", "spoken", "bilingual", "multilingual", "proficiency"],
+        "hobbies": ["hobby", "interest", "extracurricular", "leisure", "passion", "activity"],
+        "additional_courses": ["additional courses", "courses", "training", "professional training", "additional training"],
+        "projects": ["projects", "technical projects", "key projects", "portfolio", "work project"],
+        "volunteer_experience": ["volunteer experience", "volunteer work", "community service", "volunteering"],
+        "achievements": ["achievements", "accomplishments", "awards", "honors", "recognition"],
+        "publications": ["publications", "research papers", "articles", "published"],
+        "references": ["references", "professional references", "referee"]
+    }
 
     for section, keywords in section_keywords.items():
         if any(word in suggestion for word in keywords):
             return section
     return None
-
 
 def generate_section_content(suggestion, full_resume_text):
     try:
