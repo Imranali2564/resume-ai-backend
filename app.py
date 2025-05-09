@@ -823,18 +823,15 @@ def convert_format():
     try:
         # IMAGE to TEXT
         if ext in ['.jpg', '.jpeg', '.png'] and target_format == 'text':
-            from PIL import Image
-            import pytesseract
-            image = Image.open(file.stream)
-            extracted_text = pytesseract.image_to_string(image)
-            return jsonify({'text': extracted_text})
+            return jsonify({'text': 'OCR is not supported on this server. Please use PDF or DOCX instead.'})
 
         # DOCX to PDF
         elif ext == '.docx' and target_format == 'pdf':
             from docx import Document
             import pdfkit
+            from io import BytesIO
 
-            doc = Document(file)
+            doc = Document(BytesIO(file.read()))
             html_content = ''.join([f"<p>{para.text}</p>" for para in doc.paragraphs])
             html_file = "/tmp/temp.html"
             pdf_file = "/tmp/converted.pdf"
@@ -843,12 +840,12 @@ def convert_format():
             pdfkit.from_file(html_file, pdf_file)
             return send_file(pdf_file, as_attachment=True)
 
-        # PDF to DOCX (basic)
+        # PDF to DOCX
         elif ext == '.pdf' and target_format == 'docx':
-            import fitz  # PyMuPDF
+            import fitz
             from docx import Document
 
-            doc = fitz.open(stream=file.stream, filetype="pdf")
+            doc = fitz.open("pdf", file.read())
             text = "\n".join(page.get_text() for page in doc)
 
             word_doc = Document()
