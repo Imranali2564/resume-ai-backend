@@ -1,3 +1,4 @@
+```python
 import logging
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
@@ -817,62 +818,101 @@ def convert_format():
     if not file or not target_format:
         return jsonify({'error': 'Missing file or target format'}), 400
 
-    filename = file.filename.lower()
-    ext = os.path.splitext(filename)[1]
+    filename = secure_filename(file.filename)
+    ext = os.path.splitext(filename)[1].lower()
+    allowed_extensions = {'.pdf', '.docx'}
+    if ext not in allowed_extensions:
+        return jsonify({'error': f'Unsupported file format: {ext}. Please upload a PDF or DOCX file.'}), 400
+
+    # Save the uploaded file temporarily
+    upload_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"converted_{uuid.uuid4()}.{target_format}")
+    html_temp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"temp_{uuid.uuid4()}.html")
 
     try:
+        file.save(upload_path)
+        logger.debug(f"Saved uploaded file to {upload_path}")
+
         # ✅ TEXT extraction from PDF / DOCX
         if target_format == 'text':
             if ext == '.pdf':
                 import fitz
-                doc = fitz.open("pdf", file.read())
+                doc = fitz.open(upload_path)
                 text = "\n".join([page.get_text() for page in doc])
-                return jsonify({'text': text})
-
             elif ext == '.docx':
                 from docx import Document
-                from io import BytesIO
-                doc = Document(BytesIO(file.read()))
+                doc = Document(upload_path)
                 text = "\n".join([para.text for para in doc.paragraphs])
-                return jsonify({'text': text})
-
             else:
                 return jsonify({'error': 'Only PDF and DOCX files are supported for text extraction'}), 400
+
+            # Save the text to a temporary file
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(text)
+            
+            # Serve the file with proper headers
+            return send_file(
+                output_path,
+                as_attachment=True,
+                download_name="extracted-text.txt",
+                mimetype="text/plain"
+            )
 
         # ✅ DOCX to PDF
         elif ext == '.docx' and target_format == 'pdf':
             from docx import Document
             import pdfkit
-            from io import BytesIO
 
-            doc = Document(BytesIO(file.read()))
+            doc = Document(upload_path)
             html_content = ''.join([f"<p>{para.text}</p>" for para in doc.paragraphs])
-            html_file = "/tmp/temp.html"
-            pdf_file = "/tmp/converted.pdf"
-            with open(html_file, 'w') as f:
+            
+            # Save HTML content to a temporary file
+            with open(html_temp_path, 'w', encoding='utf-8') as f:
                 f.write(html_content)
-            pdfkit.from_file(html_file, pdf_file)
-            return send_file(pdf_file, as_attachment=True)
+            
+            # Convert HTML to PDF
+            pdfkit.from_file(html_temp_path, output_path)
+            
+            # Serve the PDF file with proper headers
+            return send_file(
+                output_path,
+                as_attachment=True,
+                download_name="converted.pdf",
+                mimetype="application/pdf"
+            )
 
         # ✅ PDF to DOCX
         elif ext == '.pdf' and target_format == 'docx':
             import fitz
             from docx import Document
 
-            doc = fitz.open("pdf", file.read())
+            doc = fitz.open(upload_path)
             text = "\n".join(page.get_text() for page in doc)
 
+            # Create a new DOCX document
             word_doc = Document()
             word_doc.add_paragraph(text)
-            output_path = "/tmp/converted.docx"
             word_doc.save(output_path)
-            return send_file(output_path, as_attachment=True)
+            
+            # Serve the DOCX file with proper headers
+            return send_file(
+                output_path,
+                as_attachment=True,
+                download_name="converted.docx",
+                mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
 
         else:
-            return jsonify({'error': 'Only PDF and DOCX files are supported'}), 400
+            return jsonify({'error': 'Invalid conversion request. Only PDF to DOCX, DOCX to PDF, or text extraction are supported.'}), 400
 
     except Exception as e:
+        logger.error(f"Error in /convert-format: {str(e)}")
         return jsonify({'error': str(e)}), 500
+    finally:
+        # Clean up all temporary files
+        cleanup_file(upload_path)
+        cleanup_file(output_path)
+        cleanup_file(html_temp_path)
     
 @app.route('/fix-formatting', methods=['POST'])
 def fix_formatting():
@@ -899,3 +939,4 @@ if __name__ == '__main__':
     app.run(host="0.0.0.0", port=port)
 
 logger.info("Flask app initialization complete.")
+```
