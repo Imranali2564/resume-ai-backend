@@ -129,21 +129,21 @@ Resume:
 
 def extract_resume_sections(text):
     sections = {
-        "personal_details": "",
-        "summary": "",
-        "education": "",
-        "experience": "",
-        "skills": "",
-        "certifications": "",
-        "languages": "",
-        "hobbies": "",
-        "additional_courses": "",
-        "projects": "",
-        "volunteer_experience": "",
-        "achievements": "",
-        "publications": "",
-        "references": "",
-        "miscellaneous": ""
+        "personal_details": [],
+        "summary": [],
+        "education": [],
+        "experience": [],
+        "skills": [],
+        "certifications": [],
+        "languages": [],
+        "hobbies": [],
+        "additional_courses": [],
+        "projects": [],
+        "volunteer_experience": [],
+        "achievements": [],
+        "publications": [],
+        "references": [],
+        "miscellaneous": []
     }
 
     section_headers = {
@@ -193,36 +193,71 @@ def extract_resume_sections(text):
                         next_section = True
                         break
                 if not next_section:
-                    # Avoid duplicate content in personal_details
-                    if current_section == "personal_details":
-                        existing_lines = sections[current_section].splitlines()
-                        if line not in existing_lines:
-                            sections[current_section] += line + "\n"
-                    else:
-                        sections[current_section] += line + "\n"
+                    sections[current_section].append(line)
             else:
-                if current_section == "personal_details":
-                    existing_lines = sections[current_section].splitlines()
-                    if line not in existing_lines:
-                        sections[current_section] += line + "\n"
-                else:
-                    sections[current_section] += line + "\n"
+                sections[current_section].append(line)
         elif not found_section and not current_section:
-            sections["miscellaneous"] += line + "\n"
+            sections["miscellaneous"].append(line)
 
-    # Merge SUMMARY and PROFESSIONAL SUMMARY into a single summary section
-    if sections["summary"]:
-        summary_lines = sections["summary"].splitlines()
-        # Keep the longest summary content (likely the complete one)
-        complete_summary = max(summary_lines, key=len, default="")
-        sections["summary"] = complete_summary
+    # Post-process sections to remove duplicates and merge content
+    for section in sections:
+        if section == "personal_details":
+            # Normalize and deduplicate personal details
+            seen = set()
+            deduplicated = []
+            for line in sections[section]:
+                # Normalize the line for comparison (e.g., "Email : inshaansari844@gmail.com | Phone : 9654031233 | Insha")
+                normalized = " ".join(line.lower().split())
+                if normalized not in seen:
+                    seen.add(normalized)
+                    deduplicated.append(line)
+            # Sort to ensure consistent order (e.g., name at the end)
+            deduplicated.sort(key=lambda x: "insha" not in x.lower())  # Put "Insha" at the end
+            sections[section] = deduplicated
+        elif section == "summary":
+            # Merge summaries, keeping the most complete content
+            if sections[section]:
+                # Join all lines into a single block for each summary instance
+                summary_blocks = []
+                current_block = []
+                for line in sections[section]:
+                    if "professional summary" in line.lower():
+                        if current_block:
+                            summary_blocks.append("\n".join(current_block))
+                            current_block = []
+                    current_block.append(line)
+                if current_block:
+                    summary_blocks.append("\n".join(current_block))
+                # Keep the longest (most complete) summary block
+                if summary_blocks:
+                    sections[section] = [max(summary_blocks, key=len)]
+                else:
+                    sections[section] = []
+        else:
+            # For other sections, just deduplicate lines
+            seen = set()
+            deduplicated = []
+            for line in sections[section]:
+                normalized = " ".join(line.lower().split())
+                if normalized not in seen:
+                    seen.add(normalized)
+                    deduplicated.append(line)
+            sections[section] = deduplicated
 
-    # Clean up miscellaneous section if it only contains the name
-    if sections["miscellaneous"].strip() in ["Insha"]:
-        sections["miscellaneous"] = ""
+    # Clean up miscellaneous section
+    if sections["miscellaneous"]:
+        name_lines = set()
+        if sections["personal_details"]:
+            for line in sections["personal_details"]:
+                if "insha" in line.lower():
+                    name_lines.add(line.strip())
+        sections["miscellaneous"] = [line for line in sections["miscellaneous"] if line not in name_lines]
+        if not sections["miscellaneous"]:
+            sections["miscellaneous"] = []
 
+    # Convert lists back to strings
     for key in sections:
-        sections[key] = sections[key].strip()
+        sections[key] = "\n".join(sections[key]).strip()
 
     return sections
 
