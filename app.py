@@ -248,6 +248,7 @@ def final_resume():
     file = request.files.get('file')
     fixes = json.loads(request.form.get('fixes', '[]'))
     format_type = request.args.get('format', 'docx')
+    return_sections = request.args.get('return_sections', 'false') == 'true'
 
     if not file:
         return jsonify({'error': 'No file uploaded'}), 400
@@ -327,8 +328,8 @@ def final_resume():
         name = ""
         if final_sections.get("personal_details"):
             for line in final_sections["personal_details"].splitlines():
-                if "insha" in line.lower():
-                    name = "Insha"
+                if "imran" in line.lower():  # Adjust for the current resume
+                    name = "Imran Ali"
                     break
         if not name:
             for line in resume_text.splitlines():
@@ -337,7 +338,11 @@ def final_resume():
                     name = line
                     break
         if not name:
-            name = "Insha"  # Fallback to default name
+            name = "Imran Ali"  # Fallback to default name
+
+        # If return_sections is true, return the sections as JSON
+        if return_sections:
+            return jsonify({"sections": final_sections})
 
         if format_type == 'docx':
             doc = Document()
