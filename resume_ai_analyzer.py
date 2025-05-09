@@ -170,14 +170,14 @@ def extract_resume_sections(text):
 def detect_section_from_suggestion(suggestion):
     suggestion = suggestion.lower()
     section_keywords = {
-        "skills": ["skill", "proficiency", "tools", "technologies"],
-        "experience": ["experience", "worked", "responsibility", "role", "company"],
-        "education": ["education", "degree", "university", "college", "academic"],
-        "certifications": ["certification", "course", "certified", "training"],
-        "languages": ["language", "fluent", "spoken"],
-        "hobbies": ["hobby", "interest", "extracurricular"],
-        "summary": ["summary", "objective", "profile", "career goal"]
-    }
+    "skills": ["skill", "proficiency", "tools", "technologies", "software", "languages known"],
+    "experience": ["experience", "worked", "responsibility", "role", "company", "job title", "employment"],
+    "education": ["education", "degree", "university", "college", "academic", "school"],
+    "certifications": ["certification", "course", "certified", "training", "diploma"],
+    "languages": ["language", "fluent", "spoken", "bilingual", "multilingual"],
+    "hobbies": ["hobby", "interest", "extracurricular", "leisure", "passion"],
+    "summary": ["summary", "objective", "profile", "career goal", "introduction"]
+}
 
     for section, keywords in section_keywords.items():
         if any(word in suggestion for word in keywords):
@@ -189,9 +189,31 @@ def generate_section_content(suggestion, full_resume_text):
     try:
         sections = extract_resume_sections(full_resume_text)
         detected_section = detect_section_from_suggestion(suggestion)
+        print(f"✅ Detected Section: {detected_section}")
 
-        if not detected_section or detected_section not in sections:
+        if not detected_section:
             return {"error": "Could not detect section from suggestion."}
+
+        if detected_section not in sections:
+            # If it's a new section, ask OpenAI to generate it
+            prompt = f"""
+You are an AI resume assistant. Write a new section for a resume based on the following suggestion.
+Only output the improved section content, no explanation.
+
+Suggestion: {suggestion}
+"""
+            client = get_openai_client()
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are an expert resume section creator."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            return {
+                "section": detected_section,
+                "fixedContent": response.choices[0].message.content.strip()
+            }
 
         original_content = sections[detected_section]
         if not original_content.strip():
