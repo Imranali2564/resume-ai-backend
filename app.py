@@ -808,6 +808,60 @@ def analyze_jd():
 
     except Exception as e:
         return jsonify({'error': f'Failed to analyze job description: {str(e)}'}), 500
+    
+@app.route('/convert-format', methods=['POST'])
+def convert_format():
+    file = request.files.get('file')
+    target_format = request.form.get('target_format')
+
+    if not file or not target_format:
+        return jsonify({'error': 'Missing file or target format'}), 400
+
+    filename = file.filename.lower()
+    ext = os.path.splitext(filename)[1]
+
+    try:
+        # IMAGE to TEXT
+        if ext in ['.jpg', '.jpeg', '.png'] and target_format == 'text':
+            from PIL import Image
+            import pytesseract
+            image = Image.open(file.stream)
+            extracted_text = pytesseract.image_to_string(image)
+            return jsonify({'text': extracted_text})
+
+        # DOCX to PDF
+        elif ext == '.docx' and target_format == 'pdf':
+            from docx import Document
+            import pdfkit
+
+            doc = Document(file)
+            html_content = ''.join([f"<p>{para.text}</p>" for para in doc.paragraphs])
+            html_file = "/tmp/temp.html"
+            pdf_file = "/tmp/converted.pdf"
+            with open(html_file, 'w') as f:
+                f.write(html_content)
+            pdfkit.from_file(html_file, pdf_file)
+            return send_file(pdf_file, as_attachment=True)
+
+        # PDF to DOCX (basic)
+        elif ext == '.pdf' and target_format == 'docx':
+            import fitz  # PyMuPDF
+            from docx import Document
+
+            doc = fitz.open(stream=file.stream, filetype="pdf")
+            text = "\n".join(page.get_text() for page in doc)
+
+            word_doc = Document()
+            word_doc.add_paragraph(text)
+            output_path = "/tmp/converted.docx"
+            word_doc.save(output_path)
+            return send_file(output_path, as_attachment=True)
+
+        else:
+            return jsonify({'error': 'Unsupported conversion type'}), 400
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
