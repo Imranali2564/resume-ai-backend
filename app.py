@@ -300,40 +300,27 @@ Based on the suggestion, rewrite the content of this section to address the sugg
 def final_resume():
     file = request.files.get('file')
     fixes = json.loads(request.form.get('fixes', '[]'))
-    format_type = request.args.get('format', 'docx')  # Default to docx if format not specified
+    format_type = request.args.get('format', 'docx')
 
     if not file:
-        logger.error("No file uploaded in /final-resume")
         return jsonify({'error': 'No file uploaded'}), 400
 
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
-    output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"fixed_resume_{uuid.uuid4()}.{'docx' if format_type == 'docx' else 'pdf'}")
+    output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"fixed_resume_{uuid.uuid4()}.{format_type}")
+
     try:
         file.save(filepath)
         ext = os.path.splitext(filepath)[1].lower()
         if ext == ".pdf":
-            try:
-                resume_text = extract_text_from_pdf(filepath) or extract_text_with_ocr(filepath)
-            except Exception as e:
-                logger.error(f"Failed to extract text from PDF: {str(e)}")
-                return jsonify({'error': f'Failed to extract text from PDF: {str(e)}'}), 400
+            resume_text = extract_text_from_pdf(filepath) or extract_text_with_ocr(filepath)
         elif ext == ".docx":
-            try:
-                resume_text = extract_text_from_docx(filepath)
-            except Exception as e:
-                logger.error(f"Failed to extract text from DOCX: {str(e)}")
-                return jsonify({'error': f'Failed to extract text from DOCX: {str(e)}'}), 400
+            resume_text = extract_text_from_docx(filepath)
         else:
-            logger.error(f"Unsupported file format: {ext}")
             return jsonify({'error': 'Unsupported file format'}), 400
 
         if not resume_text.strip():
-            logger.warning("No extractable text found in resume")
             return jsonify({'error': 'No extractable text found in resume'}), 400
 
-        logger.debug(f"Received fixes: {json.dumps(fixes, indent=2)}")
-
-        # Initialize sections with the fixes provided by the frontend
         sections = {
             "skills": "",
             "experience": "",
@@ -343,18 +330,14 @@ def final_resume():
             "hobbies": ""
         }
 
-        # Apply fixes directly to the sections
         for fix in fixes:
             section = fix.get('section')
             fixed_text = fix.get('fixedText')
             if section in sections and fixed_text:
                 sections[section] = fixed_text.strip()
-                logger.debug(f"Applied fix to section {section}: {fixed_text[:50]}...")
 
-        # Extract personal information (name, email, phone, location) from the resume text
         name = email = phone = location = ""
-        lines = resume_text.splitlines()
-        for line in lines:
+        for line in resume_text.splitlines():
             line = line.strip()
             if not name and re.search(r'^[A-Z][a-z]+\s[A-Z][a-z]+', line):
                 name = line
@@ -366,143 +349,99 @@ def final_resume():
                 location = line
 
         if format_type == 'docx':
-            try:
-                doc = Document()
-                sections_doc = doc.sections
-                for section in sections_doc:
-                    section.left_margin = Inches(0.75)
-                    section.right_margin = Inches(0.75)
-                    section.top_margin = Inches(0.5)
-                    section.bottom_margin = Inches(0.5)
+            doc = Document()
+            for s in doc.sections:
+                s.top_margin = s.bottom_margin = Inches(0.5)
+                s.left_margin = s.right_margin = Inches(0.75)
 
-                # Name (Heading)
-                name_paragraph = doc.add_heading(name, level=1)
-                name_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                name_run = name_paragraph.runs[0]
-                name_run.font.name = 'Times New Roman'
-                name_run._element.rPr.rFonts.set(qn('w:ascii'), 'Times New Roman')
-                name_run._element.rPr.rFonts.set(qn('w:hAnsi'), 'Times New Roman')
-                name_run.font.size = Pt(16)
-                name_run.bold = True
-                name_run.font.color.rgb = RGBColor(0, 113, 188)  # Blue color
+            heading = doc.add_heading(name, level=1)
+            heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = heading.runs[0]
+            run.font.size = Pt(16)
+            run.bold = True
+            run.font.color.rgb = RGBColor(0, 113, 188)
 
-                # Contact Info
-                contact_info = f"{email} | {phone} | {location}"
-                contact_paragraph = doc.add_paragraph(contact_info)
-                contact_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                contact_run = contact_paragraph.runs[0]
-                contact_run.font.name = 'Times New Roman'
-                contact_run._element.rPr.rFonts.set(qn('w:ascii'), 'Times New Roman')
-                contact_run._element.rPr.rFonts.set(qn('w:hAnsi'), 'Times New Roman')
-                contact_run.font.size = Pt(10)
-                contact_run.font.color.rgb = RGBColor(80, 80, 80)  # Dark gray
+            contact = f"{email} | {phone} | {location}"
+            p = doc.add_paragraph(contact)
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-                doc.add_paragraph()  # Spacer
+            doc.add_paragraph()
 
-                # Add sections
-                for section_name, content in sections.items():
-                    if content.strip():
-                        # Section Heading (in a shaded box)
-                        p = doc.add_paragraph()
-                        p.paragraph_format.space_before = Pt(10)
-                        p.paragraph_format.space_after = Pt(5)
-                        run = p.add_run(section_name.upper())
-                        run.font.name = 'Times New Roman'
-                        run._element.rPr.rFonts.set(qn('w:ascii'), 'Times New Roman')
-                        run._element.rPr.rFonts.set(qn('w:hAnsi'), 'Times New Roman')
-                        run.font.size = Pt(12)
-                        run.bold = True
-                        run.font.color.rgb = RGBColor(255, 255, 255)  # White text
-                        shading_elm = parse_xml(r'<w:shd {} w:fill="0071BC"/>'.format(nsdecls('w')))
-                        p._element.get_or_add_pPr().append(shading_elm)
+            for section, content in sections.items():
+                if content:
+                    p = doc.add_paragraph()
+                    run = p.add_run(section.upper())
+                    run.bold = True
+                    run.font.color.rgb = RGBColor(255, 255, 255)
+                    shading = parse_xml(r'<w:shd {} w:fill="0071BC"/>'.format(nsdecls('w')))
+                    p._element.get_or_add_pPr().append(shading)
 
-                        # Section Content
-                        for line in content.splitlines():
-                            line = line.strip()
-                            if line:
-                                if section_name in ["skills", "experience", "hobbies"]:
-                                    p = doc.add_paragraph(style='List Bullet')
-                                    run = p.add_run(line)
-                                else:
-                                    p = doc.add_paragraph()
-                                    run = p.add_run(line)
-                                run.font.name = 'Times New Roman'
-                                run._element.rPr.rFonts.set(qn('w:ascii'), 'Times New Roman')
-                                run._element.rPr.rFonts.set(qn('w:hAnsi'), 'Times New Roman')
-                                run.font.size = Pt(11)
-                                run.font.color.rgb = RGBColor(50, 50, 50)  # Dark gray
+                    for line in content.splitlines():
+                        if line:
+                            para = doc.add_paragraph(style='List Bullet' if section in ["skills", "experience", "hobbies"] else None)
+                            para.add_run(line)
 
-                doc.save(output_path)
-                logger.info(f"Generated DOCX file: {output_path}")
-                return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.docx", mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-            except Exception as e:
-                logger.error(f"Failed to generate DOCX: {str(e)}")
-                return jsonify({'error': f'Failed to generate DOCX: {str(e)}'}), 500
+            doc.save(output_path)
+            return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.docx",
+                             mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
         elif format_type == 'pdf':
-            try:
-                doc = SimpleDocTemplate(output_path, pagesize=letter, leftMargin=0.75*inch, rightMargin=0.75*inch, topMargin=0.5*inch, bottomMargin=0.5*inch)
-                styles = getSampleStyleSheet()
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.pagesizes import letter
+            from reportlab.lib.units import inch
+            from reportlab.lib.colors import HexColor
 
-                styles.add(ParagraphStyle(name='Name', fontName='Times-Roman', fontSize=16, alignment=1, spaceAfter=6, textColor=HexColor('#0071BC')))
-                styles.add(ParagraphStyle(name='Contact', fontName='Times-Roman', fontSize=10, alignment=1, spaceAfter=12, textColor=HexColor('#505050')))
-                styles.add(ParagraphStyle(name='SectionHeading', fontName='Times-Roman', fontSize=12, spaceBefore=10, spaceAfter=5, textColor=HexColor('#FFFFFF')))
-                styles.add(ParagraphStyle(name='Body', fontName='Times-Roman', fontSize=11, spaceAfter=6, textColor=HexColor('#323232')))
-                styles.add(ParagraphStyle(name='Bullet', fontName='Times-Roman', fontSize=11, spaceAfter=6, leftIndent=0.5*inch, firstLineIndent=-0.25*inch, bulletFontName='Times-Roman', bulletFontSize=11, bulletIndent=0.25*inch, textColor=HexColor('#323232')))
+            doc = SimpleDocTemplate(output_path, pagesize=letter,
+                                    leftMargin=0.75 * inch, rightMargin=0.75 * inch,
+                                    topMargin=0.5 * inch, bottomMargin=0.5 * inch)
+            styles = getSampleStyleSheet()
 
-                story = []
+            styles.add(ParagraphStyle(name='Name', fontSize=16, alignment=1, spaceAfter=6, textColor=HexColor('#0071BC')))
+            styles.add(ParagraphStyle(name='Contact', fontSize=10, alignment=1, spaceAfter=12, textColor=HexColor('#505050')))
+            styles.add(ParagraphStyle(name='SectionHeading', fontSize=12, spaceBefore=10, spaceAfter=5, textColor=HexColor('#FFFFFF')))
+            styles.add(ParagraphStyle(name='Body', fontSize=11, spaceAfter=6, textColor=HexColor('#323232')))
+            if 'Bullet' not in styles.byName:
+                styles.add(ParagraphStyle(name='Bullet', fontSize=11, spaceAfter=6,
+                                          leftIndent=0.5 * inch, firstLineIndent=-0.25 * inch,
+                                          bulletFontName='Times-Roman', bulletFontSize=11,
+                                          bulletIndent=0.25 * inch, textColor=HexColor('#323232')))
 
-                # Name
-                story.append(Paragraph(f"<b>{name}</b>", styles['Name']))
+            story = [
+                Paragraph(f"<b>{name}</b>", styles['Name']),
+                Paragraph(f"{email} | {phone} | {location}", styles['Contact']),
+                Spacer(1, 12)
+            ]
 
-                # Contact Info
-                contact_info = f"{email} | {phone} | {location}"
-                story.append(Paragraph(contact_info, styles['Contact']))
+            for section, content in sections.items():
+                if content:
+                    heading = Table([[Paragraph(f"<b>{section.upper()}</b>", styles['SectionHeading'])]], colWidths=[6.5 * inch])
+                    heading.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, -1), HexColor('#0071BC')),
+                        ('TEXTCOLOR', (0, 0), (-1, -1), HexColor('#FFFFFF')),
+                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                        ('FONTNAME', (0, 0), (-1, -1), 'Times-Roman'),
+                        ('FONTSIZE', (0, 0), (-1, -1), 12),
+                        ('LEFTPADDING', (0, 0), (-1, -1), 10),
+                        ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+                        ('TOPPADDING', (0, 0), (-1, -1), 5),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                    ]))
+                    story.append(heading)
 
-                # Spacer
-                story.append(Spacer(1, 12))
+                    for line in content.splitlines():
+                        if line:
+                            if section in ["skills", "experience", "hobbies"]:
+                                story.append(Paragraph(f"• {line}", styles['Bullet']))
+                            else:
+                                story.append(Paragraph(line, styles['Body']))
 
-                # Add sections
-                for section_name, content in sections.items():
-                    if content.strip():
-                        # Section Heading (in a shaded box)
-                        heading_table = Table([[Paragraph(f"<b>{section_name.upper()}</b>", styles['SectionHeading'])]], colWidths=[6.5*inch])
-                        heading_table.setStyle(TableStyle([
-                            ('BACKGROUND', (0, 0), (-1, -1), HexColor('#0071BC')),
-                            ('TEXTCOLOR', (0, 0), (-1, -1), HexColor('#FFFFFF')),
-                            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                            ('FONTNAME', (0, 0), (-1, -1), 'Times-Roman'),
-                            ('FONTSIZE', (0, 0), (-1, -1), 12),
-                            ('LEFTPADDING', (0, 0), (-1, -1), 10),
-                            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
-                            ('TOPPADDING', (0, 0), (-1, -1), 5),
-                            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-                        ]))
-                        story.append(heading_table)
-
-                        # Section Content
-                        for line in content.splitlines():
-                            line = line.strip()
-                            if line:
-                                if section_name in ["skills", "experience", "hobbies"]:
-                                    bullet_line = f"• {line}"
-                                    story.append(Paragraph(bullet_line, styles['Bullet']))
-                                else:
-                                    story.append(Paragraph(line, styles['Body']))
-
-                doc.build(story)
-                logger.info(f"Generated PDF file: {output_path}")
-                return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.pdf", mimetype="application/pdf")
-            except Exception as e:
-                logger.error(f"Failed to generate PDF: {str(e)}")
-                return jsonify({'error': f'Failed to generate PDF: {str(e)}'}), 500
+            doc.build(story)
+            return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.pdf", mimetype="application/pdf")
 
         else:
-            logger.error(f"Invalid format specified: {format_type}")
             return jsonify({'error': 'Invalid format specified'}), 400
     except Exception as e:
-        logger.error(f"Error in /final-resume: {str(e)}")
         return jsonify({'error': f'Failed to generate resume: {str(e)}'}), 500
     finally:
         cleanup_file(filepath)
