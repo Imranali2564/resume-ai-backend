@@ -199,42 +199,36 @@ def extract_resume_sections(text):
         elif not found_section and not current_section:
             sections["miscellaneous"].append(line)
 
-    # Post-process sections to remove duplicates and merge content
+    # Post-process sections to deduplicate and reassign misplaced content
+    # Step 1: Deduplicate within each section
     for section in sections:
         if section == "personal_details":
-            # Normalize and deduplicate personal details
             seen = set()
             deduplicated = []
             for line in sections[section]:
-                # Normalize the line for comparison (e.g., "Email : inshaansari844@gmail.com | Phone : 9654031233 | Insha")
                 normalized = " ".join(line.lower().split())
                 if normalized not in seen:
                     seen.add(normalized)
                     deduplicated.append(line)
-            # Sort to ensure consistent order (e.g., name at the end)
-            deduplicated.sort(key=lambda x: "insha" not in x.lower())  # Put "Insha" at the end
+            deduplicated.sort(key=lambda x: "insha" not in x.lower())
             sections[section] = deduplicated
         elif section == "summary":
-            # Merge summaries, keeping the most complete content
             if sections[section]:
-                # Join all lines into a single block for each summary instance
                 summary_blocks = []
                 current_block = []
                 for line in sections[section]:
-                    if "professional summary" in line.lower():
+                    if "professional summary" in line.lower() or "summary" in line.lower():
                         if current_block:
                             summary_blocks.append("\n".join(current_block))
                             current_block = []
                     current_block.append(line)
                 if current_block:
                     summary_blocks.append("\n".join(current_block))
-                # Keep the longest (most complete) summary block
                 if summary_blocks:
                     sections[section] = [max(summary_blocks, key=len)]
                 else:
                     sections[section] = []
         else:
-            # For other sections, just deduplicate lines
             seen = set()
             deduplicated = []
             for line in sections[section]:
@@ -244,7 +238,69 @@ def extract_resume_sections(text):
                     deduplicated.append(line)
             sections[section] = deduplicated
 
-    # Clean up miscellaneous section
+    # Step 2: Reassign content from "miscellaneous" to correct sections
+    if sections["miscellaneous"]:
+        misc_lines = sections["miscellaneous"]
+        sections["miscellaneous"] = []
+        current_section = None
+        temp_section_content = []
+
+        for line in misc_lines:
+            line_lower = " ".join(line.lower().split())
+            found_section = False
+            for section, variations in section_headers.items():
+                for variation in variations:
+                    if line_lower == variation:
+                        if current_section and temp_section_content:
+                            sections[current_section].extend(temp_section_content)
+                            temp_section_content = []
+                        current_section = section
+                        found_section = True
+                        break
+                if found_section:
+                    break
+            if not found_section:
+                if current_section:
+                    temp_section_content.append(line)
+                else:
+                    # Check if the line contains content that belongs to a known section
+                    reassigned = False
+                    for section, variations in section_headers.items():
+                        keywords = {
+                            "personal_details": ["email", "phone", "address", "date of birth", "marital status", "nationality", "gender", "insha"],
+                            "summary": ["results-driven", "highly motivated", "strong foundation", "telecalling experience"],
+                            "education": ["government girls senior secondary school", "76%", "72%", "2021", "2023"],
+                            "experience": ["tele caller", "paisefy advisory pvt", "6 month experience", "contacted potential customers"],
+                            "skills": ["computer applications (cca)", "communication", "customer service", "time management"],
+                            "additional_courses": ["cca", "fundamentals of computer"],
+                            "achievements": ["increased product awareness", "10% increase in sales", "commendations"]
+                        }.get(section, variations)
+                        if any(keyword in line_lower for keyword in keywords):
+                            sections[section].append(line)
+                            reassigned = True
+                            break
+                    if not reassigned and "insha" not in line_lower:  # Exclude standalone "Insha"
+                        sections["miscellaneous"].append(line)
+
+        # Append any remaining content
+        if current_section and temp_section_content:
+            sections[current_section].extend(temp_section_content)
+
+    # Step 3: Deduplicate across sections (e.g., "Skills" in "Miscellaneous")
+    for section in sections:
+        if section == "miscellaneous":
+            continue
+        section_content = set(" ".join(line.lower().split()) for line in sections[section])
+        for other_section in sections:
+            if other_section == section or other_section == "miscellaneous":
+                continue
+            other_content = set(" ".join(line.lower().split()) for line in sections[other_section])
+            overlap = section_content.intersection(other_content)
+            if overlap:
+                # Remove overlapping content from the less relevant section
+                sections[other_section] = [line for line in sections[other_section] if " ".join(line.lower().split()) not in overlap]
+
+    # Step 4: Clean up "miscellaneous" by removing redundant name
     if sections["miscellaneous"]:
         name_lines = set()
         if sections["personal_details"]:

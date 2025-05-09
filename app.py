@@ -32,18 +32,16 @@ try:
         extract_text_from_docx,
         extract_text_with_ocr,
         check_ats_compatibility,
-        extract_resume_sections  # Import the function we need
+        extract_resume_sections
     )
 except ImportError as e:
     logging.error(f"Failed to import resume_ai_analyzer: {str(e)}")
     raise
 
-# Configure logging (reduce verbosity in production)
 logging_level = logging.INFO if os.environ.get("FLASK_ENV") != "development" else logging.DEBUG
 logging.basicConfig(level=logging_level)
 logger = logging.getLogger(__name__)
 
-# Suppress pdfminer warnings to reduce log noise
 logging.getLogger("pdfminer").setLevel(logging.ERROR)
 
 logger.info("Starting Flask app initialization...")
@@ -70,7 +68,6 @@ def cleanup_file(filepath):
     except Exception as e:
         logger.error(f"Error cleaning up file: {filepath}, {str(e)}")
 
-# Health check endpoint to test app startup
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify({"status": "healthy", "message": "App is running successfully"}), 200
@@ -168,7 +165,7 @@ def check_ats():
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     try:
         file.save(filepath)
-        file_size = os.path.getsize(filepath) / 1024  # Size in KB
+        file_size = os.path.getsize(filepath) / 1024
         logger.debug(f"File saved: {filepath}, Size: {file_size:.2f} KB, Extension: {ext}")
 
         if ext == ".pdf":
@@ -218,10 +215,8 @@ def parse_resume():
         if not resume_text.strip():
             return jsonify({'error': 'No extractable text found in resume'}), 400
 
-        # Use the extract_resume_sections function from resume_ai_analyzer.py
         sections = extract_resume_sections(resume_text)
 
-        # Log the detected sections for debugging
         logger.debug(f"Detected sections: {json.dumps(sections, indent=2)}")
 
         return jsonify({"sections": sections})
@@ -273,39 +268,57 @@ def final_resume():
         if not resume_text.strip():
             return jsonify({'error': 'No extractable text found in resume'}), 400
 
-        # Parse the original resume using extract_resume_sections
         original_sections = extract_resume_sections(resume_text)
 
-        # Log the original sections for debugging
         logger.debug(f"Original sections: {json.dumps(original_sections, indent=2)}")
 
-        # Process the fixes
         fixed_sections = {}
         for fix in fixes:
-            # Handle both single-section and multi-section fixes
             if "section" in fix:
-                # Single section fix
                 section = fix.get('section')
                 fixed_text = fix.get('fixedText') or fix.get('fixedContent')
                 if section and fixed_text:
                     fixed_sections[section] = fixed_text.strip()
             elif "sections" in fix:
-                # Multi-section fix (e.g., from general suggestions like proofreading)
                 for section_fix in fix.get('sections', []):
                     section = section_fix.get('section')
                     fixed_text = section_fix.get('fixedContent')
                     if section and fixed_text:
                         fixed_sections[section] = fixed_text.strip()
 
-        # Log the fixes for debugging
         logger.debug(f"Fixed sections: {json.dumps(fixed_sections, indent=2)}")
 
-        # Merge original sections with fixed sections
         final_sections = original_sections.copy()
         for section, content in fixed_sections.items():
             final_sections[section] = content
 
-        # Extract personal details for the header
+        # Deduplicate sections by re-running extract_resume_sections on the merged content
+        merged_text = ""
+        for section, content in final_sections.items():
+            if content:
+                display_name = {
+                    "personal_details": "Personal Details",
+                    "summary": "Summary",
+                    "skills": "Skills",
+                    "experience": "Experience",
+                    "education": "Education",
+                    "certifications": "Certifications",
+                    "languages": "Languages",
+                    "hobbies": "Hobbies",
+                    "additional_courses": "Additional Courses",
+                    "projects": "Projects",
+                    "volunteer_experience": "Volunteer Experience",
+                    "achievements": "Achievements",
+                    "publications": "Publications",
+                    "references": "References",
+                    "miscellaneous": "Miscellaneous"
+                }.get(section, section.replace("_", " ").title())
+                merged_text += f"{display_name}\n{content}\n\n"
+
+        final_sections = extract_resume_sections(merged_text)
+
+        logger.debug(f"Final deduplicated sections: {json.dumps(final_sections, indent=2)}")
+
         name = email = phone = location = ""
         for line in resume_text.splitlines():
             line = line.strip()
@@ -337,10 +350,9 @@ def final_resume():
 
             doc.add_paragraph()
 
-            # Map section keys to display names
             section_display_names = {
                 "personal_details": "Personal Details",
-                "objective": "Professional Summary",
+                "summary": "Professional Summary",
                 "skills": "Skills",
                 "experience": "Experience",
                 "education": "Education",
@@ -406,7 +418,7 @@ def final_resume():
 
             section_display_names = {
                 "personal_details": "Personal Details",
-                "objective": "Professional Summary",
+                "summary": "Professional Summary",
                 "skills": "Skills",
                 "experience": "Experience",
                 "education": "Education",
