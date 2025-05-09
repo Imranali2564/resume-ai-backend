@@ -487,23 +487,31 @@ Return the improved resume content as a JSON object where keys are section names
                     logger.error(f"Error in OpenAI API call for general suggestion: {str(e)}")
                     return jsonify({"error": f"Failed to process general suggestion: {str(e)}"}), 500
 
-            # Infer the section from the suggestion
-            target_section = "miscellaneous"  # Default to miscellaneous
-            new_section_pattern = re.compile(r'add\s+a?\s*(\w+)\s*section', re.IGNORECASE)
+            # Check if the suggestion is to add a new section
+            # Updated regex to be more flexible and match multi-word section names
+            new_section_pattern = re.compile(r'(?:add|consider adding|include|create)\s+a?\s*(?:new\s*)?section\s*(?:for|to)?\s*(.+?)(?:\s*to\s*|$)', re.IGNORECASE)
             new_section_match = new_section_pattern.search(suggestion_lower)
 
+            target_section = "miscellaneous"  # Default to miscellaneous
             if new_section_match:
                 # Handle suggestions to add a new section
-                new_section_name = new_section_match.group(1).lower()
-                # Map the new section name to a known section or create a new one
+                section_phrase = new_section_match.group(1).strip()
+                logger.debug(f"Detected new section suggestion: {section_phrase}")
+
+                # Map the section phrase to a known section
                 for sec, variations in section_headers.items():
-                    if new_section_name in variations or new_section_name == sec:
+                    if any(variation in section_phrase for variation in variations):
                         target_section = sec
                         break
                 else:
-                    # If the section isn't predefined, use the new section name as the key
-                    target_section = new_section_name
+                    # If no match is found, normalize the section phrase to a section key
+                    # Replace spaces with underscores and remove extra words
+                    target_section = section_phrase.replace(" ", "_").lower()
+                    # Remove common words like "a", "for", "to"
+                    target_section = re.sub(r'\b(a|for|to)\b', '', target_section).strip("_")
                     sections[target_section] = ""  # Initialize the new section
+
+                logger.debug(f"Mapped new section to: {target_section}")
 
                 # Generate content for the new section based on the resume
                 prompt = f"""
@@ -560,38 +568,40 @@ Generate content for the new '{target_section}' section. Format the output as pl
                     target_section = "additional_courses"  # Default to additional_courses
                 logger.debug(f"Resolved certifications and training to: {target_section}")
 
-            # Use the content of the inferred section
+            # Fallback: If the inferred section doesn't exist and the suggestion implies adding content, treat it as a new section
             section_content = sections.get(target_section, "")
             if not section_content.strip() and target_section != "miscellaneous":
-                logger.warning(f"No content found for inferred section {target_section}")
-                # Treat as a new section if there's no content and it's not miscellaneous
-                prompt = f"""
-You are an AI resume assistant. The user wants to improve or add content to a section of their resume based on this suggestion.
+                # Check if the suggestion implies adding content
+                if any(phrase in suggestion_lower for phrase in ["add", "consider adding", "include", "create"]):
+                    logger.debug(f"Section {target_section} doesn't exist; treating as new section due to suggestion phrasing")
+                    prompt = f"""
+You are an AI resume assistant. The user wants to add a new section to their resume based on this suggestion.
 
 Suggestion: {suggestion}
 
 Resume Content:
 {full_text}
 
-The section '{target_section}' does not exist in the resume. Generate content for this section based on the suggestion and resume content. Format the output as plain text, using bullet points if appropriate.
-                """
-                try:
-                    from openai import OpenAI
-                    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-                    response = client.chat.completions.create(
-                        model="gpt-3.5-turbo",
-                        messages=[
-                            {"role": "system", "content": "You are an expert resume fixer."},
-                            {"role": "user", "content": prompt}
-                        ]
-                    )
-                    fixed = response.choices[0].message.content.strip()
-                    logger.debug(f"Generated content for section {target_section}: {fixed[:50]}...")
-                    return jsonify({"section": target_section, "fixedContent": fixed})
-                except Exception as e:
-                    logger.error(f"Error in OpenAI API call for section {target_section}: {str(e)}")
-                    return jsonify({"error": f"Failed to generate content for section {target_section}: {str(e)}"}), 500
+Generate content for the new '{target_section}' section. Format the output as plain text, using bullet points if appropriate (e.g., '• Project 1: Description').
+                    """
+                    try:
+                        from openai import OpenAI
+                        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+                        response = client.chat.completions.create(
+                            model="gpt-3.5-turbo",
+                            messages=[
+                                {"role": "system", "content": "You are an expert resume fixer."},
+                                {"role": "user", "content": prompt}
+                            ]
+                        )
+                        fixed = response.choices[0].message.content.strip()
+                        logger.debug(f"Generated content for new section {target_section}: {fixed[:50]}...")
+                        return jsonify({"section": target_section, "fixedContent": fixed})
+                    except Exception as e:
+                        logger.error(f"Error in OpenAI API call for new section {target_section}: {str(e)}")
+                        return jsonify({"error": f"Failed to generate content for new section {target_section}: {str(e)}"}), 500
 
+            # If the section exists, improve its content
             prompt = f"""
 You are an AI resume assistant. Improve the following section of a resume based on this suggestion.
 
