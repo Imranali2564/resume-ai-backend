@@ -165,7 +165,7 @@ def extract_resume_sections(text):
 
     current_section = None
     lines = text.splitlines()
-    for line in lines:
+    for i, line in enumerate(lines):
         line = line.strip()
         if not line:
             continue
@@ -175,16 +175,30 @@ def extract_resume_sections(text):
         found_section = False
         for section, variations in section_headers.items():
             for variation in variations:
-                if variation in line_lower:
-                    current_section = section
+                if line_lower == variation:  # Exact match for section header
+                    # If the same section appears again, don't reset, just continue appending
+                    if current_section != section:
+                        current_section = section
                     found_section = True
                     break
             if found_section:
                 break
 
+        # If no section header is found and we are in a section, append the line to the current section
         if not found_section and current_section:
-            sections[current_section] += line + "\n"
-        elif not found_section:
+            # Check if the next line might be a new section header
+            if i + 1 < len(lines):
+                next_line = " ".join(lines[i + 1].lower().strip().split())
+                next_section = False
+                for section, variations in section_headers.items():
+                    if any(next_line == variation for variation in variations):
+                        next_section = True
+                        break
+                if not next_section:
+                    sections[current_section] += line + "\n"
+            else:
+                sections[current_section] += line + "\n"
+        elif not found_section and not current_section:
             sections["miscellaneous"] += line + "\n"
 
     for key in sections:
