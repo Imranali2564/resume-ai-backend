@@ -308,19 +308,22 @@ def fix_suggestion():
             logger.error("Missing suggestion in /fix-suggestion request")
             return jsonify({"error": "Missing suggestion"}), 400
 
+        # Log the incoming section and section_content for debugging
+        logger.debug(f"Incoming section: {section}, section_content: {section_content[:50] if section_content else 'None'}...")
+
         # Define possible section variations for inference
         section_headers = {
             "personal_details": ["personal details", "personal information", "contact details", "contact information", "about me", "email", "phone", "address"],
             "objective": ["objective", "career objective", "professional objective", "summary", "professional summary"],
             "skills": ["skills", "technical skills", "key skills", "core competencies", "abilities"],
-            "experience": ["experience", "professional experience", "work experience", "work history", "employment history", "career history"],
+            "experience": ["experience", "professional experience", "work experience", "work history", "employment history", "career history", "telecaller", "role"],
             "education": ["education", "academic background", "educational qualifications", "academic history", "qualifications"],
             "certifications": ["certifications", "certificates", "credentials", "achievements"],
             "languages": ["languages", "language skills", "language proficiency"],
-            "hobbies": ["hobbies", "interests", "personal interests", "extracurricular activities"],
-            "additional_courses": ["additional courses", "courses", "additional training", "training", "professional training", "certifications & additional training"],
+            "hobbies": ["hobbies", "interests", "personal interests", "extracurricular activities", "extracurricular"],
+            "additional_courses": ["additional courses", "courses", "additional training", "training", "professional training", "certifications & additional training", "telecalling", "customer service"],
             "projects": ["projects", "technical projects", "key projects", "portfolio"],
-            "volunteer_experience": ["volunteer experience", "volunteer work", "community service"],
+            "volunteer_experience": ["volunteer experience", "volunteer work", "community service", "volunteer"],
             "achievements": ["achievements", "accomplishments", "awards", "honors"],
             "publications": ["publications", "research papers", "articles"],
             "references": ["references", "professional references"]
@@ -332,36 +335,17 @@ def fix_suggestion():
                 logger.warning("Section not provided but section_content is present; attempting to infer section")
                 # Infer section from suggestion if not provided
                 suggestion_lower = suggestion.lower()
-                if any(keyword in suggestion_lower for keyword in ["personal", "contact", "email", "phone", "address"]):
-                    section = "personal_details"
-                elif any(keyword in suggestion_lower for keyword in ["objective", "summary", "professional summary"]):
-                    section = "objective"
-                elif any(keyword in suggestion_lower for keyword in ["skill", "abilities", "competencies"]):
-                    section = "skills"
-                elif any(keyword in suggestion_lower for keyword in ["experience", "work", "employment", "career"]):
-                    section = "experience"
-                elif any(keyword in suggestion_lower for keyword in ["education", "qualification", "academic"]):
-                    section = "education"
-                elif any(keyword in suggestion_lower for keyword in ["certification", "certificate", "credential"]):
-                    section = "certifications"
-                elif any(keyword in suggestion_lower for keyword in ["language", "proficiency"]):
-                    section = "languages"
-                elif any(keyword in suggestion_lower for keyword in ["hobbie", "interest", "extracurricular"]):
-                    section = "hobbies"
-                elif any(keyword in suggestion_lower for keyword in ["course", "training", "additional courses"]):
-                    section = "additional_courses"
-                elif any(keyword in suggestion_lower for keyword in ["project", "portfolio"]):
-                    section = "projects"
-                elif any(keyword in suggestion_lower for keyword in ["volunteer", "community service"]):
-                    section = "volunteer_experience"
-                elif any(keyword in suggestion_lower for keyword in ["achievement", "accomplishment", "award", "honor"]):
-                    section = "achievements"
-                elif any(keyword in suggestion_lower for keyword in ["publication", "research paper", "article"]):
-                    section = "publications"
-                elif any(keyword in suggestion_lower for keyword in ["reference", "professional reference"]):
-                    section = "references"
+                inferred_section = None
+                for sec, keywords in section_headers.items():
+                    if any(keyword in suggestion_lower for keyword in keywords):
+                        inferred_section = sec
+                        break
+                if inferred_section:
+                    section = inferred_section
+                    logger.debug(f"Inferred section from suggestion: {section}")
                 else:
                     section = "miscellaneous"
+                    logger.debug("No section inferred; defaulting to miscellaneous")
 
             prompt = f"""
 You are an AI resume assistant. Improve the following section of a resume based on this suggestion.
@@ -461,8 +445,49 @@ Please return only the improved version of this section, no explanation.
             for key in sections:
                 sections[key] = sections[key].strip()
 
-            # Infer the section from the suggestion
+            # Check if the suggestion is general (applies to the entire resume)
             suggestion_lower = suggestion.lower()
+            if "resume" in suggestion_lower and not any(keyword in suggestion_lower for keyword in ["section", "personal", "objective", "skills", "experience", "education", "certifications", "languages", "hobbies", "additional_courses", "projects", "volunteer", "achievements", "publications", "references"]):
+                # Handle general suggestions like proofreading
+                logger.debug("Detected general suggestion applying to the entire resume")
+                prompt = f"""
+You are an AI resume assistant. Apply the following suggestion to the entire resume.
+
+Suggestion: {suggestion}
+
+Resume Content:
+{full_text}
+
+Return the improved resume content as a JSON object where keys are section names (e.g., "personal_details", "objective", "skills") and values are the improved content for each section. Only include sections that have content.
+                """
+                try:
+                    from openai import OpenAI
+                    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+                    response = client.chat.completions.create(
+                        model="gpt-3.5-turbo",
+                        messages=[
+                            {"role": "system", "content": "You are an expert resume fixer."},
+                            {"role": "user", "content": prompt}
+                        ]
+                    )
+                    fixed_content = response.choices[0].message.content.strip()
+                    try:
+                        fixed_sections = json.loads(fixed_content)
+                        # Return all modified sections
+                        result = []
+                        for sec, content in fixed_sections.items():
+                            if content.strip():
+                                result.append({"section": sec, "fixedContent": content.strip()})
+                        logger.debug(f"Fixed content for general suggestion: {json.dumps(result, indent=2)}")
+                        return jsonify({"sections": result})
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Failed to parse AI response as JSON: {str(e)}")
+                        return jsonify({"error": "Failed to process general suggestion: AI response was not in expected format."}), 500
+                except Exception as e:
+                    logger.error(f"Error in OpenAI API call for general suggestion: {str(e)}")
+                    return jsonify({"error": f"Failed to process general suggestion: {str(e)}"}), 500
+
+            # Infer the section from the suggestion
             target_section = "miscellaneous"  # Default to miscellaneous
             new_section_pattern = re.compile(r'add\s+a?\s*(\w+)\s*section', re.IGNORECASE)
             new_section_match = new_section_pattern.search(suggestion_lower)
@@ -510,12 +535,30 @@ Generate content for the new '{target_section}' section. Format the output as pl
 
             # If not adding a new section, infer the section
             for sec, variations in section_headers.items():
-                for variation in variations:
-                    if variation in suggestion_lower:
-                        target_section = sec
-                        break
-                if target_section != "miscellaneous":
+                if any(variation in suggestion_lower for variation in variations):
+                    target_section = sec
                     break
+
+            # Special handling for suggestions with multiple section keywords
+            if "volunteer work" in suggestion_lower and "extracurricular activities" in suggestion_lower:
+                # Prioritize based on resume context
+                if sections.get("volunteer_experience"):
+                    target_section = "volunteer_experience"
+                elif sections.get("hobbies"):
+                    target_section = "hobbies"
+                else:
+                    target_section = "volunteer_experience"  # Default to volunteer_experience as it's more professional
+                logger.debug(f"Resolved multiple sections in suggestion to: {target_section}")
+
+            if "certifications" in suggestion_lower and "training" in suggestion_lower:
+                # Check if additional_courses exists in the resume, as it combines certifications and training
+                if sections.get("additional_courses"):
+                    target_section = "additional_courses"
+                elif sections.get("certifications"):
+                    target_section = "certifications"
+                else:
+                    target_section = "additional_courses"  # Default to additional_courses
+                logger.debug(f"Resolved certifications and training to: {target_section}")
 
             # Use the content of the inferred section
             section_content = sections.get(target_section, "")
