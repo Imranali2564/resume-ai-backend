@@ -4,6 +4,12 @@ import pdfplumber
 from PIL import Image
 from pdf2image import convert_from_path
 from openai import OpenAI
+import re
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Do not initialize the client at the module level
 client = None
@@ -41,10 +47,10 @@ def extract_text_with_ocr(file_path):
             text += pytesseract.image_to_string(img)
         return text.strip()
     except ImportError:
-        print("OCR not available: pytesseract is not installed.")
+        logger.error("OCR not available: pytesseract is not installed.")
         return ""
     except Exception as e:
-        print(f"Error in OCR: {str(e)}")
+        logger.error(f"Error in OCR: {str(e)}")
         return ""
 
 def check_ats_compatibility(file_path):
@@ -77,7 +83,7 @@ Resume:
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        print(f"❌ [OpenAI ERROR in check_ats_compatibility]: {str(e)}")
+        logger.error(f"[OpenAI ERROR in check_ats_compatibility]: {str(e)}")
         return "❌ Failed to analyze ATS compatibility due to an API error."
 
 def analyze_resume_with_openai(file_path, atsfix=False):
@@ -111,7 +117,7 @@ Resume:
 {text[:4000]}
             """
 
-        print("✅ [OpenAI] Sending resume for suggestion generation...")
+        logger.info("[OpenAI] Sending resume for suggestion generation...")
         client = get_openai_client()
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -120,11 +126,11 @@ Resume:
                 {"role": "user", "content": prompt}
             ]
         )
-        print("✅ [OpenAI] Response received.")
+        logger.info("[OpenAI] Response received.")
         suggestions = response.choices[0].message.content.strip()
         return {"suggestions": suggestions}
     except Exception as e:
-        print(f"❌ [OpenAI ERROR in analyze_resume_with_openai]: {str(e)}")
+        logger.error(f"[OpenAI ERROR in analyze_resume_with_openai]: {str(e)}")
         return {"error": "Failed to generate suggestions due to an API error."}
 
 def extract_resume_sections(text):
@@ -345,12 +351,28 @@ def generate_section_content(suggestion, full_resume_text):
     try:
         sections = extract_resume_sections(full_resume_text)
         detected_section = detect_section_from_suggestion(suggestion)
-        print(f"✅ Detected Section: {detected_section}")
+        logger.info(f"Detected Section: {detected_section}")
 
         if not detected_section:
             return {"error": "Could not detect section from suggestion."}
 
-        # If the section doesn't exist, create it
+        # Define formatting rules for different sections
+        section_formatting = {
+            "skills": "Format as a bullet list with '•' as the bullet character, e.g., '• Skill 1\n• Skill 2'",
+            "experience": "Format as a bullet list with '-' as the bullet character, e.g., '- Job Title, Company, Duration\n- Responsibility 1\n- Responsibility 2'",
+            "hobbies": "Format as a bullet list with '•' as the bullet character, e.g., '• Hobby 1\n• Hobby 2'",
+            "projects": "Format as a bullet list with '-' as the bullet character, e.g., '- Project 1 description\n- Project 2 description'",
+            "achievements": "Format as a bullet list with '-' as the bullet character, e.g., '- Achievement 1\n- Achievement 2'",
+            "personal_details": "Format as plain text with line breaks, e.g., 'Email: email@example.com\nPhone: +1234567890\nLocation: City, Country'",
+            "summary": "Format as plain text with line breaks for readability.",
+            "education": "Format as plain text with line breaks, e.g., 'B.Tech in Computer Science, XYZ University, 2020-2024'",
+            "certifications": "Format as plain text with line breaks, e.g., 'Certified Python Developer, XYZ Institute, 2023'",
+            "languages": "Format as plain text with line breaks, e.g., 'English (Fluent)\nHindi (Native)'"
+        }
+
+        formatting_instruction = section_formatting.get(detected_section, "Format as plain text with line breaks for readability.")
+
+        # If the section doesn't exist or is empty, create it
         if detected_section not in sections or not sections[detected_section].strip():
             prompt = f"""
 You are an AI resume assistant. Based on the following suggestion and full resume context, write a new section for the resume.
@@ -361,8 +383,12 @@ Resume:
 
 Suggestion:
 {suggestion}
+
+Instructions:
+- {formatting_instruction}
+- Ensure the content is concise, professional, and relevant to the section.
 """
-            print("🧠 Prompt for new section:\n", prompt)
+            logger.debug(f"Prompt for new section:\n{prompt}")
             client = get_openai_client()
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
@@ -393,10 +419,13 @@ User's Suggestion:
 Current Section Content:
 {original_content}
 
-Please return only the improved content for this section. Do not include any explanation or headers.
+Instructions:
+- {formatting_instruction}
+- Ensure the content is concise, professional, and relevant to the section.
+- Return only the improved content for this section. Do not include any explanation or headers.
 """
 
-        print("🧠 Prompt for fix:\n", prompt)
+        logger.debug(f"Prompt for fix:\n{prompt}")
 
         client = get_openai_client()
         response = client.chat.completions.create(
@@ -408,7 +437,7 @@ Please return only the improved content for this section. Do not include any exp
         )
 
         improved_content = response.choices[0].message.content.strip()
-        print("✅ AI Response:", improved_content)
+        logger.info(f"AI Response: {improved_content}")
 
         return {
             "section": detected_section,
@@ -416,5 +445,5 @@ Please return only the improved content for this section. Do not include any exp
         }
 
     except Exception as e:
-        print(f"❌ [ERROR in generate_section_content]: {str(e)}")
+        logger.error(f"[ERROR in generate_section_content]: {str(e)}")
         return {"error": "Failed to generate fixed content from suggestion."}

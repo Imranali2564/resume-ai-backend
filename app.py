@@ -297,6 +297,41 @@ def final_resume():
         if not final_sections.get("languages"):
             final_sections["languages"] = "English (Fluent)\nHindi (Native)"
 
+        # Extract contact details from "miscellaneous" or directly from resume_text
+        email = phone = location = ""
+        if final_sections.get("miscellaneous"):
+            for line in final_sections["miscellaneous"].splitlines():
+                line = line.strip()
+                if not email and re.search(r'[\w\.-]+@[\w\.-]+', line):
+                    email = re.search(r'[\w\.-]+@[\w\.-]+', line).group()
+                if not phone and re.search(r'\+?\d[\d\s\-]{8,}', line):
+                    phone = re.search(r'\+?\d[\d\s\-]{8,}', line).group()
+                if not location and re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', line) and "India" in line:
+                    location = re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', line).group()
+        else:
+            for line in resume_text.splitlines():
+                line = line.strip()
+                if not email and re.search(r'[\w\.-]+@[\w\.-]+', line):
+                    email = re.search(r'[\w\.-]+@[\w\.-]+', line).group()
+                if not phone and re.search(r'\+?\d[\d\s\-]{8,}', line):
+                    phone = re.search(r'\+?\d[\d\s\-]{8,}', line).group()
+                if not location and re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', line) and "India" in line:
+                    location = re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', line).group()
+
+        # Remove "miscellaneous" section
+        if "miscellaneous" in final_sections:
+            del final_sections["miscellaneous"]
+
+        # Create "personal_details" section with contact details
+        contact_details = []
+        if email:
+            contact_details.append(f"Email: {email}")
+        if phone:
+            contact_details.append(f"Phone: {phone}")
+        if location:
+            contact_details.append(f"Location: {location}")
+        final_sections["personal_details"] = "\n".join(contact_details)
+
         # Deduplicate sections by re-running extract_resume_sections on the merged content
         merged_text = ""
         for section, content in final_sections.items():
@@ -324,21 +359,20 @@ def final_resume():
 
         logger.debug(f"Final deduplicated sections: {json.dumps(final_sections, indent=2)}")
 
-        # Extract name from personal_details section
+        # Extract name from the first line of resume_text or personal_details
         name = ""
-        if final_sections.get("personal_details"):
+        for line in resume_text.splitlines():
+            line = line.strip()
+            if re.search(r'^[A-Z][a-z]+\s[A-Z][a-z]+', line):
+                name = line
+                break
+        if not name and final_sections.get("personal_details"):
             for line in final_sections["personal_details"].splitlines():
-                if "imran" in line.lower():  # Adjust for the current resume
-                    name = "Imran Ali"
-                    break
-        if not name:
-            for line in resume_text.splitlines():
-                line = line.strip()
                 if re.search(r'^[A-Z][a-z]+\s[A-Z][a-z]+', line):
                     name = line
                     break
         if not name:
-            name = "Imran Ali"  # Fallback to default name
+            name = "Riya Sharma"  # Fallback to default name from original resume
 
         # If return_sections is true, return the sections as JSON
         if return_sections:
@@ -378,7 +412,13 @@ def final_resume():
                 "miscellaneous": "Miscellaneous"
             }
 
+            # Ensure "personal_details" is the first section
+            ordered_sections = [("personal_details", final_sections.get("personal_details", ""))]
             for section_key, content in final_sections.items():
+                if section_key != "personal_details" and content:
+                    ordered_sections.append((section_key, content))
+
+            for section_key, content in ordered_sections:
                 if content:
                     display_name = section_display_names.get(section_key, ' '.join(word.capitalize() for word in section_key.split('_')))
                     p = doc.add_paragraph()
@@ -442,7 +482,13 @@ def final_resume():
                 "miscellaneous": "Miscellaneous"
             }
 
+            # Ensure "personal_details" is the first section
+            ordered_sections = [("personal_details", final_sections.get("personal_details", ""))]
             for section_key, content in final_sections.items():
+                if section_key != "personal_details" and content:
+                    ordered_sections.append((section_key, content))
+
+            for section_key, content in ordered_sections:
                 if content:
                     display_name = section_display_names.get(section_key, ' '.join(word.capitalize() for word in section_key.split('_')))
                     heading = Table([[Paragraph(f"<b>{display_name.upper()}</b>", styles['SectionHeading'])]], colWidths=[6.5 * inch])
