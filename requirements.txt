@@ -7,3 +7,4 @@ pytesseract
 pdf2image
 reportlab
 gunicorn
+scikit-learn

@@ -27,13 +27,16 @@ except ImportError as e:
     raise
 try:
     from resume_ai_analyzer import (
-        analyze_resume_with_openai,
-        extract_text_from_pdf,
-        extract_text_from_docx,
-        extract_text_with_ocr,
-        check_ats_compatibility,
-        extract_resume_sections
-    )
+    analyze_resume_with_openai,
+    extract_text_from_pdf,
+    extract_text_from_docx,
+    extract_text_with_ocr,
+    check_ats_compatibility,
+    extract_resume_sections,
+    extract_keywords_from_jd,
+    extract_text_from_resume,
+    compare_resume_with_keywords
+)
 except ImportError as e:
     logging.error(f"Failed to import resume_ai_analyzer: {str(e)}")
     raise
@@ -242,6 +245,22 @@ def fix_suggestion():
 
     except Exception as e:
         return jsonify({"error": f"Failed to process suggestion: {str(e)}"}), 500
+    
+    @app.route('/optimize-keywords', methods=['POST'])
+def optimize_keywords():
+    resume_file = request.files.get('resume')
+    job_description = request.form.get('job_description', '')
+
+    if not resume_file or not job_description:
+        return jsonify({'error': 'Missing resume or job description'}), 400
+
+    from resume_ai_analyzer import extract_keywords_from_jd, extract_text_from_resume, compare_resume_with_keywords
+
+    resume_text = extract_text_from_resume(resume_file)
+    jd_keywords = extract_keywords_from_jd(job_description)
+    results = compare_resume_with_keywords(resume_text, jd_keywords)
+
+    return jsonify(results)
 
 @app.route('/final-resume', methods=['POST'])
 def final_resume():

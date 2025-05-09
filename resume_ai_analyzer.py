@@ -447,3 +447,36 @@ Instructions:
     except Exception as e:
         logger.error(f"[ERROR in generate_section_content]: {str(e)}")
         return {"error": "Failed to generate fixed content from suggestion."}
+import re
+from sklearn.feature_extraction.text import CountVectorizer
+
+def extract_keywords_from_jd(jd_text):
+    words = re.findall(r'\b[a-zA-Z][a-zA-Z0-9-+]{2,}\b', jd_text.lower())
+    common_exclude = {'the', 'and', 'for', 'with', 'you', 'your', 'are', 'our', 'job', 'will', 'this'}
+    filtered = [word for word in words if word not in common_exclude]
+    vectorizer = CountVectorizer(stop_words='english', max_features=15)
+    keywords = vectorizer.fit([jd_text]).get_feature_names_out()
+    return list(keywords)
+
+def extract_text_from_resume(resume_file):
+    try:
+        return resume_file.read().decode('utf-8', errors='ignore')
+    except Exception:
+        return ""
+
+def compare_resume_with_keywords(resume_text, jd_keywords):
+    resume_lower = resume_text.lower()
+    present = []
+    missing = []
+    suggestions = []
+    for keyword in jd_keywords:
+        if keyword in resume_lower:
+            present.append(keyword)
+        else:
+            missing.append(keyword)
+            suggestions.append(f"Consider adding '{keyword}' to your skills, summary, or experience section.")
+    return {
+        'present_keywords': present,
+        'missing_keywords': missing,
+        'suggested_keywords': suggestions
+    }
