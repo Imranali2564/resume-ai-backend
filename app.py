@@ -301,33 +301,18 @@ def fix_suggestion():
     try:
         data = request.get_json()
         suggestion = data.get("suggestion")
-        section = data.get("section", "")
-        section_content = data.get("sectionContent", "")
+        full_text = data.get("full_resume_text")
 
-        if not suggestion:
-            logger.error("Missing suggestion in /fix-suggestion request")
-            return jsonify({"error": "Missing suggestion"}), 400
+        if not suggestion or not full_text:
+            return jsonify({"error": "Missing suggestion or full resume text"}), 400
 
-        # Log the incoming section and section_content for debugging
-        logger.debug(f"Incoming section: {section}, section_content: {section_content[:50] if section_content else 'None'}...")
+        from resume_ai_analyzer import generate_section_content
+        result = generate_section_content(suggestion, full_text)
+        return jsonify(result)
 
-        # Define possible section variations for inference
-        section_headers = {
-            "personal_details": ["personal details", "personal information", "contact details", "contact information", "about me", "email", "phone", "address"],
-            "objective": ["objective", "career objective", "professional objective", "summary", "professional summary"],
-            "skills": ["skills", "technical skills", "key skills", "core competencies", "abilities"],
-            "experience": ["experience", "professional experience", "work experience", "work history", "employment history", "career history", "telecaller", "role"],
-            "education": ["education", "academic background", "educational qualifications", "academic history", "qualifications", "degree", "university", "school"],
-            "certifications": ["certifications", "certificates", "credentials", "achievements"],
-            "languages": ["languages", "language skills", "language proficiency"],
-            "hobbies": ["hobbies", "interests", "personal interests", "extracurricular activities", "extracurricular"],
-            "additional_courses": ["additional courses", "courses", "additional training", "training", "professional training", "certifications & additional training", "telecalling", "customer service"],
-            "projects": ["projects", "technical projects", "key projects", "portfolio"],
-            "volunteer_experience": ["volunteer experience", "volunteer work", "community service", "volunteer"],
-            "achievements": ["achievements", "accomplishments", "awards", "honors"],
-            "publications": ["publications", "research papers", "articles"],
-            "references": ["references", "professional references"]
-        }
+    except Exception as e:
+        return jsonify({"error": f"Failed to process suggestion: {str(e)}"}), 500
+
 
         # If section_content is provided and non-empty, use it directly
         if section_content and section_content.strip():
