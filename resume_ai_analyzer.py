@@ -517,3 +517,41 @@ def compare_resume_with_keywords(resume_text, jd_keywords):
         'missing_keywords': missing,
         'suggested_keywords': suggestions
     }
+def fix_resume_formatting(file_path):
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext == ".pdf":
+        text = extract_text_from_pdf(file_path) or extract_text_with_ocr(file_path)
+    elif ext == ".docx":
+        text = extract_text_from_docx(file_path)
+    else:
+        return {"error": "Unsupported file type"}
+
+    if not text.strip():
+        return {"error": "No readable text found in resume"}
+
+    prompt = f"""
+You are a professional resume formatting expert.
+Clean and reformat the following resume:
+- Fix alignment and spacing
+- Properly indent bullet points
+- Normalize fonts and remove extra lines
+- Return clean plain text (not HTML or markdown)
+
+Resume:
+{text[:4000]}
+    """
+
+    try:
+        client = get_openai_client()
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are an expert in resume formatting."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return {"formatted_text": response.choices[0].message.content.strip()}
+    except Exception as e:
+        logger.error(f"[ERROR in fix_resume_formatting]: {str(e)}")
+        return {"error": "Failed to fix resume formatting due to an API error"}
+

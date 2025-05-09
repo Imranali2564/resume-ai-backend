@@ -873,6 +873,25 @@ def convert_format():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+@app.route('/fix-formatting', methods=['POST'])
+def fix_formatting():
+    file = request.files.get('resume')
+    if not file:
+        return jsonify({'error': 'No file uploaded'}), 400
+
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    try:
+        file.save(filepath)
+        from resume_ai_analyzer import fix_resume_formatting
+        result = fix_resume_formatting(filepath)
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Error in /fix-formatting: {str(e)}")
+        return jsonify({'error': 'Failed to process resume formatting'}), 500
+    finally:
+        cleanup_file(filepath)
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
