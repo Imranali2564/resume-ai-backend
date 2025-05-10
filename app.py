@@ -829,84 +829,125 @@ def convert_format():
     html_temp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"temp_{uuid.uuid4()}.html")
 
     try:
+        # Save the file and check permissions
         file.save(upload_path)
         logger.debug(f"Saved uploaded file to {upload_path}")
 
         # ✅ TEXT extraction from PDF / DOCX
         if target_format == 'text':
-            if ext == '.pdf':
-                import fitz
-                doc = fitz.open(upload_path)
-                text = "\n".join([page.get_text() for page in doc])
-            elif ext == '.docx':
-                from docx import Document
-                doc = Document(upload_path)
-                text = "\n".join([para.text for para in doc.paragraphs])
-            else:
-                return jsonify({'error': 'Only PDF and DOCX files are supported for text extraction'}), 400
+            try:
+                text = ""
+                if ext == '.pdf':
+                    try:
+                        import fitz
+                        doc = fitz.open(upload_path)
+                        text = "\n".join([page.get_text() for page in doc])
+                        doc.close()  # Ensure file is closed
+                    except ImportError:
+                        logger.error("PyMuPDF (fitz) not installed")
+                        return jsonify({'error': 'Text extraction failed: PyMuPDF dependency missing'}), 500
+                    except Exception as e:
+                        logger.error(f"Error extracting text from PDF: {str(e)}")
+                        return jsonify({'error': f'Text extraction from PDF failed: {str(e)}'}), 500
+                elif ext == '.docx':
+                    try:
+                        from docx import Document
+                        doc = Document(upload_path)
+                        text = "\n".join([para.text for para in doc.paragraphs])
+                    except ImportError:
+                        logger.error("python-docx not installed")
+                        return jsonify({'error': 'Text extraction failed: python-docx dependency missing'}), 500
+                    except Exception as e:
+                        logger.error(f"Error extracting text from DOCX: {str(e)}")
+                        return jsonify({'error': f'Text extraction from DOCX failed: {str(e)}'}), 500
+                else:
+                    return jsonify({'error': 'Only PDF and DOCX files are supported for text extraction'}), 400
 
-            # Save the text to a temporary file
-            with open(output_path, 'w', encoding='utf-8') as f:
-                f.write(text)
-            
-            # Serve the file with proper headers
-            return send_file(
-                output_path,
-                as_attachment=True,
-                download_name="extracted-text.txt",
-                mimetype="text/plain"
-            )
+                if not text.strip():
+                    return jsonify({'error': 'No text could be extracted from the file'}), 400
+
+                # Save the text to a temporary file
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    f.write(text)
+                
+                # Serve the file with proper headers
+                return send_file(
+                    output_path,
+                    as_attachment=True,
+                    download_name="extracted-text.txt",
+                    mimetype="text/plain"
+                )
+            except Exception as e:
+                logger.error(f"Text extraction failed: {str(e)}")
+                return jsonify({'error': f'Text extraction failed: {str(e)}'}), 500
 
         # ✅ DOCX to PDF
         elif ext == '.docx' and target_format == 'pdf':
-            from docx import Document
-            import pdfkit
+            try:
+                from docx import Document
+                import pdfkit
+            except ImportError as e:
+                logger.error(f"Missing dependency for DOCX to PDF conversion: {str(e)}")
+                return jsonify({'error': f'Missing dependency for DOCX to PDF conversion: {str(e)}'}), 500
 
-            doc = Document(upload_path)
-            html_content = ''.join([f"<p>{para.text}</p>" for para in doc.paragraphs])
-            
-            # Save HTML content to a temporary file
-            with open(html_temp_path, 'w', encoding='utf-8') as f:
-                f.write(html_content)
-            
-            # Convert HTML to PDF
-            pdfkit.from_file(html_temp_path, output_path)
-            
-            # Serve the PDF file with proper headers
-            return send_file(
-                output_path,
-                as_attachment=True,
-                download_name="converted.pdf",
-                mimetype="application/pdf"
-            )
+            try:
+                doc = Document(upload_path)
+                html_content = ''.join([f"<p>{para.text}</p>" for para in doc.paragraphs])
+                
+                # Save HTML content to a temporary file
+                with open(html_temp_path, 'w', encoding='utf-8') as f:
+                    f.write(html_content)
+                
+                # Convert HTML to PDF
+                pdfkit.from_file(html_temp_path, output_path)
+                
+                # Serve the PDF file with proper headers
+                return send_file(
+                    output_path,
+                    as_attachment=True,
+                    download_name="converted.pdf",
+                    mimetype="application/pdf"
+                )
+            except Exception as e:
+                logger.error(f"DOCX to PDF conversion failed: {str(e)}")
+                return jsonify({'error': f'DOCX to PDF conversion failed: {str(e)}'}), 500
 
         # ✅ PDF to DOCX
         elif ext == '.pdf' and target_format == 'docx':
-            import fitz
-            from docx import Document
+            try:
+                import fitz
+                from docx import Document
+            except ImportError as e:
+                logger.error(f"Missing dependency for PDF to DOCX conversion: {str(e)}")
+                return jsonify({'error': f'Missing dependency for PDF to DOCX conversion: {str(e)}'}), 500
 
-            doc = fitz.open(upload_path)
-            text = "\n".join(page.get_text() for page in doc)
+            try:
+                doc = fitz.open(upload_path)
+                text = "\n".join(page.get_text() for page in doc)
+                doc.close()
 
-            # Create a new DOCX document
-            word_doc = Document()
-            word_doc.add_paragraph(text)
-            word_doc.save(output_path)
-            
-            # Serve the DOCX file with proper headers
-            return send_file(
-                output_path,
-                as_attachment=True,
-                download_name="converted.docx",
-                mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            )
+                # Create a new DOCX document
+                word_doc = Document()
+                word_doc.add_paragraph(text)
+                word_doc.save(output_path)
+                
+                # Serve the DOCX file with proper headers
+                return send_file(
+                    output_path,
+                    as_attachment=True,
+                    download_name="converted.docx",
+                    mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
+            except Exception as e:
+                logger.error(f"PDF to DOCX conversion failed: {str(e)}")
+                return jsonify({'error': f'PDF to DOCX conversion failed: {str(e)}'}), 500
 
         else:
             return jsonify({'error': 'Invalid conversion request. Only PDF to DOCX, DOCX to PDF, or text extraction are supported.'}), 400
 
     except Exception as e:
         logger.error(f"Error in /convert-format: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': f'Failed to process file: {str(e)}'}), 500
     finally:
         # Clean up all temporary files
         cleanup_file(upload_path)
