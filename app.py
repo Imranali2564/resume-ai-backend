@@ -974,7 +974,7 @@ def convert_format():
     except Exception as e:
         logger.error(f"Error in /convert-format: {str(e)}")
         return jsonify({'error': f'Failed to process file: {str(e)}'}), 500
-    historyfinally:
+    finally:
         # Clean up all temporary files
         cleanup_file(upload_path)
         cleanup_file(output_path)
