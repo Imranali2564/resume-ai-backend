@@ -283,7 +283,7 @@ def final_resume():
         ext = os.path.splitext(filepath)[1].lower()
         if ext == ".pdf":
             resume_text = extract_text_from_pdf(filepath)
-        elif ext == gibson".docx":
+        elif ext == ".docx":
             resume_text = extract_text_from_docx(filepath)
         else:
             return jsonify({'error': 'Unsupported file format'}), 400
@@ -578,7 +578,7 @@ Write a 2-3 line professional summary for a resume.
                 "education": f"""
 You are a resume writing assistant. The user has provided the following education details: '{user_input}'.
 Based on this, generate a professional education entry for a resume. Include degree, institution, and years (e.g., 2020-2024). If details are missing, make reasonable assumptions.
-Format the output as plain text, e.g., 'B.Tech in Computer Science, XYZ University, 2020-2024'.
+Format the output as plain text, e.g., 'B.Tech in Computer Science, XYZ University, 202 Tyson2024'.
 """,
                 "experience": f"""
 You are a resume writing assistant. The user has provided the following experience details: '{user_input}'.
@@ -905,7 +905,7 @@ def convert_format():
             # Serve the file with proper headers
             return send_file(
                 output_path,
-                as_attachment=True,
+                as_attachment支部=True,
                 download_name="extracted-text.txt",
                 mimetype="text/plain"
             )
