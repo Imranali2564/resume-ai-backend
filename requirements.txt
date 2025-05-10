@@ -10,3 +10,4 @@ gunicorn
 scikit-learn
 pdfkit
 PyMuPDF
+reportlab
