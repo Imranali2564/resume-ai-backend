@@ -155,14 +155,36 @@ def fix_resume_formatting(file_path):
 
     prompt = f"""
 You are a professional resume formatting expert.
-Clean and reformat the following resume:
-- Fix alignment and spacing
-- Properly indent bullet points
-- Normalize fonts and remove extra lines
-- Return clean plain text (not HTML or markdown)
+Clean and reformat the following resume into plain text with the following rules:
+- Organize the resume into clear sections (e.g., Education, Experience, Skills, etc.).
+- Use section headings in all caps (e.g., EDUCATION, EXPERIENCE, SKILLS).
+- Use a single dash and space ("- ") for all bullet points.
+- Ensure exactly one blank line between sections.
+- Remove extra spaces, normalize line breaks, and ensure consistent formatting.
+- Do not use HTML, markdown, or any other markup language—just plain text.
+
+Example output:
+NAME
+John Doe
+
+CONTACT
+Email: john.doe@email.com
+Phone: +1234567890
+
+EDUCATION
+- Bachelor of Science in Computer Science, XYZ University, 2020-2024
+
+EXPERIENCE
+- Software Engineer Intern, ABC Corp, June 2023 - August 2023
+- Developed web applications using React and Node.js
+
+SKILLS
+- Python
+- JavaScript
+- SQL
 
 Resume:
-{text[:4000]}
+{text}
     """
 
     try:
@@ -173,7 +195,22 @@ Resume:
                 {"role": "user", "content": prompt}
             ]
         )
-        return {"formatted_text": response.choices[0].message.content.strip()}
+        formatted_text = response.choices[0].message.content.strip()
+        # Additional cleanup to ensure consistent formatting
+        lines = formatted_text.split('\n')
+        cleaned_lines = []
+        for i, line in enumerate(lines):
+            line = line.strip()
+            if line:
+                # Ensure bullet points start with "- "
+                if line.startswith(('-', '*', '•')):
+                    line = '- ' + line.lstrip('-*•').strip()
+                cleaned_lines.append(line)
+            elif i < len(lines) - 1 and lines[i + 1].strip():
+                # Ensure exactly one blank line between sections
+                if cleaned_lines and cleaned_lines[-1]:
+                    cleaned_lines.append('')
+        return {"formatted_text": '\n'.join(cleaned_lines).strip()}
     except Exception as e:
         logger.error(f"[ERROR in fix_resume_formatting]: {str(e)}")
         return {"error": "Failed to fix resume formatting due to an API error"}
