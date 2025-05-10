@@ -11,3 +11,4 @@ scikit-learn
 pdfkit
 PyMuPDF
 reportlab
+werkzeug
