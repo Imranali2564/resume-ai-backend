@@ -1,4 +1,3 @@
-```python
 import logging
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
@@ -939,4 +938,3 @@ if __name__ == '__main__':
     app.run(host="0.0.0.0", port=port)
 
 logger.info("Flask app initialization complete.")
-```
