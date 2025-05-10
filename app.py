@@ -61,7 +61,7 @@ logger.info("Starting Flask app initialization...")
 app = Flask(__name__, static_url_path='/static')
 CORS(app, resources={r"/*": {"origins": "https://resumefixerpro.com"}})
 
-UPLOAD_FOLDER = 'uploads'
+UPLOAD_FOLDER = 'Uploads'
 STATIC_FOLDER = 'static'
 try:
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -180,19 +180,6 @@ def check_ats():
         file_size = os.path.getsize(filepath) / 1024
         logger.debug(f"File saved: {filepath}, Size: {file_size:.2f} KB, Extension: {ext}")
 
-        if ext == ".pdf":
-            resume_text = extract_text_from_pdf(filepath)
-        elif ext == ".docx":
-            resume_text = extract_text_from_docx(filepath)
-        else:
-            logger.error(f"Unexpected file extension: {ext}")
-            return jsonify({'error': f'Unexpected file format: {ext}'}), 400
-
-        if not resume_text or not resume_text.strip():
-            logger.warning("No extractable text found in resume")
-            return jsonify({'error': 'No extractable text found in resume. The file might be empty or unreadable.'}), 400
-        logger.debug(f"Extracted text length: {len(resume_text)} characters")
-
         ats_result = check_ats_compatibility(filepath)
         if not ats_result or "Failed to analyze" in ats_result:
             logger.warning("ATS check returned empty or failed result")
@@ -260,9 +247,14 @@ def optimize_keywords():
         return jsonify({'error': 'Missing resume or job description'}), 400
 
     resume_text = extract_text_from_resume(resume_file)
-    jd_keywords = extract_keywords_from_jd(job_description)
-    results = compare_resume_with_keywords(resume_text, jd_keywords)
+    if not resume_text.strip():
+        return jsonify({'error': 'No extractable text found in resume'}), 400
 
+    jd_keywords = extract_keywords_from_jd(job_description)
+    if not jd_keywords:
+        return jsonify({'error': 'No keywords extracted from job description'}), 400
+
+    results = compare_resume_with_keywords(resume_text, jd_keywords)
     return jsonify(results)
 
 @app.route('/final-resume', methods=['POST'])
@@ -578,7 +570,7 @@ Write a 2-3 line professional summary for a resume.
                 "education": f"""
 You are a resume writing assistant. The user has provided the following education details: '{user_input}'.
 Based on this, generate a professional education entry for a resume. Include degree, institution, and years (e.g., 2020-2024). If details are missing, make reasonable assumptions.
-Format the output as plain text, e.g., 'B.Tech in Computer Science, XYZ University, 202 Tyson2024'.
+Format the output as plain text, e.g., 'B.Tech in Computer Science, XYZ University, 2020-2024'.
 """,
                 "experience": f"""
 You are a resume writing assistant. The user has provided the following experience details: '{user_input}'.
@@ -905,7 +897,7 @@ def convert_format():
             # Serve the file with proper headers
             return send_file(
                 output_path,
-                as_attachment支部=True,
+                as_attachment=True,
                 download_name="extracted-text.txt",
                 mimetype="text/plain"
             )
@@ -982,7 +974,7 @@ def convert_format():
     except Exception as e:
         logger.error(f"Error in /convert-format: {str(e)}")
         return jsonify({'error': f'Failed to process file: {str(e)}'}), 500
-    finally:
+    historyfinally:
         # Clean up all temporary files
         cleanup_file(upload_path)
         cleanup_file(output_path)

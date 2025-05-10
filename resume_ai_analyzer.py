@@ -27,6 +27,43 @@ def extract_text_from_docx(file_path):
         logger.error(f"[ERROR in extract_text_from_docx]: {str(e)}")
         return ""
 
+def extract_text_from_resume(resume_file):
+    try:
+        if not resume_file or resume_file.filename == '':
+            logger.error("No resume file provided")
+            return ""
+        
+        ext = os.path.splitext(resume_file.filename)[1].lower()
+        if ext not in {'.pdf', '.docx'}:
+            logger.error(f"Unsupported file format: {ext}")
+            return ""
+
+        # Save the file temporarily
+        filename = secure_filename(resume_file.filename)
+        temp_path = os.path.join('uploads', filename)
+        os.makedirs('Uploads', exist_ok=True)
+        resume_file.save(temp_path)
+
+        # Extract text based on file type
+        if ext == '.pdf':
+            text = extract_text_from_pdf(temp_path)
+        elif ext == '.docx':
+            text = extract_text_from_docx(temp_path)
+
+        # Clean up the temporary file
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+                logger.debug(f"Cleaned up temporary file: {temp_path}")
+        except Exception as e:
+            logger.error(f"Error cleaning up temporary file {temp_path}: {str(e)}")
+
+        return text.strip() if text else ""
+
+    except Exception as e:
+        logger.error(f"[ERROR in extract_text_from_resume]: {str(e)}")
+        return ""
+
 def analyze_resume_with_openai(file_path, atsfix=False):
     try:
         ext = os.path.splitext(file_path)[1].lower()
@@ -70,8 +107,19 @@ Resume:
         logger.error(f"[ERROR in analyze_resume_with_openai]: {str(e)}")
         return {"error": "Failed to analyze resume."}
 
-def check_ats_compatibility(text):
+def check_ats_compatibility(file_path):
     try:
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext == ".pdf":
+            text = extract_text_from_pdf(file_path)
+        elif ext == ".docx":
+            text = extract_text_from_docx(file_path)
+        else:
+            return "❌ Unsupported file type."
+
+        if not text.strip():
+            return "❌ No readable text found in resume."
+
         prompt = f"""
 You are an ATS scanner. Review this resume and provide a list of key compatibility checks in this format:
 
@@ -130,26 +178,33 @@ Resume:
         logger.error(f"[ERROR in fix_resume_formatting]: {str(e)}")
         return {"error": "Failed to fix resume formatting due to an API error"}
 
-def generate_cover_letter(text):
+def generate_section_content(suggestion, full_text):
     try:
         prompt = f"""
-You are a professional career coach.
-Write a short, professional cover letter based on the following resume text.
-Make it job-agnostic and focused on showcasing strengths and tone.
+You are a professional resume writer.
+Based on the suggestion and resume text provided, generate improved content for the relevant resume section.
+Return the section name and the improved content in this format:
+{{
+  "section": "Section Name",
+  "fixedContent": "Improved content here"
+}}
+
+Suggestion:
+{suggestion}
 
 Resume:
-{text[:4000]}
+{full_text[:4000]}
         """
 
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
-        return response.choices[0].message.content.strip()
+        return eval(response.choices[0].message.content.strip())
 
     except Exception as e:
-        logger.error(f"[ERROR in generate_cover_letter]: {str(e)}")
-        return "❌ Failed to generate cover letter."
+        logger.error(f"[ERROR in generate_section_content]: {str(e)}")
+        return {"error": "Failed to generate section content."}
 
 def extract_resume_sections(text):
     try:
@@ -163,7 +218,7 @@ Split the following resume text into sections like:
 - Projects
 - Achievements
 
-Return each section with a heading, followed by relevant content.
+Return a dictionary where each key is a section name (lowercase, underscore-separated, e.g., 'work_experience') and the value is the content of that section as a string. If a section is not present, exclude it from the dictionary. Ensure the output is a valid JSON string.
 
 Resume:
 {text[:4000]}
@@ -173,16 +228,18 @@ Resume:
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
-        return response.choices[0].message.content.strip()
+        sections = eval(response.choices[0].message.content.strip())
+        return sections
 
     except Exception as e:
         logger.error(f"[ERROR in extract_resume_sections]: {str(e)}")
-        return "❌ Failed to parse resume sections."
+        return {}
 
 def extract_keywords_from_jd(jd_text):
     try:
         prompt = f"""
 From the following job description, extract the most important keywords that should be reflected in a resume.
+Return the keywords as a comma-separated string.
 
 Job Description:
 {jd_text[:3000]}
@@ -195,7 +252,7 @@ Job Description:
 
     except Exception as e:
         logger.error(f"[ERROR in extract_keywords_from_jd]: {str(e)}")
-        return "❌ Failed to extract keywords from job description."
+        return ""
 
 def compare_resume_with_keywords(resume_text, keywords_text):
     try:
@@ -217,4 +274,40 @@ def compare_resume_with_keywords(resume_text, keywords_text):
             "present_keywords": [],
             "missing_keywords": [],
             "suggested_keywords": []
+        }
+
+def analyze_job_description(jd_text):
+    try:
+        prompt = f"""
+You are a job description analyzer. Analyze the following job description and extract:
+- Required skills
+- Preferred qualifications
+- Key responsibilities
+- Any specific keywords or phrases critical for resume alignment
+
+Return the results in this JSON format:
+{
+  "required_skills": [],
+  "preferred_qualifications": [],
+  "key_responsibilities": [],
+  "keywords": []
+}
+
+Job Description:
+{jd_text[:3000]}
+        """
+
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return eval(response.choices[0].message.content.strip())
+
+    except Exception as e:
+        logger.error(f"[ERROR in analyze_job_description]: {str(e)}")
+        return {
+            "required_skills": [],
+            "preferred_qualifications": [],
+            "key_responsibilities": [],
+            "keywords": []
         }
