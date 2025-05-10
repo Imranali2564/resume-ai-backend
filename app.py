@@ -6,6 +6,7 @@ import os
 import uuid
 import json
 import re
+from resume_ai_analyzer import generate_resume_summary
 try:
     from docx import Document
     from docx.shared import Pt, Inches, RGBColor
