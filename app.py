@@ -1,3 +1,4 @@
+```python
 import logging
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
@@ -17,7 +18,7 @@ except ImportError as e:
     logging.error(f"Failed to import python-docx: {str(e)}")
     raise
 try:
-        from reportlab.lib.pagesizes import letter
+    from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import inch
@@ -27,16 +28,16 @@ except ImportError as e:
     raise
 try:
     from resume_ai_analyzer import (
-    analyze_resume_with_openai,
-    extract_text_from_pdf,
-    extract_text_from_docx,
-    extract_text_with_ocr,
-    check_ats_compatibility,
-    extract_resume_sections,
-    extract_keywords_from_jd,
-    extract_text_from_resume,
-    compare_resume_with_keywords
-)
+        analyze_resume_with_openai,
+        extract_text_from_pdf,
+        extract_text_from_docx,
+        extract_text_with_ocr,
+        check_ats_compatibility,
+        extract_resume_sections,
+        extract_keywords_from_jd,
+        extract_text_from_resume,
+        compare_resume_with_keywords
+    )
 except ImportError as e:
     logging.error(f"Failed to import resume_ai_analyzer: {str(e)}")
     raise
@@ -259,6 +260,7 @@ def optimize_keywords():
     results = compare_resume_with_keywords(resume_text, jd_keywords)
 
     return jsonify(results)
+
 
 @app.route('/final-resume', methods=['POST'])
 def final_resume():
@@ -937,3 +939,4 @@ if __name__ == '__main__':
     app.run(host="0.0.0.0", port=port)
 
 logger.info("Flask app initialization complete.")
+```
