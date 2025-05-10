@@ -57,7 +57,8 @@ def check_ats_compatibility(file_path):
     text = ""
     ext = os.path.splitext(file_path)[1].lower()
     if ext == ".pdf":
-        text = extract_text_from_pdf(file_path) or extract_text_with_ocr(file_path)
+        text = extract_text_from_pdf(file_path)
+
     elif ext == ".docx":
         text = extract_text_from_docx(file_path)
 
@@ -520,7 +521,7 @@ def compare_resume_with_keywords(resume_text, jd_keywords):
 def fix_resume_formatting(file_path):
     ext = os.path.splitext(file_path)[1].lower()
     if ext == ".pdf":
-        text = extract_text_from_pdf(file_path) or extract_text_with_ocr(file_path)
+        text = extract_text_from_pdf(file_path)
     elif ext == ".docx":
         text = extract_text_from_docx(file_path)
     else:
