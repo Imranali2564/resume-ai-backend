@@ -829,9 +829,22 @@ def convert_format():
     html_temp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"temp_{uuid.uuid4()}.html")
 
     try:
-        # Save the file and check permissions
+        # Save the file with proper permissions
         file.save(upload_path)
         logger.debug(f"Saved uploaded file to {upload_path}")
+
+        # Check if file exists and is readable
+        if not os.path.exists(upload_path):
+            logger.error(f"File not found after saving: {upload_path}")
+            return jsonify({'error': 'File could not be saved properly'}), 500
+
+        os.chmod(upload_path, 0o644)  # Ensure file is readable/writable
+        file_size = os.path.getsize(upload_path) / 1024
+        if file_size == 0:
+            logger.error(f"Uploaded file is empty: {upload_path}")
+            return jsonify({'error': 'Uploaded file is empty'}), 400
+
+        logger.debug(f"File size: {file_size:.2f} KB")
 
         # ✅ TEXT extraction from PDF / DOCX
         if target_format == 'text':
@@ -841,6 +854,9 @@ def convert_format():
                     try:
                         import fitz
                         doc = fitz.open(upload_path)
+                        if doc.page_count == 0:
+                            logger.error("PDF has no pages")
+                            return jsonify({'error': 'PDF file has no pages to extract text from'}), 400
                         text = "\n".join([page.get_text() for page in doc])
                         doc.close()  # Ensure file is closed
                     except ImportError:
@@ -864,7 +880,8 @@ def convert_format():
                     return jsonify({'error': 'Only PDF and DOCX files are supported for text extraction'}), 400
 
                 if not text.strip():
-                    return jsonify({'error': 'No text could be extracted from the file'}), 400
+                    logger.warning("No text extracted from file")
+                    return jsonify({'error': 'No text could be extracted from the file. It might be empty or contain only images.'}), 400
 
                 # Save the text to a temporary file
                 with open(output_path, 'w', encoding='utf-8') as f:
@@ -892,7 +909,12 @@ def convert_format():
 
             try:
                 doc = Document(upload_path)
-                html_content = ''.join([f"<p>{para.text}</p>" for para in doc.paragraphs])
+                paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
+                if not paragraphs:
+                    logger.error("DOCX file is empty or has no readable content")
+                    return jsonify({'error': 'DOCX file is empty or has no readable content'}), 400
+
+                html_content = ''.join([f"<p>{para}</p>" for para in paragraphs])
                 
                 # Save HTML content to a temporary file
                 with open(html_temp_path, 'w', encoding='utf-8') as f:
@@ -923,8 +945,16 @@ def convert_format():
 
             try:
                 doc = fitz.open(upload_path)
+                if doc.page_count == 0:
+                    logger.error("PDF has no pages")
+                    return jsonify({'error': 'PDF file has no pages to convert'}), 400
+
                 text = "\n".join(page.get_text() for page in doc)
                 doc.close()
+
+                if not text.strip():
+                    logger.warning("No text extracted from PDF for DOCX conversion")
+                    return jsonify({'error': 'No text could be extracted from the PDF for conversion. It might contain only images.'}), 400
 
                 # Create a new DOCX document
                 word_doc = Document()
