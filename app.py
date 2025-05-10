@@ -997,6 +997,20 @@ def fix_formatting():
         return jsonify({'error': 'Failed to process resume formatting'}), 500
     finally:
         cleanup_file(filepath)
+        
+@app.route("/generate-resume-summary", methods=["POST"])
+def generate_resume_summary_api():
+    data = request.get_json()
+    name = data.get("name", "")
+    role = data.get("role", "")
+    experience = data.get("experience", "")
+    skills = data.get("skills", "")
+
+    if not name or not role or not experience or not skills:
+        return jsonify({"error": "Missing required fields"}), 400
+
+    summary = generate_resume_summary(name, role, experience, skills)
+    return jsonify({"summary": summary})
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))

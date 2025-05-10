@@ -1,9 +1,0 @@
-- Proofread for any spelling or grammatical errors in the resume.  (⚠️ Could not identify section for this suggestion.)
-
-- Consider adding relevant volunteer work or extracurricular activities. (⚠️ Could not identify section for this suggestion.)
-
-- Include any certifications or training related to telecalling or customer service. (⚠️ Could not identify section for this suggestion.)
-
-
-- Quantify achievements in the telecaller role (e.g., number of calls made, conversion rates). (Fixed)
-- Add a professional summary section highlighting key skills and experience. (Fixed)

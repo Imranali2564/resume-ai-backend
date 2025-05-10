@@ -348,3 +348,24 @@ Job Description:
             "key_responsibilities": [],
             "keywords": []
         }
+def generate_resume_summary(name, role, experience, skills):
+    prompt = f"""
+    Write a concise and professional resume summary for the following candidate:
+
+    Name: {name}
+    Role: {role}
+    Experience: {experience}
+    Skills: {skills}
+
+    Keep it within 3–5 lines. Focus on strengths, clarity, and professionalism.
+    """
+
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[{ "role": "user", "content": prompt }],
+        max_tokens=250,
+        temperature=0.7,
+    )
+
+    summary = response.choices[0].message.content.strip()
+    return summary
