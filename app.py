@@ -45,8 +45,6 @@ except ImportError as e:
 try:
     import fitz  # PyMuPDF for PDF text extraction
     import PyPDF2  # For PDF validation (encryption check)
-    from pdf2image import convert_from_path  # For converting PDF to images for OCR
-    import pytesseract  # For OCR
     import pdfkit  # For DOCX to PDF conversion
 except ImportError as e:
     logging.error(f"Failed to import required dependencies: {str(e)}")
@@ -73,10 +71,6 @@ except Exception as e:
     logger.error(f"Failed to create directories: {str(e)}")
     raise RuntimeError(f"Failed to create directories: {str(e)}")
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-# Path to tesseract executable (update this based on your system)
-pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'  # For Linux/Render
-# For Windows, it might be: r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 def cleanup_file(filepath):
     try:
@@ -120,7 +114,7 @@ def resume_score():
         file.save(filepath)
         ext = os.path.splitext(filepath)[1].lower()
         if ext == ".pdf":
-            resume_text = extract_text_from_pdf(filepath) or extract_text_with_ocr(filepath)
+            resume_text = extract_text_from_pdf(filepath)
         elif ext == ".docx":
             resume_text = extract_text_from_docx(filepath)
         else:
@@ -188,9 +182,6 @@ def check_ats():
 
         if ext == ".pdf":
             resume_text = extract_text_from_pdf(filepath)
-            if not resume_text:
-                logger.debug("Falling back to OCR for PDF text extraction")
-                resume_text = extract_text_with_ocr(filepath)
         elif ext == ".docx":
             resume_text = extract_text_from_docx(filepath)
         else:
@@ -224,7 +215,7 @@ def parse_resume():
         file.save(filepath)
         ext = os.path.splitext(filepath)[1].lower()
         if ext == ".pdf":
-            resume_text = extract_text_from_pdf(filepath) or extract_text_with_ocr(filepath)
+            resume_text = extract_text_from_pdf(filepath)
         elif ext == ".docx":
             resume_text = extract_text_from_docx(filepath)
         else:
@@ -291,8 +282,8 @@ def final_resume():
         file.save(filepath)
         ext = os.path.splitext(filepath)[1].lower()
         if ext == ".pdf":
-            resume_text = extract_text_from_pdf(filepath) or extract_text_with_ocr(filepath)
-        elif ext == ".docx":
+            resume_text = extract_text_from_pdf(filepath)
+        elif ext == gibson".docx":
             resume_text = extract_text_from_docx(filepath)
         else:
             return jsonify({'error': 'Unsupported file format'}), 400
@@ -713,9 +704,6 @@ def generate_cover_letter():
         ext = os.path.splitext(filename)[1].lower()
         if ext == '.pdf':
             resume_text = extract_text_from_pdf(filepath)
-            if not resume_text:
-                logger.debug("Falling back to OCR for PDF text extraction")
-                resume_text = extract_text_with_ocr(filepath)
         elif ext == '.docx':
             resume_text = extract_text_from_docx(filepath)
         else:
@@ -884,7 +872,7 @@ def convert_format():
         if target_format == 'text':
             text = ""
             if ext == '.pdf':
-                # First try PyMuPDF (fitz) for text-based PDFs
+                # Try PyMuPDF (fitz) for text-based PDFs
                 try:
                     doc = fitz.open(upload_path)
                     if doc.page_count == 0:
@@ -895,20 +883,6 @@ def convert_format():
                     logger.info(f"Extracted text with PyMuPDF: {len(text)} characters")
                 except Exception as e:
                     logger.warning(f"PyMuPDF failed to extract text: {str(e)}")
-
-                # If no text extracted, fall back to OCR
-                if not text.strip():
-                    logger.info("No text extracted with PyMuPDF, attempting OCR...")
-                    try:
-                        images = convert_from_path(upload_path)
-                        for i, image in enumerate(images):
-                            page_text = pytesseract.image_to_string(image, lang='eng')
-                            if page_text:
-                                text += page_text + '\n'
-                            logger.info(f"OCR extracted text from page {i + 1}: {len(page_text)} characters")
-                    except Exception as e:
-                        logger.error(f"OCR failed: {str(e)}")
-                        return jsonify({'error': 'Failed to extract text from PDF using OCR. It might be corrupted or contain no readable content.'}), 400
 
             elif ext == '.docx':
                 try:
@@ -968,7 +942,7 @@ def convert_format():
         # PDF to DOCX Conversion
         elif ext == '.pdf' and target_format == 'docx':
             text = ""
-            # First try PyMuPDF (fitz) for text-based PDFs
+            # Try PyMuPDF (fitz) for text-based PDFs
             try:
                 doc = fitz.open(upload_path)
                 if doc.page_count == 0:
@@ -979,20 +953,6 @@ def convert_format():
                 logger.info(f"Extracted text with PyMuPDF for DOCX conversion: {len(text)} characters")
             except Exception as e:
                 logger.warning(f"PyMuPDF failed to extract text for DOCX conversion: {str(e)}")
-
-            # If no text extracted, fall back to OCR
-            if not text.strip():
-                logger.info("No text extracted with PyMuPDF, attempting OCR for DOCX conversion...")
-                try:
-                    images = convert_from_path(upload_path)
-                    for i, image in enumerate(images):
-                        page_text = pytesseract.image_to_string(image, lang='eng')
-                        if page_text:
-                            text += page_text + '\n'
-                        logger.info(f"OCR extracted text from page {i + 1} for DOCX conversion: {len(page_text)} characters")
-                except Exception as e:
-                    logger.error(f"OCR failed for DOCX conversion: {str(e)}")
-                    return jsonify({'error': 'Failed to extract text from PDF using OCR for DOCX conversion. It might be corrupted or contain no readable content.'}), 400
 
             # Final check for extracted text
             if not text.strip():
