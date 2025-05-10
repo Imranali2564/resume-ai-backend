@@ -13,3 +13,4 @@ PyMuPDF
 reportlab
 werkzeug
 pdf2docx
+PyPDF2
