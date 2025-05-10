@@ -360,7 +360,7 @@ def generate_resume_summary(name, role, experience, skills):
     Keep it within 3–5 lines. Focus on strengths, clarity, and professionalism.
     """
 
-    response = openai.ChatCompletion.create(
+    response = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[{ "role": "user", "content": prompt }],
         max_tokens=250,
