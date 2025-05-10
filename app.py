@@ -29,8 +29,7 @@ try:
     from resume_ai_analyzer import (
         analyze_resume_with_openai,
         extract_text_from_pdf,
-        extract_text_from_docx,
-        extract_text_with_ocr,
+        extract_text_from_docx,        
         check_ats_compatibility,
         extract_resume_sections,
         extract_keywords_from_jd,
