@@ -35,10 +35,22 @@ try:
         extract_resume_sections,
         extract_keywords_from_jd,
         extract_text_from_resume,
-        compare_resume_with_keywords
+        compare_resume_with_keywords,
+        analyze_job_description,
+        fix_resume_formatting,
+        generate_section_content
     )
 except ImportError as e:
     logging.error(f"Failed to import resume_ai_analyzer: {str(e)}")
+    raise
+try:
+    import fitz  # PyMuPDF for PDF text extraction
+    import PyPDF2  # For PDF validation (encryption check)
+    from pdf2image import convert_from_path  # For converting PDF to images for OCR
+    import pytesseract  # For OCR
+    import pdfkit  # For DOCX to PDF conversion
+except ImportError as e:
+    logging.error(f"Failed to import required dependencies: {str(e)}")
     raise
 
 logging_level = logging.INFO if os.environ.get("FLASK_ENV") != "development" else logging.DEBUG
@@ -62,6 +74,10 @@ except Exception as e:
     logger.error(f"Failed to create directories: {str(e)}")
     raise RuntimeError(f"Failed to create directories: {str(e)}")
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# Path to tesseract executable (update this based on your system)
+pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'  # For Linux/Render
+# For Windows, it might be: r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 def cleanup_file(filepath):
     try:
@@ -239,7 +255,6 @@ def fix_suggestion():
         if not suggestion or not full_text:
             return jsonify({"error": "Missing suggestion or full resume text"}), 400
 
-        from resume_ai_analyzer import generate_section_content
         result = generate_section_content(suggestion, full_text)
         return jsonify(result)
 
@@ -259,7 +274,6 @@ def optimize_keywords():
     results = compare_resume_with_keywords(resume_text, jd_keywords)
 
     return jsonify(results)
-
 
 @app.route('/final-resume', methods=['POST'])
 def final_resume():
@@ -801,7 +815,6 @@ def analyze_jd():
         if not jd_text:
             return jsonify({'error': 'No job description provided'}), 400
 
-        from resume_ai_analyzer import analyze_job_description
         result = analyze_job_description(jd_text)
 
         return jsonify(result)
@@ -815,12 +828,14 @@ def convert_format():
     target_format = request.form.get('target_format')
 
     if not file or not target_format:
+        logger.error("Missing file or target format in request")
         return jsonify({'error': 'Missing file or target format'}), 400
 
     filename = secure_filename(file.filename)
     ext = os.path.splitext(filename)[1].lower()
     allowed_extensions = {'.pdf', '.docx'}
     if ext not in allowed_extensions:
+        logger.error(f"Unsupported file format: {ext}")
         return jsonify({'error': f'Unsupported file format: {ext}. Please upload a PDF or DOCX file.'}), 400
 
     # Save the uploaded file temporarily
@@ -846,67 +861,84 @@ def convert_format():
 
         logger.debug(f"File size: {file_size:.2f} KB")
 
-        # ✅ TEXT extraction from PDF / DOCX
-        if target_format == 'text':
+        # Validate PDF (check for encryption or corruption)
+        if ext == '.pdf':
             try:
-                text = ""
-                if ext == '.pdf':
-                    try:
-                        import fitz
-                        doc = fitz.open(upload_path)
-                        if doc.page_count == 0:
-                            logger.error("PDF has no pages")
-                            return jsonify({'error': 'PDF file has no pages to extract text from'}), 400
-                        text = "\n".join([page.get_text() for page in doc])
-                        doc.close()  # Ensure file is closed
-                    except ImportError:
-                        logger.error("PyMuPDF (fitz) not installed")
-                        return jsonify({'error': 'Text extraction failed: PyMuPDF dependency missing'}), 500
-                    except Exception as e:
-                        logger.error(f"Error extracting text from PDF: {str(e)}")
-                        return jsonify({'error': f'Text extraction from PDF failed: {str(e)}'}), 500
-                elif ext == '.docx':
-                    try:
-                        from docx import Document
-                        doc = Document(upload_path)
-                        text = "\n".join([para.text for para in doc.paragraphs])
-                    except ImportError:
-                        logger.error("python-docx not installed")
-                        return jsonify({'error': 'Text extraction failed: python-docx dependency missing'}), 500
-                    except Exception as e:
-                        logger.error(f"Error extracting text from DOCX: {str(e)}")
-                        return jsonify({'error': f'Text extraction from DOCX failed: {str(e)}'}), 500
-                else:
-                    return jsonify({'error': 'Only PDF and DOCX files are supported for text extraction'}), 400
-
-                if not text.strip():
-                    logger.warning("No text extracted from file")
-                    return jsonify({'error': 'No text could be extracted from the file. It might be empty or contain only images.'}), 400
-
-                # Save the text to a temporary file
-                with open(output_path, 'w', encoding='utf-8') as f:
-                    f.write(text)
-                
-                # Serve the file with proper headers
-                return send_file(
-                    output_path,
-                    as_attachment=True,
-                    download_name="extracted-text.txt",
-                    mimetype="text/plain"
-                )
+                with open(upload_path, 'rb') as f:
+                    pdf_reader = PyPDF2.PdfReader(f)
+                    if pdf_reader.is_encrypted:
+                        logger.error("Uploaded PDF is encrypted")
+                        return jsonify({'error': 'PDF is encrypted. Please upload an unencrypted PDF.'}), 400
             except Exception as e:
-                logger.error(f"Text extraction failed: {str(e)}")
-                return jsonify({'error': f'Text extraction failed: {str(e)}'}), 500
+                logger.error(f"Invalid or corrupted PDF file: {str(e)}")
+                return jsonify({'error': 'Invalid or corrupted PDF file. Please upload a valid PDF.'}), 400
 
-        # ✅ DOCX to PDF
-        elif ext == '.docx' and target_format == 'pdf':
+        # Validate DOCX (check for corruption)
+        if ext == '.docx':
             try:
-                from docx import Document
-                import pdfkit
-            except ImportError as e:
-                logger.error(f"Missing dependency for DOCX to PDF conversion: {str(e)}")
-                return jsonify({'error': f'Missing dependency for DOCX to PDF conversion: {str(e)}'}), 500
+                doc = Document(upload_path)
+            except Exception as e:
+                logger.error(f"Invalid or corrupted DOCX file: {str(e)}")
+                return jsonify({'error': 'Invalid or corrupted DOCX file. Please upload a valid DOCX.'}), 400
 
+        # Text Extraction (PDF/DOCX to Text)
+        if target_format == 'text':
+            text = ""
+            if ext == '.pdf':
+                # First try PyMuPDF (fitz) for text-based PDFs
+                try:
+                    doc = fitz.open(upload_path)
+                    if doc.page_count == 0:
+                        logger.error("PDF has no pages")
+                        return jsonify({'error': 'PDF file has no pages to extract text from'}), 400
+                    text = "\n".join([page.get_text() for page in doc])
+                    doc.close()
+                    logger.info(f"Extracted text with PyMuPDF: {len(text)} characters")
+                except Exception as e:
+                    logger.warning(f"PyMuPDF failed to extract text: {str(e)}")
+
+                # If no text extracted, fall back to OCR
+                if not text.strip():
+                    logger.info("No text extracted with PyMuPDF, attempting OCR...")
+                    try:
+                        images = convert_from_path(upload_path)
+                        for i, image in enumerate(images):
+                            page_text = pytesseract.image_to_string(image, lang='eng')
+                            if page_text:
+                                text += page_text + '\n'
+                            logger.info(f"OCR extracted text from page {i + 1}: {len(page_text)} characters")
+                    except Exception as e:
+                        logger.error(f"OCR failed: {str(e)}")
+                        return jsonify({'error': 'Failed to extract text from PDF using OCR. It might be corrupted or contain no readable content.'}), 400
+
+            elif ext == '.docx':
+                try:
+                    doc = Document(upload_path)
+                    text = "\n".join([para.text for para in doc.paragraphs])
+                    logger.info(f"Extracted text from DOCX: {len(text)} characters")
+                except Exception as e:
+                    logger.error(f"Error extracting text from DOCX: {str(e)}")
+                    return jsonify({'error': f'Text extraction from DOCX failed: {str(e)}'}), 500
+
+            # Final check for extracted text
+            if not text.strip():
+                logger.warning("No text extracted from file after all attempts")
+                return jsonify({'error': 'No text could be extracted from the file. It might be empty, contain only images, or be unreadable.'}), 400
+
+            # Save the text to a temporary file
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(text)
+            
+            # Serve the file with proper headers
+            return send_file(
+                output_path,
+                as_attachment=True,
+                download_name="extracted-text.txt",
+                mimetype="text/plain"
+            )
+
+        # DOCX to PDF Conversion
+        elif ext == '.docx' and target_format == 'pdf':
             try:
                 doc = Document(upload_path)
                 paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
@@ -934,34 +966,46 @@ def convert_format():
                 logger.error(f"DOCX to PDF conversion failed: {str(e)}")
                 return jsonify({'error': f'DOCX to PDF conversion failed: {str(e)}'}), 500
 
-        # ✅ PDF to DOCX
+        # PDF to DOCX Conversion
         elif ext == '.pdf' and target_format == 'docx':
-            try:
-                import fitz
-                from docx import Document
-            except ImportError as e:
-                logger.error(f"Missing dependency for PDF to DOCX conversion: {str(e)}")
-                return jsonify({'error': f'Missing dependency for PDF to DOCX conversion: {str(e)}'}), 500
-
+            text = ""
+            # First try PyMuPDF (fitz) for text-based PDFs
             try:
                 doc = fitz.open(upload_path)
                 if doc.page_count == 0:
                     logger.error("PDF has no pages")
                     return jsonify({'error': 'PDF file has no pages to convert'}), 400
-
-                text = "\n".join(page.get_text() for page in doc)
+                text = "\n".join([page.get_text() for page in doc])
                 doc.close()
+                logger.info(f"Extracted text with PyMuPDF for DOCX conversion: {len(text)} characters")
+            except Exception as e:
+                logger.warning(f"PyMuPDF failed to extract text for DOCX conversion: {str(e)}")
 
-                if not text.strip():
-                    logger.warning("No text extracted from PDF for DOCX conversion")
-                    return jsonify({'error': 'No text could be extracted from the PDF for conversion. It might contain only images.'}), 400
+            # If no text extracted, fall back to OCR
+            if not text.strip():
+                logger.info("No text extracted with PyMuPDF, attempting OCR for DOCX conversion...")
+                try:
+                    images = convert_from_path(upload_path)
+                    for i, image in enumerate(images):
+                        page_text = pytesseract.image_to_string(image, lang='eng')
+                        if page_text:
+                            text += page_text + '\n'
+                        logger.info(f"OCR extracted text from page {i + 1} for DOCX conversion: {len(page_text)} characters")
+                except Exception as e:
+                    logger.error(f"OCR failed for DOCX conversion: {str(e)}")
+                    return jsonify({'error': 'Failed to extract text from PDF using OCR for DOCX conversion. It might be corrupted or contain no readable content.'}), 400
 
-                # Create a new DOCX document
+            # Final check for extracted text
+            if not text.strip():
+                logger.warning("No text extracted from PDF for DOCX conversion after all attempts")
+                return jsonify({'error': 'No text could be extracted from the PDF for conversion. It might contain only images or be unreadable.'}), 400
+
+            # Create a new DOCX document
+            try:
                 word_doc = Document()
                 word_doc.add_paragraph(text)
                 word_doc.save(output_path)
-                
-                # Serve the DOCX file with proper headers
+                logger.info("Successfully converted PDF to DOCX")
                 return send_file(
                     output_path,
                     as_attachment=True,
@@ -969,10 +1013,11 @@ def convert_format():
                     mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 )
             except Exception as e:
-                logger.error(f"PDF to DOCX conversion failed: {str(e)}")
-                return jsonify({'error': f'PDF to DOCX conversion failed: {str(e)}'}), 500
+                logger.error(f"Failed to create DOCX file: {str(e)}")
+                return jsonify({'error': f'Failed to create DOCX file: {str(e)}'}), 500
 
         else:
+            logger.error("Invalid conversion request")
             return jsonify({'error': 'Invalid conversion request. Only PDF to DOCX, DOCX to PDF, or text extraction are supported.'}), 400
 
     except Exception as e:
@@ -994,7 +1039,6 @@ def fix_formatting():
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     try:
         file.save(filepath)
-        from resume_ai_analyzer import fix_resume_formatting
         result = fix_resume_formatting(filepath)
         return jsonify(result)
     except Exception as e:

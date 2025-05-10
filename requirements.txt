@@ -12,3 +12,4 @@ pdfkit
 PyMuPDF
 reportlab
 werkzeug
+pdf2docx
