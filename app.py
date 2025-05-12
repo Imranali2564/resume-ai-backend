@@ -1129,7 +1129,7 @@ def ask_ai():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({"answer": f\"⚠️ AI error: {str(e)}\"})
+        return jsonify({"answer": "⚠️ AI error: " + str(e)})
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
