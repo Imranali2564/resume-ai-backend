@@ -1072,6 +1072,32 @@ Message:
     except Exception as e:
         logger.error(f"Error sending feedback: {str(e)}")
         return jsonify({"success": False, "error": str(e)})
+    
+@app.route('/ask-ai', methods=['POST'])
+def ask_ai():
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
+        data = request.get_json()
+        question = data.get("question", "")
+        if not question.strip():
+            return jsonify({"answer": "❌ No question provided."})
+
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant specialized in resume building, job applications, and career advice."},
+                {"role": "user", "content": question}
+            ]
+        )
+        answer = response.choices[0].message.content.strip()
+        return jsonify({"answer": answer})
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"answer": f"⚠️ AI response failed: {str(e)}"})
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
