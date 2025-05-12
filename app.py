@@ -1013,6 +1013,66 @@ def generate_resume_summary_api():
     summary = generate_resume_summary(name, role, experience, skills)
     return jsonify({"summary": summary})
 
+@app.route('/send-feedback', methods=['POST'])
+def send_feedback():
+    try:
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        from email.mime.base import MIMEBase
+        from email import encoders
+        import smtplib
+
+        data = request.form
+        name = data.get('name', 'Unknown')
+        email = data.get('email', '')
+        message = data.get('message', '')
+        file = request.files.get('screenshot')
+
+        # Email config
+        sender_email = "help@resumefixerpro.com"
+        receiver_email = "help@resumefixerpro.com"
+        smtp_server = "smtp.hostinger.com"
+        smtp_port = 465
+        smtp_password = os.environ.get("SMTP_PASSWORD")  # Set this in Render or your .env
+
+        msg = MIMEMultipart()
+        msg['From'] = sender_email
+        msg['To'] = receiver_email
+        msg['Subject'] = "New Feedback Submission from ResumeFixerPro"
+
+        body = f"""
+Name: {name}
+Email: {email}
+Message:
+{message}
+        """
+        msg.attach(MIMEText(body, 'plain'))
+
+        if file:
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+
+            part = MIMEBase('application', 'octet-stream')
+            with open(filepath, 'rb') as attachment:
+                part.set_payload(attachment.read())
+            encoders.encode_base64(part)
+            part.add_header('Content-Disposition', f'attachment; filename= {filename}')
+            msg.attach(part)
+
+        server = smtplib.SMTP_SSL(smtp_server, smtp_port)
+        server.login(sender_email, smtp_password)
+        server.send_message(msg)
+        server.quit()
+
+        if file:
+            os.remove(filepath)
+
+        return jsonify({"success": True, "message": "Feedback sent successfully."})
+    except Exception as e:
+        logger.error(f"Error sending feedback: {str(e)}")
+        return jsonify({"success": False, "error": str(e)})
+
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     logger.info(f"Starting Flask app on port {port}")
