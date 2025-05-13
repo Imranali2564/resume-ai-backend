@@ -1130,6 +1130,50 @@ def ask_ai():
         import traceback
         traceback.print_exc()
         return jsonify({"answer": "⚠️ AI error: " + str(e)})
+@app.route('/send-message', methods=['POST'])
+def send_message():
+    try:
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        import smtplib
+
+        data = request.get_json()
+        name = data.get('name', 'Unknown')
+        email = data.get('email', '')
+        message = data.get('message', '')
+
+        sender_email = "help@resumefixerpro.com"
+        receiver_email = "help@resumefixerpro.com"
+        smtp_server = "smtp.hostinger.com"
+        smtp_port = 465
+        smtp_password = os.environ.get("SMTP_PASSWORD")  # use Render env var
+
+        msg = MIMEMultipart()
+        msg['From'] = sender_email
+        msg['To'] = receiver_email
+        msg['Subject'] = "📬 New Contact Message from ResumeFixerPro"
+
+        body = f"""
+New message from Contact Us page:
+
+Name: {name}
+Email: {email}
+
+Message:
+{message}
+        """.strip()
+
+        msg.attach(MIMEText(body, 'plain'))
+
+        server = smtplib.SMTP_SSL(smtp_server, smtp_port)
+        server.login(sender_email, smtp_password)
+        server.send_message(msg)
+        server.quit()
+
+        return jsonify({"success": True, "message": "Message sent successfully!"})
+    except Exception as e:
+        logger.error(f"Error in /send-message: {str(e)}")
+        return jsonify({"success": False, "error": str(e)})
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
