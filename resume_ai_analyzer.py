@@ -19,6 +19,27 @@ def extract_text_from_pdf(file_path):
         logger.error(f"[ERROR in extract_text_from_pdf]: {str(e)}")
         return ""
 
+from PIL import Image
+import pytesseract
+import io
+
+def extract_text_with_ocr(file_path):
+    try:
+        doc = fitz.open(file_path)
+        images = []
+        for page_index in range(len(doc)):
+            for img in doc[page_index].get_images(full=True):
+                xref = img[0]
+                base_image = doc.extract_image(xref)
+                image_bytes = base_image["image"]
+                image = Image.open(io.BytesIO(image_bytes)).convert("L")  # grayscale for OCR
+                text = pytesseract.image_to_string(image)
+                images.append(text)
+        return "\n".join(images).strip()
+    except Exception as e:
+        logger.error(f"[ERROR in extract_text_with_ocr]: {str(e)}")
+        return ""
+
 def extract_text_from_docx(file_path):
     try:
         doc = docx.Document(file_path)
@@ -47,6 +68,10 @@ def extract_text_from_resume(resume_file):
         # Extract text based on file type
         if ext == '.pdf':
             text = extract_text_from_pdf(temp_path)
+if not text.strip():
+    logger.warning("PDF text empty — trying OCR fallback.")
+    text = extract_text_with_ocr(temp_path)
+
         elif ext == '.docx':
             text = extract_text_from_docx(temp_path)
 

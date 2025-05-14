@@ -12,3 +12,5 @@ reportlab
 werkzeug
 pdf2docx
 PyPDF2
+pytesseract
+Pillow
