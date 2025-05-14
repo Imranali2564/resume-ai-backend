@@ -11,7 +11,7 @@ client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 logger = logging.getLogger(__name__)
 
 def extract_text_from_pdf(file_path):
-        try:
+    try:
         doc = fitz.open(file_path)
         text = "\n".join(page.get_text() for page in doc)
         return text.strip()
