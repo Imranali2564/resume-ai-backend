@@ -289,7 +289,7 @@ def final_resume():
     try:
         # Ensure the upload directory exists and is writable
         os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-        logger.debug(f"Using filepath: {filepath}")
+        logger.debug(f"Using filepath: {filepath}, output_path: {output_path}")
 
         # Save the uploaded file
         try:
@@ -534,7 +534,13 @@ def final_resume():
                                 para = doc.add_paragraph(style='List Bullet' if section_key in bullet_sections else None)
                                 para.add_run(line)
 
+                # Ensure the output directory is writable
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
                 doc.save(output_path)
+                if not os.path.exists(output_path):
+                    logger.error(f"DOCX file not created at {output_path}")
+                    return jsonify({'error': 'Failed to create DOCX file on the server'}), 500
+                logger.info(f"DOCX file created successfully at {output_path}")
                 return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.docx",
                                 mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
             except Exception as e:
@@ -544,20 +550,37 @@ def final_resume():
         # Generate PDF format
         elif format_type == 'pdf':
             try:
-                doc = SimpleDocTemplate(output_path, pagesize=letter,
-                                        leftMargin=0.75 * inch, rightMargin=0.75 * inch,
-                                        topMargin=0.5 * inch, bottomMargin=0.5 * inch)
+                # Ensure the output directory is writable
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+                doc = SimpleDocTemplate(
+                    output_path,
+                    pagesize=letter,
+                    leftMargin=0.75 * inch,
+                    rightMargin=0.75 * inch,
+                    topMargin=0.5 * inch,
+                    bottomMargin=0.5 * inch
+                )
                 styles = getSampleStyleSheet()
 
+                # Define styles with error handling
                 styles.add(ParagraphStyle(name='Name', fontSize=16, alignment=1, spaceAfter=6, textColor=HexColor('#0071BC')))
                 styles.add(ParagraphStyle(name='SectionHeading', fontSize=12, spaceBefore=10, spaceAfter=5, textColor=HexColor('#FFFFFF')))
                 styles.add(ParagraphStyle(name='Body', fontSize=11, spaceAfter=6, textColor=HexColor('#323232')))
                 if 'Bullet' not in styles.byName:
-                    styles.add(ParagraphStyle(name='Bullet', fontSize=11, spaceAfter=6,
-                                              leftIndent=0.5 * inch, firstLineIndent=-0.25 * inch,
-                                              bulletFontName='Times-Roman', bulletFontSize=11,
-                                              bulletIndent=0.25 * inch, textColor=HexColor('#323232')))
+                    styles.add(ParagraphStyle(
+                        name='Bullet',
+                        fontSize=11,
+                        spaceAfter=6,
+                        leftIndent=0.5 * inch,
+                        firstLineIndent=-0.25 * inch,
+                        bulletFontName='Times-Roman',
+                        bulletFontSize=11,
+                        bulletIndent=0.25 * inch,
+                        textColor=HexColor('#323232')
+                    ))
 
+                # Build the PDF content
                 story = [
                     Paragraph(f"<b>{name}</b>", styles['Name']),
                     Spacer(1, 12)
@@ -612,7 +635,12 @@ def final_resume():
                                 else:
                                     story.append(Paragraph(line, styles['Body']))
 
+                # Generate the PDF
                 doc.build(story)
+                if not os.path.exists(output_path):
+                    logger.error(f"PDF file not created at {output_path}")
+                    return jsonify({'error': 'Failed to create PDF file on the server'}), 500
+                logger.info(f"PDF file created successfully at {output_path}")
                 return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.pdf", mimetype="application/pdf")
             except Exception as e:
                 logger.error(f"Error generating PDF file: {str(e)}")
@@ -1033,7 +1061,7 @@ def convert_format():
                 doc.close()
                 logger.info(f"Extracted text with PyMuPDF for DOCX conversion: {len(text)} characters")
             except Exception as e:
-                logger.warning(f"Py  (fitz) failed to extract text for DOCX conversion: {str(e)}")
+                logger.warning(f"PyMuPDF (fitz) failed to extract text for DOCX conversion: {str(e)}")
 
             # Final check for extracted text
             if not text.strip():

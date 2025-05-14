@@ -20,7 +20,11 @@ def extract_text_from_pdf(file_path):
         # If no text is extracted, try OCR
         if not text:
             logger.warning(f"No text extracted from {file_path} using PyMuPDF, attempting OCR...")
-            text = extract_text_with_ocr(file_path)
+            try:
+                text = extract_text_with_ocr(file_path)
+            except Exception as ocr_error:
+                logger.error(f"OCR failed for {file_path}: {str(ocr_error)}")
+                return ""  # Return empty string if OCR fails
 
         return text if text.strip() else ""
 
@@ -34,30 +38,66 @@ import io
 
 def extract_text_with_ocr(file_path):
     try:
+        # Check if Tesseract is installed and accessible
+        tesseract_version = pytesseract.get_tesseract_version()
+        logger.info(f"Tesseract version: {tesseract_version}")
+    except Exception as e:
+        logger.error(f"Tesseract OCR engine not found or not installed properly: {str(e)}")
+        raise RuntimeError("Tesseract OCR engine is required for image-based PDF extraction but is not installed or configured correctly.")
+
+    try:
         doc = fitz.open(file_path)
+        if doc.page_count == 0:
+            logger.error(f"PDF {file_path} has no pages")
+            doc.close()
+            return ""
+
         text_parts = []
         for page_index in range(len(doc)):
             page = doc[page_index]
             # Try to get text first
             text = page.get_text().strip()
             if text:
+                logger.debug(f"Text extracted from page {page_index + 1} without OCR")
                 text_parts.append(text)
                 continue
 
             # If no text, extract images and run OCR
-            for img in page.get_images(full=True):
-                xref = img[0]
-                base_image = doc.extract_image(xref)
-                image_bytes = base_image["image"]
-                image = Image.open(io.BytesIO(image_bytes)).convert("L")  # Convert to grayscale for better OCR
-                text = pytesseract.image_to_string(image, lang='eng', config='--psm 6')  # PSM 6 for better text block detection
-                text_parts.append(text.strip())
+            images = page.get_images(full=True)
+            if not images:
+                logger.warning(f"No images found on page {page_index + 1} for OCR")
+                continue
+
+            for img_index, img in enumerate(images):
+                try:
+                    xref = img[0]
+                    base_image = doc.extract_image(xref)
+                    if not base_image:
+                        logger.warning(f"Failed to extract image {img_index + 1} from page {page_index + 1}")
+                        continue
+
+                    image_bytes = base_image["image"]
+                    image = Image.open(io.BytesIO(image_bytes)).convert("L")  # Convert to grayscale for better OCR
+                    # Optimize OCR settings for better accuracy
+                    custom_config = r'--oem 3 --psm 6 -l eng'
+                    text = pytesseract.image_to_string(image, config=custom_config)
+                    if text.strip():
+                        logger.debug(f"OCR extracted text from image {img_index + 1} on page {page_index + 1}: {text[:100]}...")
+                        text_parts.append(text.strip())
+                    else:
+                        logger.warning(f"No text extracted via OCR from image {img_index + 1} on page {page_index + 1}")
+                except Exception as img_error:
+                    logger.error(f"Error processing image {img_index + 1} on page {page_index + 1}: {str(img_error)}")
+                    continue
 
         doc.close()
-        return "\n".join(text_parts).strip()
+        combined_text = "\n".join(text_parts).strip()
+        if not combined_text:
+            logger.warning(f"No text extracted via OCR from {file_path}")
+        return combined_text
     except Exception as e:
         logger.error(f"[ERROR in extract_text_with_ocr]: {str(e)}")
-        return ""
+        raise
 
 def extract_text_from_docx(file_path):
     try:
@@ -362,77 +402,3 @@ def compare_resume_with_keywords(resume_text, keywords_text):
         resume_words = set(resume_text.lower().split())
         keywords = [kw.strip().lower() for kw in keywords_text.split(",") if kw.strip()]
         present = [kw for kw in keywords if kw in resume_words]
-        missing = [kw for kw in keywords if kw not in resume_words]
-        suggested = Counter(missing).most_common(10)
-        suggestions = [kw for kw, _ in suggested]
-
-        return {
-            "present_keywords": present,
-            "missing_keywords": missing,
-            "suggested_keywords": suggestions
-        }
-    except Exception as e:
-        logger.error(f"[ERROR in compare_resume_with_keywords]: {str(e)}")
-        return {
-            "present_keywords": [],
-            "missing_keywords": [],
-            "suggested_keywords": []
-        }
-
-def analyze_job_description(jd_text):
-    try:
-        prompt = f"""
-You are a job description analyzer. Analyze the following job description and extract:
-- Required skills
-- Preferred qualifications
-- Key responsibilities
-- Any specific keywords or phrases critical for resume alignment
-
-Return the results in this JSON format:
-{
-  "required_skills": [],
-  "preferred_qualifications": [],
-  "key_responsibilities": [],
-  "keywords": []
-}
-
-Job Description:
-{jd_text[:3000]}
-        """
-
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return eval(response.choices[0].message.content.strip())
-
-    except Exception as e:
-        logger.error(f"[ERROR in analyze_job_description]: {str(e)}")
-        return {
-            "required_skills": [],
-            "preferred_qualifications": [],
-            "key_responsibilities": [],
-            "keywords": []
-        }
-
-def generate_resume_summary(name, role, experience, skills):
-    prompt = f"""
-    Write a concise and professional resume summary for the following candidate:
-
-    Name: {name}
-    Role: {role}
-    Experience: {experience}
-    Skills: {skills}
-
-    Keep it within 3–5 lines. Focus on strengths, clarity, and professionalism.
-    """
-
-    response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[{ "role": "user", "content": prompt }],
-        max_tokens=250,
-        temperature=0.7,
-    )
-
-    summary = response.choices[0].message.content.strip()
-    return summary
