@@ -65,15 +65,14 @@ def extract_text_from_resume(resume_file):
         os.makedirs('Uploads', exist_ok=True)
         resume_file.save(temp_path)
 
-        # Extract text based on file type
+       # Extract text based on file type
         if ext == '.pdf':
-            text = extract_text_from_pdf(temp_path)
-if not text.strip():
-    logger.warning("PDF text empty — trying OCR fallback.")
-    text = extract_text_with_ocr(temp_path)
-
-        elif ext == '.docx':
-            text = extract_text_from_docx(temp_path)
+    text = extract_text_from_pdf(temp_path)
+    if not text.strip():
+        logger.warning("PDF text empty — trying OCR fallback.")
+        text = extract_text_with_ocr(temp_path)
+elif ext == '.docx':
+    text = extract_text_from_docx(temp_path)
 
         # Clean up the temporary file
         try:
