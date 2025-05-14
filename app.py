@@ -260,39 +260,86 @@ def optimize_keywords():
 
 @app.route('/final-resume', methods=['POST'])
 def final_resume():
-    file = request.files.get('file')
+    # Get the file and other parameters
+    if 'file' not in request.files:
+        logger.error("No file part in the request")
+        return jsonify({'error': 'No file part in the request'}), 400
+
+    file = request.files['file']
     fixes = json.loads(request.form.get('fixes', '[]'))
     format_type = request.args.get('format', 'docx')
     return_sections = request.args.get('return_sections', 'false') == 'true'
 
-    if not file:
-        return jsonify({'error': 'No file uploaded'}), 400
+    if not file or file.filename == '':
+        logger.error("No file selected for upload")
+        return jsonify({'error': 'No file selected for upload'}), 400
 
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
+    # Validate file extension
+    ext = os.path.splitext(file.filename)[1].lower()
+    allowed_extensions = {'.pdf', '.docx'}
+    if ext not in allowed_extensions:
+        logger.error(f"Unsupported file format: {ext}")
+        return jsonify({'error': f'Unsupported file format: {ext}. Please upload a PDF or DOCX file.'}), 400
+
+    # Securely construct filepath
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"fixed_resume_{uuid.uuid4()}.{format_type}")
 
     try:
-        file.save(filepath)
-        ext = os.path.splitext(filepath)[1].lower()
-        
-        if ext == ".pdf":
-            resume_text = extract_text_from_pdf(filepath)
-        elif ext == ".docx":
-            resume_text = extract_text_from_docx(filepath)
-        else:
-            return jsonify({'error': 'Unsupported file format'}), 400
+        # Ensure the upload directory exists and is writable
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+        logger.debug(f"Using filepath: {filepath}")
 
-        if not resume_text.strip():
+        # Save the uploaded file
+        try:
+            file.save(filepath)
+            logger.debug(f"File saved successfully: {filepath}")
+        except Exception as e:
+            logger.error(f"Failed to save file {filepath}: {str(e)}")
+            return jsonify({'error': f'Failed to save uploaded file: {str(e)}'}), 500
+
+        # Verify the file exists and is not empty
+        if not os.path.exists(filepath):
+            logger.error(f"File not found after saving: {filepath}")
+            return jsonify({'error': 'File could not be saved properly'}), 500
+
+        file_size = os.path.getsize(filepath) / 1024  # Size in KB
+        if file_size == 0:
+            logger.error(f"Uploaded file is empty: {filepath}")
+            return jsonify({'error': 'Uploaded file is empty'}), 400
+        logger.debug(f"File size: {file_size:.2f} KB")
+
+        # Extract text from the file
+        try:
+            if ext == ".pdf":
+                resume_text = extract_text_from_pdf(filepath)
+            elif ext == ".docx":
+                resume_text = extract_text_from_docx(filepath)
+            else:
+                return jsonify({'error': 'Unsupported file format'}), 400
+        except Exception as e:
+            logger.error(f"Error extracting text from file {filepath}: {str(e)}")
+            return jsonify({'error': f'Failed to extract text from file: {str(e)}'}), 500
+
+        if not resume_text:
+            logger.error(f"No text extracted from file: {filepath}")
             return jsonify({'error': 'No extractable text found in resume'}), 400
 
-        # ✅ Fix: If resume_text is dict, convert to string
+        # If resume_text is a dict (possible output from extract_text_from_*), convert to string
         if isinstance(resume_text, dict):
             resume_text = resume_text.get("formatted_text") or resume_text.get("text") or json.dumps(resume_text, indent=2)
+            logger.debug(f"Converted resume_text from dict to string: {resume_text[:100]}...")
 
+        if not resume_text.strip():
+            logger.error(f"Extracted text is empty after conversion: {filepath}")
+            return jsonify({'error': 'No extractable text found in resume after conversion'}), 400
+
+        # Extract sections from the resume text
         original_sections = extract_resume_sections(resume_text)
-
         logger.debug(f"Original sections: {json.dumps(original_sections, indent=2)}")
 
+        # Apply fixes to sections
         fixed_sections = {}
         for fix in fixes:
             if "section" in fix:
@@ -309,6 +356,7 @@ def final_resume():
 
         logger.debug(f"Fixed sections: {json.dumps(fixed_sections, indent=2)}")
 
+        # Merge original and fixed sections
         final_sections = original_sections.copy()
         for section, content in fixed_sections.items():
             final_sections[section] = content
@@ -376,7 +424,6 @@ def final_resume():
                 merged_text += f"{display_name}\n{content}\n\n"
 
         final_sections = extract_resume_sections(merged_text)
-
         logger.debug(f"Final deduplicated sections: {json.dumps(final_sections, indent=2)}")
 
         # Extract name from the first line of resume_text or personal_details
@@ -398,6 +445,7 @@ def final_resume():
         if return_sections:
             return jsonify({"sections": final_sections})
 
+        # Generate DOCX format
         if format_type == 'docx':
             doc = Document()
             for s in doc.sections:
@@ -456,8 +504,9 @@ def final_resume():
 
             doc.save(output_path)
             return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.docx",
-                             mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
+        # Generate PDF format
         elif format_type == 'pdf':
             from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
             from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -538,6 +587,7 @@ def final_resume():
 
         else:
             return jsonify({'error': 'Invalid format specified'}), 400
+
     except Exception as e:
         logger.error(f"Error in /final-resume: {str(e)}")
         return jsonify({'error': f'Failed to generate resume: {str(e)}'}), 500
