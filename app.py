@@ -283,6 +283,8 @@ def final_resume():
 
         if not resume_text.strip():
             return jsonify({'error': 'No extractable text found in resume'}), 400
+        if isinstance(resume_text, dict):
+    resume_text = resume_text.get("formatted_text") or resume_text.get("text") or json.dumps(resume_text, indent=2)
 
         original_sections = extract_resume_sections(resume_text)
 
