@@ -12,9 +12,18 @@ logger = logging.getLogger(__name__)
 
 def extract_text_from_pdf(file_path):
     try:
+        # First, try to extract text directly using PyMuPDF
         doc = fitz.open(file_path)
-        text = "\n".join(page.get_text() for page in doc)
-        return text.strip()
+        text = "\n".join(page.get_text() for page in doc).strip()
+        doc.close()
+
+        # If no text is extracted, try OCR
+        if not text:
+            logger.warning(f"No text extracted from {file_path} using PyMuPDF, attempting OCR...")
+            text = extract_text_with_ocr(file_path)
+
+        return text if text.strip() else ""
+
     except Exception as e:
         logger.error(f"[ERROR in extract_text_from_pdf]: {str(e)}")
         return ""
@@ -26,16 +35,26 @@ import io
 def extract_text_with_ocr(file_path):
     try:
         doc = fitz.open(file_path)
-        images = []
+        text_parts = []
         for page_index in range(len(doc)):
-            for img in doc[page_index].get_images(full=True):
+            page = doc[page_index]
+            # Try to get text first
+            text = page.get_text().strip()
+            if text:
+                text_parts.append(text)
+                continue
+
+            # If no text, extract images and run OCR
+            for img in page.get_images(full=True):
                 xref = img[0]
                 base_image = doc.extract_image(xref)
                 image_bytes = base_image["image"]
-                image = Image.open(io.BytesIO(image_bytes)).convert("L")  # grayscale for OCR
-                text = pytesseract.image_to_string(image)
-                images.append(text)
-        return "\n".join(images).strip()
+                image = Image.open(io.BytesIO(image_bytes)).convert("L")  # Convert to grayscale for better OCR
+                text = pytesseract.image_to_string(image, lang='eng', config='--psm 6')  # PSM 6 for better text block detection
+                text_parts.append(text.strip())
+
+        doc.close()
+        return "\n".join(text_parts).strip()
     except Exception as e:
         logger.error(f"[ERROR in extract_text_with_ocr]: {str(e)}")
         return ""
@@ -61,16 +80,13 @@ def extract_text_from_resume(resume_file):
 
         # Save the file temporarily
         filename = secure_filename(resume_file.filename)
-        temp_path = os.path.join('uploads', filename)
+        temp_path = os.path.join('Uploads', filename)
         os.makedirs('Uploads', exist_ok=True)
         resume_file.save(temp_path)
 
         # Extract text based on file type
         if ext == '.pdf':
             text = extract_text_from_pdf(temp_path)
-            if not text.strip():
-                logger.warning("PDF text empty — trying OCR fallback.")
-                text = extract_text_with_ocr(temp_path)
         elif ext == '.docx':
             text = extract_text_from_docx(temp_path)
 
@@ -398,6 +414,7 @@ Job Description:
             "key_responsibilities": [],
             "keywords": []
         }
+
 def generate_resume_summary(name, role, experience, skills):
     prompt = f"""
     Write a concise and professional resume summary for the following candidate:

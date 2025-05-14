@@ -310,10 +310,33 @@ def final_resume():
             return jsonify({'error': 'Uploaded file is empty'}), 400
         logger.debug(f"File size: {file_size:.2f} KB")
 
+        # Validate PDF for encryption
+        if ext == '.pdf':
+            try:
+                with open(filepath, 'rb') as f:
+                    pdf_reader = PyPDF2.PdfReader(f)
+                    if pdf_reader.is_encrypted:
+                        logger.error("Uploaded PDF is encrypted")
+                        return jsonify({'error': 'PDF is encrypted. Please upload an unencrypted PDF.'}), 400
+            except Exception as e:
+                logger.error(f"Invalid or corrupted PDF file: {str(e)}")
+                return jsonify({'error': 'Invalid or corrupted PDF file. Please upload a valid PDF.'}), 400
+
+        # Validate DOCX for corruption
+        if ext == '.docx':
+            try:
+                doc = Document(filepath)
+            except Exception as e:
+                logger.error(f"Invalid or corrupted DOCX file: {str(e)}")
+                return jsonify({'error': 'Invalid or corrupted DOCX file. Please upload a valid DOCX.'}), 400
+
         # Extract text from the file
         try:
             if ext == ".pdf":
                 resume_text = extract_text_from_pdf(filepath)
+                if not resume_text.strip():
+                    logger.warning("No text extracted from PDF. It might be image-based.")
+                    return jsonify({'error': 'No extractable text found in PDF. It might be image-based.'}), 400
             elif ext == ".docx":
                 resume_text = extract_text_from_docx(filepath)
             else:
@@ -336,8 +359,12 @@ def final_resume():
             return jsonify({'error': 'No extractable text found in resume after conversion'}), 400
 
         # Extract sections from the resume text
-        original_sections = extract_resume_sections(resume_text)
-        logger.debug(f"Original sections: {json.dumps(original_sections, indent=2)}")
+        try:
+            original_sections = extract_resume_sections(resume_text)
+            logger.debug(f"Original sections: {json.dumps(original_sections, indent=2)}")
+        except Exception as e:
+            logger.error(f"Error extracting sections from resume text: {str(e)}")
+            return jsonify({'error': f'Failed to extract resume sections: {str(e)}'}), 500
 
         # Apply fixes to sections
         fixed_sections = {}
@@ -423,8 +450,12 @@ def final_resume():
                 }.get(section, section.replace("_", " ").title())
                 merged_text += f"{display_name}\n{content}\n\n"
 
-        final_sections = extract_resume_sections(merged_text)
-        logger.debug(f"Final deduplicated sections: {json.dumps(final_sections, indent=2)}")
+        try:
+            final_sections = extract_resume_sections(merged_text)
+            logger.debug(f"Final deduplicated sections: {json.dumps(final_sections, indent=2)}")
+        except Exception as e:
+            logger.error(f"Error deduplicating sections: {str(e)}")
+            return jsonify({'error': f'Failed to deduplicate resume sections: {str(e)}'}), 500
 
         # Extract name from the first line of resume_text or personal_details
         name = ""
@@ -447,143 +478,145 @@ def final_resume():
 
         # Generate DOCX format
         if format_type == 'docx':
-            doc = Document()
-            for s in doc.sections:
-                s.top_margin = s.bottom_margin = Inches(0.5)
-                s.left_margin = s.right_margin = Inches(0.75)
+            try:
+                doc = Document()
+                for s in doc.sections:
+                    s.top_margin = s.bottom_margin = Inches(0.5)
+                    s.left_margin = s.right_margin = Inches(0.75)
 
-            # Add only the name at the top
-            heading = doc.add_heading(name, level=1)
-            heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            run = heading.runs[0]
-            run.font.size = Pt(16)
-            run.bold = True
-            run.font.color.rgb = RGBColor(0, 113, 188)
+                # Add only the name at the top
+                heading = doc.add_heading(name, level=1)
+                heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run = heading.runs[0]
+                run.font.size = Pt(16)
+                run.bold = True
+                run.font.color.rgb = RGBColor(0, 113, 188)
 
-            doc.add_paragraph()  # Add spacing after the name
+                doc.add_paragraph()  # Add spacing after the name
 
-            section_display_names = {
-                "personal_details": "Personal Details",
-                "summary": "Professional Summary",
-                "skills": "Skills",
-                "experience": "Experience",
-                "education": "Education",
-                "certifications": "Certifications",
-                "languages": "Languages",
-                "hobbies": "Hobbies",
-                "additional_courses": "Additional Courses",
-                "projects": "Projects",
-                "volunteer_experience": "Volunteer Experience",
-                "achievements": "Achievements",
-                "publications": "Publications",
-                "references": "References",
-                "miscellaneous": "Miscellaneous"
-            }
+                section_display_names = {
+                    "personal_details": "Personal Details",
+                    "summary": "Professional Summary",
+                    "skills": "Skills",
+                    "experience": "Experience",
+                    "education": "Education",
+                    "certifications": "Certifications",
+                    "languages": "Languages",
+                    "hobbies": "Hobbies",
+                    "additional_courses": "Additional Courses",
+                    "projects": "Projects",
+                    "volunteer_experience": "Volunteer Experience",
+                    "achievements": "Achievements",
+                    "publications": "Publications",
+                    "references": "References",
+                    "miscellaneous": "Miscellaneous"
+                }
 
-            # Ensure "personal_details" is the first section
-            ordered_sections = [("personal_details", final_sections.get("personal_details", ""))]
-            for section_key, content in final_sections.items():
-                if section_key != "personal_details" and content:
-                    ordered_sections.append((section_key, content))
+                # Ensure "personal_details" is the first section
+                ordered_sections = [("personal_details", final_sections.get("personal_details", ""))]
+                for section_key, content in final_sections.items():
+                    if section_key != "personal_details" and content:
+                        ordered_sections.append((section_key, content))
 
-            for section_key, content in ordered_sections:
-                if content:
-                    display_name = section_display_names.get(section_key, ' '.join(word.capitalize() for word in section_key.split('_')))
-                    p = doc.add_paragraph()
-                    run = p.add_run(display_name.upper())
-                    run.bold = True
-                    run.font.color.rgb = RGBColor(255, 255, 255)
-                    shading = parse_xml(r'<w:shd {} w:fill="0071BC"/>'.format(nsdecls('w')))
-                    p._element.get_or_add_pPr().append(shading)
+                for section_key, content in ordered_sections:
+                    if content:
+                        display_name = section_display_names.get(section_key, ' '.join(word.capitalize() for word in section_key.split('_')))
+                        p = doc.add_paragraph()
+                        run = p.add_run(display_name.upper())
+                        run.bold = True
+                        run.font.color.rgb = RGBColor(255, 255, 255)
+                        shading = parse_xml(r'<w:shd {} w:fill="0071BC"/>'.format(nsdecls('w')))
+                        p._element.get_or_add_pPr().append(shading)
 
-                    for line in content.splitlines():
-                        if line:
-                            bullet_sections = ["skills", "experience", "hobbies", "additional_courses", "projects", "volunteer_experience", "achievements"]
-                            para = doc.add_paragraph(style='List Bullet' if section_key in bullet_sections else None)
-                            para.add_run(line)
+                        for line in content.splitlines():
+                            if line:
+                                bullet_sections = ["skills", "experience", "hobbies", "additional_courses", "projects", "volunteer_experience", "achievements"]
+                                para = doc.add_paragraph(style='List Bullet' if section_key in bullet_sections else None)
+                                para.add_run(line)
 
-            doc.save(output_path)
-            return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.docx",
-                            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                doc.save(output_path)
+                return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.docx",
+                                mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            except Exception as e:
+                logger.error(f"Error generating DOCX file: {str(e)}")
+                return jsonify({'error': f'Failed to generate DOCX file: {str(e)}'}), 500
 
         # Generate PDF format
         elif format_type == 'pdf':
-            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-            from reportlab.lib.pagesizes import letter
-            from reportlab.lib.units import inch
-            from reportlab.lib.colors import HexColor
+            try:
+                doc = SimpleDocTemplate(output_path, pagesize=letter,
+                                        leftMargin=0.75 * inch, rightMargin=0.75 * inch,
+                                        topMargin=0.5 * inch, bottomMargin=0.5 * inch)
+                styles = getSampleStyleSheet()
 
-            doc = SimpleDocTemplate(output_path, pagesize=letter,
-                                    leftMargin=0.75 * inch, rightMargin=0.75 * inch,
-                                    topMargin=0.5 * inch, bottomMargin=0.5 * inch)
-            styles = getSampleStyleSheet()
+                styles.add(ParagraphStyle(name='Name', fontSize=16, alignment=1, spaceAfter=6, textColor=HexColor('#0071BC')))
+                styles.add(ParagraphStyle(name='SectionHeading', fontSize=12, spaceBefore=10, spaceAfter=5, textColor=HexColor('#FFFFFF')))
+                styles.add(ParagraphStyle(name='Body', fontSize=11, spaceAfter=6, textColor=HexColor('#323232')))
+                if 'Bullet' not in styles.byName:
+                    styles.add(ParagraphStyle(name='Bullet', fontSize=11, spaceAfter=6,
+                                              leftIndent=0.5 * inch, firstLineIndent=-0.25 * inch,
+                                              bulletFontName='Times-Roman', bulletFontSize=11,
+                                              bulletIndent=0.25 * inch, textColor=HexColor('#323232')))
 
-            styles.add(ParagraphStyle(name='Name', fontSize=16, alignment=1, spaceAfter=6, textColor=HexColor('#0071BC')))
-            styles.add(ParagraphStyle(name='SectionHeading', fontSize=12, spaceBefore=10, spaceAfter=5, textColor=HexColor('#FFFFFF')))
-            styles.add(ParagraphStyle(name='Body', fontSize=11, spaceAfter=6, textColor=HexColor('#323232')))
-            if 'Bullet' not in styles.byName:
-                styles.add(ParagraphStyle(name='Bullet', fontSize=11, spaceAfter=6,
-                                          leftIndent=0.5 * inch, firstLineIndent=-0.25 * inch,
-                                          bulletFontName='Times-Roman', bulletFontSize=11,
-                                          bulletIndent=0.25 * inch, textColor=HexColor('#323232')))
+                story = [
+                    Paragraph(f"<b>{name}</b>", styles['Name']),
+                    Spacer(1, 12)
+                ]
 
-            story = [
-                Paragraph(f"<b>{name}</b>", styles['Name']),
-                Spacer(1, 12)
-            ]
+                section_display_names = {
+                    "personal_details": "Personal Details",
+                    "summary": "Professional Summary",
+                    "skills": "Skills",
+                    "experience": "Experience",
+                    "education": "Education",
+                    "certifications": "Certifications",
+                    "languages": "Languages",
+                    "hobbies": "Hobbies",
+                    "additional_courses": "Additional Courses",
+                    "projects": "Projects",
+                    "volunteer_experience": "Volunteer Experience",
+                    "achievements": "Achievements",
+                    "publications": "Publications",
+                    "references": "References",
+                    "miscellaneous": "Miscellaneous"
+                }
 
-            section_display_names = {
-                "personal_details": "Personal Details",
-                "summary": "Professional Summary",
-                "skills": "Skills",
-                "experience": "Experience",
-                "education": "Education",
-                "certifications": "Certifications",
-                "languages": "Languages",
-                "hobbies": "Hobbies",
-                "additional_courses": "Additional Courses",
-                "projects": "Projects",
-                "volunteer_experience": "Volunteer Experience",
-                "achievements": "Achievements",
-                "publications": "Publications",
-                "references": "References",
-                "miscellaneous": "Miscellaneous"
-            }
+                # Ensure "personal_details" is the first section
+                ordered_sections = [("personal_details", final_sections.get("personal_details", ""))]
+                for section_key, content in final_sections.items():
+                    if section_key != "personal_details" and content:
+                        ordered_sections.append((section_key, content))
 
-            # Ensure "personal_details" is the first section
-            ordered_sections = [("personal_details", final_sections.get("personal_details", ""))]
-            for section_key, content in final_sections.items():
-                if section_key != "personal_details" and content:
-                    ordered_sections.append((section_key, content))
+                for section_key, content in ordered_sections:
+                    if content:
+                        display_name = section_display_names.get(section_key, ' '.join(word.capitalize() for word in section_key.split('_')))
+                        heading = Table([[Paragraph(f"<b>{display_name.upper()}</b>", styles['SectionHeading'])]], colWidths=[6.5 * inch])
+                        heading.setStyle(TableStyle([
+                            ('BACKGROUND', (0, 0), (-1, -1), HexColor('#0071BC')),
+                            ('TEXTCOLOR', (0, 0), (-1, -1), HexColor('#FFFFFF')),
+                            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                            ('FONTNAME', (0, 0), (-1, -1), 'Times-Roman'),
+                            ('FONTSIZE', (0, 0), (-1, -1), 12),
+                            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+                            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+                            ('TOPPADDING', (0, 0), (-1, -1), 5),
+                            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                        ]))
+                        story.append(heading)
 
-            for section_key, content in ordered_sections:
-                if content:
-                    display_name = section_display_names.get(section_key, ' '.join(word.capitalize() for word in section_key.split('_')))
-                    heading = Table([[Paragraph(f"<b>{display_name.upper()}</b>", styles['SectionHeading'])]], colWidths=[6.5 * inch])
-                    heading.setStyle(TableStyle([
-                        ('BACKGROUND', (0, 0), (-1, -1), HexColor('#0071BC')),
-                        ('TEXTCOLOR', (0, 0), (-1, -1), HexColor('#FFFFFF')),
-                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                        ('FONTNAME', (0, 0), (-1, -1), 'Times-Roman'),
-                        ('FONTSIZE', (0, 0), (-1, -1), 12),
-                        ('LEFTPADDING', (0, 0), (-1, -1), 10),
-                        ('RIGHTPADDING', (0, 0), (-1, -1), 10),
-                        ('TOPPADDING', (0, 0), (-1, -1), 5),
-                        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-                    ]))
-                    story.append(heading)
+                        for line in content.splitlines():
+                            if line:
+                                bullet_sections = ["skills", "experience", "hobbies", "additional_courses", "projects", "volunteer_experience", "achievements"]
+                                if section_key in bullet_sections:
+                                    story.append(Paragraph(f"• {line}", styles['Bullet']))
+                                else:
+                                    story.append(Paragraph(line, styles['Body']))
 
-                    for line in content.splitlines():
-                        if line:
-                            bullet_sections = ["skills", "experience", "hobbies", "additional_courses", "projects", "volunteer_experience", "achievements"]
-                            if section_key in bullet_sections:
-                                story.append(Paragraph(f"• {line}", styles['Bullet']))
-                            else:
-                                story.append(Paragraph(line, styles['Body']))
-
-            doc.build(story)
-            return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.pdf", mimetype="application/pdf")
+                doc.build(story)
+                return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.pdf", mimetype="application/pdf")
+            except Exception as e:
+                logger.error(f"Error generating PDF file: {str(e)}")
+                return jsonify({'error': f'Failed to generate PDF file: {str(e)}'}), 500
 
         else:
             return jsonify({'error': 'Invalid format specified'}), 400
@@ -1000,7 +1033,7 @@ def convert_format():
                 doc.close()
                 logger.info(f"Extracted text with PyMuPDF for DOCX conversion: {len(text)} characters")
             except Exception as e:
-                logger.warning(f"PyMuPDF failed to extract text for DOCX conversion: {str(e)}")
+                logger.warning(f"Py  (fitz) failed to extract text for DOCX conversion: {str(e)}")
 
             # Final check for extracted text
             if not text.strip():
