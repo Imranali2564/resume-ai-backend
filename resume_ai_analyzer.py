@@ -42,8 +42,8 @@ def extract_text_with_ocr(file_path):
         tesseract_version = pytesseract.get_tesseract_version()
         logger.info(f"Tesseract version: {tesseract_version}")
     except Exception as e:
-        logger.error(f"Tesseract OCR engine not found or not installed properly: {str(e)}")
-        raise RuntimeError("Tesseract OCR engine is required for image-based PDF extraction but is not installed or configured correctly.")
+        logger.error(f"Tesseract OCR engine not found: {str(e)}. Falling back to empty text.")
+        return ""  # Fallback to empty text instead of raising error
 
     try:
         doc = fitz.open(file_path)
@@ -77,8 +77,7 @@ def extract_text_with_ocr(file_path):
                         continue
 
                     image_bytes = base_image["image"]
-                    image = Image.open(io.BytesIO(image_bytes)).convert("L")  # Convert to grayscale for better OCR
-                    # Optimize OCR settings for better accuracy
+                    image = Image.open(io.BytesIO(image_bytes)).convert("L")
                     custom_config = r'--oem 3 --psm 6 -l eng'
                     text = pytesseract.image_to_string(image, config=custom_config)
                     if text.strip():
@@ -97,7 +96,7 @@ def extract_text_with_ocr(file_path):
         return combined_text
     except Exception as e:
         logger.error(f"[ERROR in extract_text_with_ocr]: {str(e)}")
-        raise
+        return ""  # Fallback to empty text
 
 def extract_text_from_docx(file_path):
     try:
@@ -120,8 +119,8 @@ def extract_text_from_resume(resume_file):
 
         # Save the file temporarily
         filename = secure_filename(resume_file.filename)
-        temp_path = os.path.join('Uploads', filename)
-        os.makedirs('Uploads', exist_ok=True)
+        temp_path = os.path.join('/tmp/Uploads', filename)  # Use /tmp for Render compatibility
+        os.makedirs('/tmp/Uploads', exist_ok=True)
         resume_file.save(temp_path)
 
         # Extract text based on file type
@@ -402,3 +401,72 @@ def compare_resume_with_keywords(resume_text, keywords_text):
         resume_words = set(resume_text.lower().split())
         keywords = [kw.strip().lower() for kw in keywords_text.split(",") if kw.strip()]
         present = [kw for kw in keywords if kw in resume_words]
+        missing = [kw for kw in keywords if kw not in resume_words]
+        return {
+            "present_keywords": present,
+            "missing_keywords": missing,
+            "match_percentage": round((len(present) / len(keywords)) * 100, 2) if keywords else 0
+        }
+    except Exception as e:
+        logger.error(f"[ERROR in compare_resume_with_keywords]: {str(e)}")
+        return {"present_keywords": [], "missing_keywords": [], "match_percentage": 0}
+
+def analyze_job_description(jd_text):
+    try:
+        prompt = f"""
+You are a job description analyzer. Analyze the following job description and return a structured analysis in this format:
+
+{
+  "required_skills": ["skill1", "skill2", ...],
+  "preferred_skills": ["skill3", "skill4", ...],
+  "experience_level": "Entry-level/Mid-level/Senior-level",
+  "education": "Bachelor's in XYZ or equivalent",
+  "keywords": ["keyword1", "keyword2", ...]
+}
+
+Identify required and preferred skills, experience level, education requirements, and important keywords.
+
+Job Description:
+{jd_text[:3000]}
+        """
+
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return json.loads(response.choices[0].message.content.strip())
+
+    except Exception as e:
+        logger.error(f"[ERROR in analyze_job_description]: {str(e)}")
+        return {
+            "required_skills": [],
+            "preferred_skills": [],
+            "experience_level": "Unknown",
+            "education": "Not specified",
+            "keywords": []
+        }
+
+def generate_resume_summary(name, role, experience, skills):
+    try:
+        prompt = f"""
+You are a resume writing expert. Write a concise 2-3 line professional summary for a resume based on the following details:
+
+Name: {name}
+Role: {role}
+Experience: {experience}
+Skills: {skills}
+
+Example:
+A dedicated Software Engineer with over 3 years of experience in developing scalable web applications. Proficient in Python, JavaScript, and cloud technologies, with a proven track record of delivering high-quality solutions. Passionate about optimizing code and improving user experiences.
+
+Summary:
+"""
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        logger.error(f"[ERROR in generate_resume_summary]: {str(e)}")
+        return f"A {role} with {experience} of experience, skilled in {skills}. Committed to delivering high-quality results."

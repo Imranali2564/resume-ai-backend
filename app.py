@@ -62,8 +62,8 @@ logger.info("Starting Flask app initialization...")
 app = Flask(__name__, static_url_path='/static')
 CORS(app, resources={r"/*": {"origins": "https://resumefixerpro.com"}})
 
-UPLOAD_FOLDER = 'Uploads'
-STATIC_FOLDER = 'static'
+UPLOAD_FOLDER = '/tmp/Uploads'  # Use /tmp for Render compatibility
+STATIC_FOLDER = '/tmp/static'
 try:
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     os.makedirs(STATIC_FOLDER, exist_ok=True)
