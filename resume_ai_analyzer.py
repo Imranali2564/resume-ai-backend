@@ -267,19 +267,36 @@ Resume:
         logger.error(f"[ERROR in generate_section_content]: {str(e)}")
         return {"error": "Failed to generate section content."}
 
+import json
+
 def extract_resume_sections(text):
     try:
         prompt = f"""
-Split the following resume text into sections like:
-- Objective
-- Education
-- Experience
-- Skills
-- Certifications
-- Projects
-- Achievements
+Split the following resume text into structured sections. Return a dictionary in JSON format where each key is a lowercase, underscore-separated section name (e.g., 'work_experience') and the value is the content.
 
-Return a dictionary where each key is a section name (lowercase, underscore-separated, e.g., 'work_experience') and the value is the content of that section as a string. If a section is not present, exclude it from the dictionary. Ensure the output is a valid JSON string.
+Include common sections like:
+- summary
+- objective
+- education
+- work_experience
+- internship
+- projects
+- technical_skills
+- soft_skills
+- certifications
+- courses
+- achievements
+- awards
+- languages
+- hobbies
+- extracurricular
+- volunteering
+- publications
+- research_projects
+- strengths
+- references
+
+Exclude any section that is not found. Ensure the output is valid JSON.
 
 Resume:
 {text[:4000]}
@@ -289,9 +306,18 @@ Resume:
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
-        sections = eval(response.choices[0].message.content.strip())
+
+        raw_output = response.choices[0].message.content.strip()
+
+        # Replace null with empty string
+        clean_output = raw_output.replace("null", "\"\"")
+
+        sections = json.loads(clean_output)
         return sections
 
+    except json.JSONDecodeError as e:
+        logger.error(f"[JSON Decode Error in extract_resume_sections]: {str(e)}")
+        return {}
     except Exception as e:
         logger.error(f"[ERROR in extract_resume_sections]: {str(e)}")
         return {}
