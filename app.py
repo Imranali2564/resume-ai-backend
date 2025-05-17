@@ -87,24 +87,455 @@ def health_check():
 
 @app.route('/upload', methods=['POST'])
 def upload_resume():
-    file = request.files.get('file')
-    atsfix = request.form.get('atsfix') == 'true'
+    file = request.files.get('resume')
     if not file or file.filename == '':
         return jsonify({'error': 'No file uploaded'}), 400
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
     try:
         file.save(filepath)
-        result = analyze_resume_with_openai(filepath, atsfix=atsfix)
-        if "error" in result:
-            logger.warning(f"Failed to analyze resume: {result['error']}")
-            return jsonify({"suggestions": "Unable to generate suggestions. Please check if the API key is set."})
-        return jsonify(result)
+        resume_text = extract_text_from_resume(file)
+        if not resume_text:
+            return jsonify({'error': 'Failed to extract text from resume.'}), 500
+        return jsonify({'resume_text': resume_text})
     except Exception as e:
         logger.error(f"Error in /upload: {str(e)}")
-        return jsonify({"suggestions": "Unable to generate suggestions. Please check if the API key is set."})
+        return jsonify({'error': 'Failed to extract resume text'}), 500
     finally:
         cleanup_file(filepath)
 
+@app.route('/extract-sections', methods=['POST'])
+def extract_sections():
+    try:
+        data = request.get_json()
+        text = data.get('text')
+        if not text:
+            return jsonify({'error': 'No text provided'}), 400
+        sections = extract_resume_sections(text)
+        for key in sections:
+            if isinstance(sections[key], list):
+                sections[key] = '\n'.join(sections[key]).strip()
+        return jsonify(sections)
+    except Exception as e:
+        logger.error(f"Error in /extract-sections: {str(e)}")
+        return jsonify({'error': 'Failed to extract sections'}), 500
+
+@app.route('/ats-check', methods=['POST'])
+def check_ats():
+    file = request.files.get('resume')
+    if not file or file.filename == '':
+        return jsonify({'error': 'No file selected for upload'}), 400
+    ext = os.path.splitext(file.filename)[1].lower()
+    allowed_extensions = {'.pdf', '.docx'}
+    if ext not in allowed_extensions:
+        return jsonify({'error': f'Unsupported file format: {ext}. Please upload a PDF or DOCX file.'}), 400
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    try:
+        file.save(filepath)
+        ats_result = check_ats_compatibility(filepath)
+        if not ats_result or not isinstance(ats_result, dict) or not ats_result.get("issues"):
+            resume_text = extract_text_from_pdf(filepath) if ext == ".pdf" else extract_text_from_docx(filepath)
+            ats_issues = []
+            if not re.search(r'[\w\.-]+@[\w\.-]+', resume_text):
+                ats_issues.append("Missing email address - ATS systems often require contact information.")
+            if len(resume_text.splitlines()) < 10:
+                ats_issues.append("Resume content is too short - ATS systems may not parse it effectively.")
+            if not re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', resume_text):
+                ats_issues.append("Missing location - ATS systems often look for location details.")
+            ats_result = {"issues": ats_issues, "score": max(0, 100 - len(ats_issues) * 20)}
+        return jsonify(ats_result)
+    except Exception as e:
+        logger.error(f"Error in /ats-check: {str(e)}")
+        return jsonify({'error': 'Failed to check ATS compatibility'}), 500
+    finally:
+        cleanup_file(filepath)
+
+@app.route('/analyze', methods=['POST'])
+def analyze_resume():
+    try:
+        data = request.get_json()
+        file_path = data.get('file_path')
+        if not file_path or not os.path.exists(file_path):
+            return jsonify({'error': 'Invalid file path'}), 400
+        result = analyze_resume_with_openai(file_path, atsfix=False)
+        if "error" in result:
+            return jsonify({"suggestions": "Unable to generate suggestions. Please check if the API key is set."})
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Error in /analyze: {str(e)}")
+        return jsonify({'error': 'Failed to analyze resume'}), 500
+
+@app.route("/fix-suggestion", methods=["POST"])
+def fix_suggestion():
+    try:
+        data = request.get_json()
+        suggestion = data.get("suggestion")
+        full_text = data.get("full_text")  # Adjusted to match frontend payload
+
+        if not suggestion or not full_text:
+            return jsonify({"error": "Missing suggestion or full text"}), 400
+
+        result = generate_section_content(suggestion, full_text)
+        if 'error' in result:
+            logger.error(f"Error in generate_section_content: {result['error']}")
+            return jsonify({'error': result['error']}), 500
+
+        return jsonify(result)
+
+    except Exception as e:
+        logger.error(f"Error in /fix-suggestion: {str(e)}")
+        return jsonify({"error": f"Failed to process suggestion: {str(e)}"}), 500
+
+@app.route('/preview-resume', methods=['POST'])
+def preview_resume():
+    data = request.get_json()
+    sections = data.get('sections')
+    if not sections:
+        return jsonify({'error': 'No sections provided'}), 400
+    formatted_resume = []
+    for section, content in sections.items():
+        section_title = section.replace('_', ' ').upper()
+        formatted_resume.append(section_title)
+        lines = content.split('\n')
+        for line in lines:
+            line = line.strip()
+            if line:
+                if not line.startswith('- '):
+                    line = '- ' + line
+                formatted_resume.append(line)
+        formatted_resume.append('')
+    resume_text = '\n'.join(formatted_resume).strip()
+    return jsonify({'preview_text': resume_text})
+
+@app.route('/final-resume', methods=['POST'])
+def final_resume():
+    data = request.get_json()
+    sections = data.get('sections')
+    if not sections:
+        return jsonify({'error': 'No sections provided'}), 400
+
+    format_type = request.args.get('format', 'docx')
+    output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"fixed_resume_{uuid.uuid4()}.{format_type}")
+
+    try:
+        # Extract name, role, and contact details
+        name = ""
+        role = ""
+        contact = {'phone': "", 'email': "", 'location': "", 'website': ""}
+        if 'personal_details' in sections:
+            lines = sections['personal_details'].split('\n')
+            for i, line in enumerate(lines):
+                line = line.strip()
+                if i == 0 and not line.includes(":"):
+                    name = line
+                elif "technical service representative" in line.lower():
+                    role = line
+                elif "📞" in line or "phone" in line.lower():
+                    contact['phone'] = line.replace("📞", "").strip()
+                elif "📧" in line or "email" in line.lower():
+                    contact['email'] = line.replace("📧", "").strip()
+                elif "📍" in line or "city" in line.lower():
+                    contact['location'] = line.replace("📍", "").strip()
+                elif "🌐" in line or "www" in line.lower():
+                    contact['website'] = line.replace("🌐", "").strip()
+
+        if not name:
+            name = "Riya Sharma"
+
+        if format_type == 'docx':
+            doc = Document()
+            for s in doc.sections:
+                s.top_margin = s.bottom_margin = Inches(0.5)
+                s.left_margin = s.right_margin = Inches(0.75)
+
+            # Name and Role (centered)
+            heading = doc.add_heading(name, level=1)
+            heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = heading.runs[0]
+            run.font.size = Pt(20)
+            run.bold = True
+
+            subheading = doc.add_heading(role, level=2)
+            subheading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = subheading.runs[0]
+            run.font.size = Pt(12)
+
+            doc.add_paragraph()
+
+            # Contact Section (Sidebar-like)
+            doc.add_heading("Contact", level=3)
+            if contact['phone']:
+                doc.add_paragraph(f"📞 {contact['phone']}")
+            if contact['email']:
+                doc.add_paragraph(f"📧 {contact['email']}")
+            if contact['location']:
+                doc.add_paragraph(f"📍 {contact['location']}")
+            if contact['website']:
+                doc.add_paragraph(f"🌐 {contact['website']}")
+
+            # Education
+            if 'education' in sections:
+                doc.add_heading("Education", level=3)
+                entries = sections['education'].split('\n\n')
+                for entry in entries:
+                    lines = entry.split('\n')
+                    p = doc.add_paragraph()
+                    p.add_run(lines[0]).bold = True
+                    p.add_run(f"\n{lines[1]}\n{lines[2]}")
+
+            # Skills
+            if 'skills' in sections:
+                doc.add_heading("Skills", level=3)
+                items = sections['skills'].split('\n')
+                for item in items:
+                    doc.add_paragraph(item, style='ListBullet')
+
+            # Certifications
+            if 'certifications' in sections:
+                doc.add_heading("Certifications", level=3)
+                items = sections['certifications'].split('\n')
+                for item in items:
+                    doc.add_paragraph(item, style='ListBullet')
+
+            # Languages
+            if 'languages' in sections:
+                doc.add_heading("Languages", level=3)
+                items = sections['languages'].split('\n')
+                for item in items:
+                    doc.add_paragraph(item, style='ListBullet')
+
+            # Profile
+            if 'profile' in sections:
+                doc.add_heading("Profile", level=3)
+                doc.add_paragraph(sections['profile'])
+
+            # Professional Experience
+            if 'professional_experience' in sections:
+                doc.add_heading("Professional Experience", level=3)
+                jobs = sections['professional_experience'].split('\n\n')
+                for job in jobs:
+                    lines = job.split('\n')
+                    p = doc.add_paragraph()
+                    p.add_run(lines[0]).bold = True
+                    p.add_run(f"\n{lines[1]}")
+                    for line in lines[2:]:
+                        doc.add_paragraph(line, style='ListBullet')
+
+            # Projects
+            if 'projects' in sections:
+                doc.add_heading("Projects", level=3)
+                items = sections['projects'].split('\n')
+                for item in items:
+                    doc.add_paragraph(item, style='ListBullet')
+
+            # Achievements
+            if 'achievements' in sections:
+                doc.add_heading("Achievements", level=3)
+                items = sections['achievements'].split('\n')
+                for item in items:
+                    doc.add_paragraph(item, style='ListBullet')
+
+            # References
+            if 'references' in sections:
+                doc.add_heading("References", level=3)
+                doc.add_paragraph(sections['references'])
+
+            doc.save(output_path)
+            return send_file(
+                output_path,
+                as_attachment=True,
+                download_name="Fixed_Resume.docx",
+                mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+
+        elif format_type == 'pdf':
+            doc = SimpleDocTemplate(
+                output_path,
+                pagesize=letter,
+                leftMargin=0.75 * inch,
+                rightMargin=0.75 * inch,
+                topMargin=0.5 * inch,
+                bottomMargin=0.5 * inch
+            )
+            styles = getSampleStyleSheet()
+            styles.add(ParagraphStyle(name='Name', fontSize=20, alignment=1, spaceAfter=6))
+            styles.add(ParagraphStyle(name='Role', fontSize=12, alignment=1, spaceAfter=12, textColor=HexColor('#666666')))
+            styles.add(ParagraphStyle(name='SectionHeading', fontSize=12, spaceBefore=10, spaceAfter=5))
+            styles.add(ParagraphStyle(name='Body', fontSize=11, spaceAfter=6))
+            styles.add(ParagraphStyle(
+                name='Bullet',
+                fontSize=11,
+                spaceAfter=6,
+                leftIndent=0.5 * inch,
+                firstLineIndent=-0.25 * inch,
+                bulletFontName='Times-Roman',
+                bulletFontSize=11,
+                bulletIndent=0.25 * inch
+            ))
+
+            story = [
+                Paragraph(name, styles['Name']),
+                Paragraph(role, styles['Role']),
+                Spacer(1, 12)
+            ]
+
+            # Contact
+            story.append(Paragraph("Contact", styles['SectionHeading']))
+            if contact['phone']:
+                story.append(Paragraph(f"📞 {contact['phone']}", styles['Body']))
+            if contact['email']:
+                story.append(Paragraph(f"📧 {contact['email']}", styles['Body']))
+            if contact['location']:
+                story.append(Paragraph(f"📍 {contact['location']}", styles['Body']))
+            if contact['website']:
+                story.append(Paragraph(f"🌐 {contact['website']}", styles['Body']))
+
+            # Education
+            if 'education' in sections:
+                story.append(Paragraph("Education", styles['SectionHeading']))
+                entries = sections['education'].split('\n\n')
+                for entry in entries:
+                    lines = entry.split('\n')
+                    story.append(Paragraph(f"<b>{lines[0]}</b>", styles['Body']))
+                    story.append(Paragraph(lines[1], styles['Body']))
+                    story.append(Paragraph(lines[2], styles['Body']))
+
+            # Skills
+            if 'skills' in sections:
+                story.append(Paragraph("Skills", styles['SectionHeading']))
+                items = sections['skills'].split('\n')
+                for item in items:
+                    story.append(Paragraph(f"• {item}", styles['Bullet']))
+
+            # Certifications
+            if 'certifications' in sections:
+                story.append(Paragraph("Certifications", styles['SectionHeading']))
+                items = sections['certifications'].split('\n')
+                for item in items:
+                    story.append(Paragraph(f"• {item}", styles['Bullet']))
+
+            # Languages
+            if 'languages' in sections:
+                story.append(Paragraph("Languages", styles['SectionHeading']))
+                items = sections['languages'].split('\n')
+                for item in items:
+                    story.append(Paragraph(f"• {item}", styles['Bullet']))
+
+            # Profile
+            if 'profile' in sections:
+                story.append(Paragraph("Profile", styles['SectionHeading']))
+                story.append(Paragraph(sections['profile'], styles['Body']))
+
+            # Professional Experience
+            if 'professional_experience' in sections:
+                story.append(Paragraph("Professional Experience", styles['SectionHeading']))
+                jobs = sections['professional_experience'].split('\n\n')
+                for job in jobs:
+                    lines = job.split('\n')
+                    story.append(Paragraph(f"<b>{lines[0]}</b>", styles['Body']))
+                    story.append(Paragraph(lines[1], styles['Body']))
+                    for line in lines[2:]:
+                        story.append(Paragraph(f"• {line}", styles['Bullet']))
+
+            # Projects
+            if 'projects' in sections:
+                story.append(Paragraph("Projects", styles['SectionHeading']))
+                items = sections['projects'].split('\n')
+                for item in items:
+                    story.append(Paragraph(f"• {item}", styles['Bullet']))
+
+            # Achievements
+            if 'achievements' in sections:
+                story.append(Paragraph("Achievements", styles['SectionHeading']))
+                items = sections['achievements'].split('\n')
+                for item in items:
+                    story.append(Paragraph(f"• {item}", styles['Bullet']))
+
+            # References
+            if 'references' in sections:
+                story.append(Paragraph("References", styles['SectionHeading']))
+                story.append(Paragraph(sections['references'], styles['Body']))
+
+            doc.build(story)
+            return send_file(
+                output_path,
+                as_attachment=True,
+                download_name="Fixed_Resume.pdf",
+                mimetype="application/pdf"
+            )
+
+        else:
+            return jsonify({'error': 'Invalid format specified'}), 400
+
+    except Exception as e:
+        logger.error(f"Error in /final-resume: {str(e)}")
+        return jsonify({'error': 'Failed to generate final resume'}), 500
+    finally:
+        cleanup_file(output_path)
+
+@app.route('/generate-cover-letter', methods=['POST'])
+def generate_cover_letter():
+    file = request.files.get('file')
+    job_title = request.form.get('job_title')
+    company_name = request.form.get('company_name')
+
+    if not file or not job_title or not company_name:
+        return jsonify({'error': 'File, job title, and company name are required'}), 400
+
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    try:
+        file.save(filepath)
+        resume_text = extract_text_from_resume(file)
+        if not resume_text.strip():
+            return jsonify({'error': 'Could not extract text from resume'}), 400
+
+        prompt = f"""
+You are a professional cover letter writer. Write a concise cover letter (300-400 words) for the following details:
+
+Job Title: {job_title}
+Company Name: {company_name}
+Resume: {resume_text[:6000]}
+
+Include a greeting, an introduction, a body highlighting relevant skills and experiences, and a closing statement.
+        """
+        from openai import OpenAI
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        cover_letter = response.choices[0].message.content.strip()
+        return jsonify({"cover_letter": cover_letter})
+    except Exception as e:
+        logger.error(f"Error in /generate-cover-letter: {str(e)}")
+        return jsonify({"error": 'Failed to generate cover letter'}), 500
+    finally:
+        cleanup_file(filepath)
+
+@app.route('/download-cover-letter', methods=['POST'])
+def download_cover_letter():
+    data = request.get_json()
+    cover_letter = data.get('cover_letter')
+    if not cover_letter:
+        return jsonify({'error': 'No cover letter provided'}), 400
+    output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"cover_letter_{uuid.uuid4()}.docx")
+    try:
+        doc = Document()
+        doc.add_heading("Cover Letter", level=1)
+        for line in cover_letter.splitlines():
+            line = line.strip()
+            if line:
+                doc.add_paragraph(line)
+        doc.save(output_path)
+        return send_file(output_path, as_attachment=True, download_name="Cover_Letter.docx")
+    except Exception as e:
+        logger.error(f"Error in /download-cover-letter: {str(e)}")
+        return jsonify({'error': 'Failed to download cover letter'}), 500
+    finally:
+        cleanup_file(output_path)
+
+# Keep the remaining endpoints unchanged
 @app.route('/resume-score', methods=['POST'])
 def resume_score():
     file = request.files.get('file')
@@ -157,188 +588,6 @@ Just return a number between 0 and 100, nothing else.
     finally:
         cleanup_file(filepath)
 
-@app.route('/check-ats', methods=['POST'])
-def check_ats():
-    if 'file' not in request.files:
-        logger.error("No file part in the request")
-        return jsonify({'error': 'No file part in the request'}), 400
-
-    file = request.files['file']
-    if not file or file.filename == '':
-        logger.error("No file selected for upload")
-        return jsonify({'error': 'No file selected for upload'}), 400
-
-    ext = os.path.splitext(file.filename)[1].lower()
-    allowed_extensions = {'.pdf', '.docx'}
-    if ext not in allowed_extensions:
-        logger.error(f"Unsupported file format: {ext}")
-        return jsonify({'error': f'Unsupported file format: {ext}. Please upload a PDF or DOCX file.'}), 400
-
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    try:
-        file.save(filepath)
-        file_size = os.path.getsize(filepath) / 1024
-        logger.debug(f"File saved: {filepath}, Size: {file_size:.2f} KB, Extension: {ext}")
-
-        ats_result = check_ats_compatibility(filepath)
-        # Validate ATS result to ensure it's meaningful
-        if not ats_result or "Failed to analyze" in ats_result or not isinstance(ats_result, dict) or not ats_result.get("issues"):
-            logger.warning("ATS check returned invalid or empty result")
-            # Fallback to a basic ATS check if the result is not usable
-            try:
-                resume_text = extract_text_from_pdf(filepath) if ext == ".pdf" else extract_text_from_docx(filepath)
-                ats_issues = []
-                if not re.search(r'[\w\.-]+@[\w\.-]+', resume_text):
-                    ats_issues.append("Missing email address - ATS systems often require contact information.")
-                if len(resume_text.splitlines()) < 10:
-                    ats_issues.append("Resume content is too short - ATS systems may not parse it effectively.")
-                if not re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', resume_text):
-                    ats_issues.append("Missing location - ATS systems often look for location details.")
-                ats_result = {"issues": ats_issues, "score": max(0, 100 - len(ats_issues) * 20)}
-            except Exception as e:
-                logger.error(f"Error generating fallback ATS report: {str(e)}")
-                return jsonify({'ats_report': "Unable to perform ATS check. Please check if the API key is set."})
-        
-        logger.info("ATS check completed successfully")
-        return jsonify({'ats_report': ats_result})
-    except Exception as e:
-        logger.error(f"Error in /check-ats: {str(e)}")
-        return jsonify({'ats_report': "Unable to perform ATS check. Please check if the API key is set."})
-    finally:
-        cleanup_file(filepath)
-
-@app.route('/parse-resume', methods=['POST'])
-def parse_resume():
-    file = request.files.get('file')
-    if not file:
-        return jsonify({'error': 'No file uploaded'}), 400
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
-    try:
-        file.save(filepath)
-        ext = os.path.splitext(filepath)[1].lower()
-        if ext == ".pdf":
-            resume_text = extract_text_from_pdf(filepath)
-        elif ext == ".docx":
-            resume_text = extract_text_from_docx(filepath)
-        else:
-            return jsonify({'error': 'Unsupported file format'}), 400
-
-        if not resume_text.strip():
-            return jsonify({'error': 'No extractable text found in resume'}), 400
-
-        sections = extract_resume_sections(resume_text)
-
-        # Ensure all section content is a string, not a list
-        for key in sections:
-            if isinstance(sections[key], list):
-                sections[key] = '\n'.join(sections[key]).strip()
-
-        logger.debug(f"Detected sections: {json.dumps(sections, indent=2)}")
-
-        return jsonify({"sections": sections})
-    except Exception as e:
-        logger.error(f"Error in /parse-resume: {str(e)}")
-        return jsonify({'error': f'Failed to parse resume: {str(e)}'}), 500
-    finally:
-        cleanup_file(filepath)
-
-@app.route("/fix-suggestion", methods=["POST"])
-def fix_suggestion():
-    try:
-        data = request.get_json()
-        suggestion = data.get("suggestion")
-        full_text = data.get("full_resume_text")
-
-        if not suggestion or not full_text:
-            return jsonify({"error": "Missing suggestion or full resume text"}), 400
-
-        # Parse the resume to get existing sections
-        sections = extract_resume_sections(full_text)
-        existing_sections = list(sections.keys())
-
-        # Craft a more specific prompt to ensure relevant suggestions
-        prompt = f"""
-You are a professional resume reviewer. Analyze the following resume and provide specific, honest, and relevant suggestions for improvement based on the user's suggestion: '{suggestion}'.
-
-Resume:
-{full_text}
-
-Existing Sections: {', '.join(existing_sections)}
-
-Instructions:
-1. Only suggest updates to sections that need improvement based on the user's suggestion.
-2. If a section needs to be added (e.g., missing Languages section), explicitly state that and provide relevant content for the user's profile.
-3. Do not suggest duplicate sections (e.g., if 'Experience' already exists, improve it instead of adding a new one).
-4. Avoid generic or irrelevant suggestions. Focus on actionable improvements.
-5. Format the output as plain text, with each suggestion clearly separated by a newline.
-
-Example:
-To improve the 'Experience' section, quantify achievements (e.g., 'Increased sales by 20%').
-Add a 'Languages' section: English (Fluent), Spanish (Intermediate).
-"""
-        try:
-            from openai import OpenAI
-            client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are a professional resume reviewer."},
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            ai_suggestions = response.choices[0].message.content.strip()
-
-            # Process AI suggestions to extract section updates or additions
-            result = {"fixedContent": "", "section": ""}
-            for line in ai_suggestions.splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                if line.startswith("Add a"):
-                    # Handle section addition
-                    section_match = re.search(r"Add a '([^']+)' section: (.+)", line)
-                    if section_match:
-                        section_name = section_match.group(1).lower().replace(" ", "_")
-                        content = section_match.group(2)
-                        if section_name in existing_sections:
-                            # Merge with existing section instead of adding a new one
-                            sections[section_name] += f"\n{content}"
-                        else:
-                            sections[section_name] = content
-                        result["section"] = section_name
-                        result["fixedContent"] = sections[section_name]
-                else:
-                    # Handle section update
-                    section_match = re.search(r"To improve the '([^']+)' section, (.+)", line)
-                    if section_match:
-                        section_name = section_match.group(1).lower().replace(" ", "_")
-                        suggestion_text = section_match.group(2)
-                        if section_name in sections:
-                            # Apply the suggestion to the existing section
-                            sections[section_name] = f"{sections[section_name]}\n{suggestion_text}"
-                            result["section"] = section_name
-                            result["fixedContent"] = sections[section_name]
-                        else:
-                            logger.warning(f"Section {section_name} not found in resume for update")
-
-            # Ensure fixedContent is a string
-            if isinstance(result["fixedContent"], list):
-                result["fixedContent"] = '\n'.join(result["fixedContent"]).strip()
-
-            if not result["fixedContent"]:
-                return jsonify({"error": "No actionable suggestions could be generated."}), 400
-
-            return jsonify(result)
-
-        except Exception as e:
-            logger.error(f"Error in OpenAI API call for /fix-suggestion: {str(e)}")
-            return jsonify({"error": f"Failed to process suggestion: {str(e)}"}), 500
-
-    except Exception as e:
-        logger.error(f"Error in /fix-suggestion: {str(e)}")
-        return jsonify({"error": f"Failed to process suggestion: {str(e)}"}), 500
-    
 @app.route('/optimize-keywords', methods=['POST'])
 def optimize_keywords():
     resume_file = request.files.get('resume')
@@ -357,603 +606,6 @@ def optimize_keywords():
 
     results = compare_resume_with_keywords(resume_text, jd_keywords)
     return jsonify(results)
-
-@app.route('/preview-resume', methods=['POST'])
-def preview_resume():
-    # Get the file and fixes (same input as /final-resume)
-    if 'file' not in request.files:
-        logger.error("No file part in the request")
-        return jsonify({'error': 'No file part in the request'}), 400
-
-    file = request.files['file']
-    fixes = json.loads(request.form.get('fixes', '[]'))
-
-    if not file or file.filename == '':
-        logger.error("No file selected for upload")
-        return jsonify({'error': 'No file selected for upload'}), 400
-
-    ext = os.path.splitext(file.filename)[1].lower()
-    allowed_extensions = {'.pdf', '.docx'}
-    if ext not in allowed_extensions:
-        logger.error(f"Unsupported file format: {ext}")
-        return jsonify({'error': f'Unsupported file format: {ext}. Please upload a PDF or DOCX file.'}), 400
-
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-
-    try:
-        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-        file.save(filepath)
-
-        if not os.path.exists(filepath):
-            logger.error(f"File not found after saving: {filepath}")
-            return jsonify({'error': 'File could not be saved properly'}), 500
-
-        file_size = os.path.getsize(filepath) / 1024
-        if file_size == 0:
-            logger.error(f"Uploaded file is empty: {filepath}")
-            return jsonify({'error': 'Uploaded file is empty'}), 400
-        logger.debug(f"File size: {file_size:.2f} KB")
-
-        if ext == '.pdf':
-            try:
-                with open(filepath, 'rb') as f:
-                    pdf_reader = PyPDF2.PdfReader(f)
-                    if pdf_reader.is_encrypted:
-                        logger.error("Uploaded PDF is encrypted")
-                        return jsonify({'error': 'PDF is encrypted. Please upload an unencrypted PDF.'}), 400
-            except Exception as e:
-                logger.error(f"Invalid or corrupted PDF file: {str(e)}")
-                return jsonify({'error': 'Invalid or corrupted PDF file. Please upload a valid PDF.'}), 400
-
-        if ext == '.docx':
-            try:
-                doc = Document(filepath)
-            except Exception as e:
-                logger.error(f"Invalid or corrupted DOCX file: {str(e)}")
-                return jsonify({'error': 'Invalid or corrupted DOCX file. Please upload a valid DOCX.'}), 400
-
-        try:
-            if ext == ".pdf":
-                resume_text = extract_text_from_pdf(filepath)
-                if not resume_text.strip():
-                    logger.warning("No text extracted from PDF. It might be image-based.")
-                    return jsonify({'error': 'No extractable text found in PDF. It might be image-based.'}), 400
-            elif ext == ".docx":
-                resume_text = extract_text_from_docx(filepath)
-            else:
-                return jsonify({'error': 'Unsupported file format'}), 400
-        except Exception as e:
-            logger.error(f"Error extracting text from file {filepath}: {str(e)}")
-            return jsonify({'error': f'Failed to extract text from file: {str(e)}'}), 500
-
-        if not resume_text:
-            logger.error(f"No text extracted from file: {filepath}")
-            return jsonify({'error': 'No extractable text found in resume'}), 400
-
-        if isinstance(resume_text, dict):
-            resume_text = resume_text.get("formatted_text") or resume_text.get("text") or json.dumps(resume_text, indent=2)
-            logger.debug(f"Converted resume_text from dict to string: {resume_text[:100]}...")
-
-        if not resume_text.strip():
-            logger.error(f"Extracted text is empty after conversion: {filepath}")
-            return jsonify({'error': 'No extractable text found in resume after conversion'}), 400
-
-        try:
-            original_sections = extract_resume_sections(resume_text)
-            logger.debug(f"Original sections: {json.dumps(original_sections, indent=2)}")
-        except Exception as e:
-            logger.error(f"Error extracting sections from resume text: {str(e)}")
-            return jsonify({'error': f'Failed to extract resume sections: {str(e)}'}), 500
-
-        fixed_sections = {}
-        for fix in fixes:
-            if "section" in fix:
-                section = fix.get('section')
-                fixed_text = fix.get('fixedText') or fix.get('fixedContent')
-                if section and fixed_text:
-                    if isinstance(fixed_text, list):
-                        fixed_text = '\n'.join(fixed_text).strip()
-                    fixed_sections[section] = fixed_text
-            elif "sections" in fix:
-                for section_fix in fix.get('sections', []):
-                    section = section_fix.get('section')
-                    fixed_text = section_fix.get('fixedContent')
-                    if section and fixed_text:
-                        if isinstance(fixed_text, list):
-                            fixed_text = '\n'.join(fixed_text).strip()
-                        fixed_sections[section] = fixed_text
-
-        logger.debug(f"Fixed sections: {json.dumps(fixed_sections, indent=2)}")
-
-        final_sections = original_sections.copy()
-        for section, content in fixed_sections.items():
-            final_sections[section] = content
-
-        email = phone = location = ""
-        if final_sections.get("miscellaneous"):
-            for line in final_sections["miscellaneous"].splitlines():
-                line = line.strip()
-                if not email and re.search(r'[\w\.-]+@[\w\.-]+', line):
-                    email = re.search(r'[\w\.-]+@[\w\.-]+', line).group()
-                if not phone and re.search(r'\+?\d[\d\s\-]{8,}', line):
-                    phone = re.search(r'\+?\d[\d\s\-]{8,}', line).group()
-                if not location and re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', line) and "India" in line:
-                    location = re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', line).group()
-        else:
-            for line in resume_text.splitlines():
-                line = line.strip()
-                if not email and re.search(r'[\w\.-]+@[\w\.-]+', line):
-                    email = re.search(r'[\w\.-]+@[\w\.-]+', line).group()
-                if not phone and re.search(r'\+?\d[\d\s\-]{8,}', line):
-                    phone = re.search(r'\+?\d[\d\s\-]{8,}', line).group()
-                if not location and re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', line) and "India" in line:
-                    location = re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', line).group()
-
-        if "miscellaneous" in final_sections:
-            del final_sections["miscellaneous"]
-
-        contact_details = []
-        if email:
-            contact_details.append(f"Email: {email}")
-        if phone:
-            contact_details.append(f"Phone: {phone}")
-        if location:
-            contact_details.append(f"Location: {location}")
-        final_sections["personal_details"] = "\n".join(contact_details)
-
-        # Merge sections to avoid duplicates
-        merged_sections = {}
-        for section, content in final_sections.items():
-            section_key = section.lower()
-            if section_key in merged_sections:
-                merged_sections[section_key] += f"\n{content}"
-            else:
-                merged_sections[section_key] = content
-
-        final_sections = merged_sections
-
-        # Define a strict order for sections
-        section_order = [
-            "personal_details",
-            "summary",
-            "objective",
-            "skills",
-            "experience",
-            "education",
-            "certifications",
-            "languages",
-            "hobbies",
-            "additional_courses",
-            "projects",
-            "volunteer_experience",
-            "achievements",
-            "publications",
-            "references"
-        ]
-
-        ordered_sections = {}
-        for section in section_order:
-            if section in final_sections:
-                ordered_sections[section] = final_sections[section]
-
-        # Extract name
-        name = ""
-        for line in resume_text.splitlines():
-            line = line.strip()
-            if re.search(r'^[A-Z][a-z]+\s[A-Z][a-z]+', line):
-                name = line
-                break
-        if not name and final_sections.get("personal_details"):
-            for line in final_sections["personal_details"].splitlines():
-                if re.search(r'^[A-Z][a-z]+\s[A-Z][a-z]+', line):
-                    name = line
-                    break
-        if not name:
-            name = "Riya Sharma"
-
-        # Prepare preview data
-        section_display_names = {
-            "personal_details": "Personal Details",
-            "summary": "Professional Summary",
-            "objective": "Objective",
-            "skills": "Skills",
-            "experience": "Experience",
-            "education": "Education",
-            "certifications": "Certifications",
-            "languages": "Languages",
-            "hobbies": "Hobbies",
-            "additional_courses": "Additional Courses",
-            "projects": "Projects",
-            "volunteer_experience": "Volunteer Experience",
-            "achievements": "Achievements",
-            "publications": "Publications",
-            "references": "References"
-        }
-
-        preview_data = {"name": name, "sections": {}}
-        for section_key, content in ordered_sections.items():
-            display_name = section_display_names.get(section_key, ' '.join(word.capitalize() for word in section_key.split('_')))
-            preview_data["sections"][section_key] = {
-                "display_name": display_name,
-                "content": content,
-                "original_content": original_sections.get(section_key, "")
-            }
-
-        return jsonify(preview_data)
-
-    except Exception as e:
-        logger.error(f"Error in /preview-resume: {str(e)}")
-        return jsonify({'error': f'Failed to generate preview: {str(e)}'}), 500
-    finally:
-        cleanup_file(filepath)
-
-@app.route('/final-resume', methods=['POST'])
-def final_resume():
-    if 'file' not in request.files:
-        logger.error("No file part in the request")
-        return jsonify({'error': 'No file part in the request'}), 400
-
-    file = request.files['file']
-    fixes = json.loads(request.form.get('fixes', '[]'))
-    format_type = request.args.get('format', 'docx')
-    return_sections = request.args.get('return_sections', 'false') == 'true'
-
-    if not file or file.filename == '':
-        logger.error("No file selected for upload")
-        return jsonify({'error': 'No file selected for upload'}), 400
-
-    ext = os.path.splitext(file.filename)[1].lower()
-    allowed_extensions = {'.pdf', '.docx'}
-    if ext not in allowed_extensions:
-        logger.error(f"Unsupported file format: {ext}")
-        return jsonify({'error': f'Unsupported file format: {ext}. Please upload a PDF or DOCX file.'}), 400
-
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"fixed_resume_{uuid.uuid4()}.{format_type}")
-
-    try:
-        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-        logger.debug(f"Using filepath: {filepath}, output_path: {output_path}")
-
-        file.save(filepath)
-        logger.debug(f"File saved successfully: {filepath}")
-
-        if not os.path.exists(filepath):
-            logger.error(f"File not found after saving: {filepath}")
-            return jsonify({'error': 'File could not be saved properly'}), 500
-
-        file_size = os.path.getsize(filepath) / 1024
-        if file_size == 0:
-            logger.error(f"Uploaded file is empty: {filepath}")
-            return jsonify({'error': 'Uploaded file is empty'}), 400
-        logger.debug(f"File size: {file_size:.2f} KB")
-
-        if ext == '.pdf':
-            try:
-                with open(filepath, 'rb') as f:
-                    pdf_reader = PyPDF2.PdfReader(f)
-                    if pdf_reader.is_encrypted:
-                        logger.error("Uploaded PDF is encrypted")
-                        return jsonify({'error': 'PDF is encrypted. Please upload an unencrypted PDF.'}), 400
-            except Exception as e:
-                logger.error(f"Invalid or corrupted PDF file: {str(e)}")
-                return jsonify({'error': 'Invalid or corrupted PDF file. Please upload a valid PDF.'}), 400
-
-        if ext == '.docx':
-            try:
-                doc = Document(filepath)
-            except Exception as e:
-                logger.error(f"Invalid or corrupted DOCX file: {str(e)}")
-                return jsonify({'error': 'Invalid or corrupted DOCX file. Please upload a valid DOCX.'}), 400
-
-        try:
-            if ext == ".pdf":
-                resume_text = extract_text_from_pdf(filepath)
-                if not resume_text.strip():
-                    logger.warning("No text extracted from PDF. It might be image-based.")
-                    return jsonify({'error': 'No extractable text found in PDF. It might be image-based.'}), 400
-            elif ext == ".docx":
-                resume_text = extract_text_from_docx(filepath)
-            else:
-                return jsonify({'error': 'Unsupported file format'}), 400
-        except Exception as e:
-            logger.error(f"Error extracting text from file {filepath}: {str(e)}")
-            return jsonify({'error': f'Failed to extract text from file: {str(e)}'}), 500
-
-        if not resume_text:
-            logger.error(f"No text extracted from file: {filepath}")
-            return jsonify({'error': 'No extractable text found in resume'}), 400
-
-        if isinstance(resume_text, dict):
-            resume_text = resume_text.get("formatted_text") or resume_text.get("text") or json.dumps(resume_text, indent=2)
-            logger.debug(f"Converted resume_text from dict to string: {resume_text[:100]}...")
-
-        if not resume_text.strip():
-            logger.error(f"Extracted text is empty after conversion: {filepath}")
-            return jsonify({'error': 'No extractable text found in resume after conversion'}), 400
-
-        try:
-            original_sections = extract_resume_sections(resume_text)
-            logger.debug(f"Original sections: {json.dumps(original_sections, indent=2)}")
-        except Exception as e:
-            logger.error(f"Error extracting sections from resume text: {str(e)}")
-            return jsonify({'error': f'Failed to extract resume sections: {str(e)}'}), 500
-
-        fixed_sections = {}
-        for fix in fixes:
-            if "section" in fix:
-                section = fix.get('section')
-                fixed_text = fix.get('fixedText') or fix.get('fixedContent')
-                if section and fixed_text:
-                    if isinstance(fixed_text, list):
-                        fixed_text = '\n'.join(fixed_text).strip()
-                    fixed_sections[section] = fixed_text
-            elif "sections" in fix:
-                for section_fix in fix.get('sections', []):
-                    section = section_fix.get('section')
-                    fixed_text = section_fix.get('fixedContent')
-                    if section and fixed_text:
-                        if isinstance(fixed_text, list):
-                            fixed_text = '\n'.join(fixed_text).strip()
-                        fixed_sections[section] = fixed_text
-
-        logger.debug(f"Fixed sections: {json.dumps(fixed_sections, indent=2)}")
-
-        final_sections = original_sections.copy()
-        for section, content in fixed_sections.items():
-            final_sections[section] = content
-
-        email = phone = location = ""
-        if final_sections.get("miscellaneous"):
-            for line in final_sections["miscellaneous"].splitlines():
-                line = line.strip()
-                if not email and re.search(r'[\w\.-]+@[\w\.-]+', line):
-                    email = re.search(r'[\w\.-]+@[\w\.-]+', line).group()
-                if not phone and re.search(r'\+?\d[\d\s\-]{8,}', line):
-                    phone = re.search(r'\+?\d[\d\s\-]{8,}', line).group()
-                if not location and re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', line) and "India" in line:
-                    location = re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', line).group()
-        else:
-            for line in resume_text.splitlines():
-                line = line.strip()
-                if not email and re.search(r'[\w\.-]+@[\w\.-]+', line):
-                    email = re.search(r'[\w\.-]+@[\w\.-]+', line).group()
-                if not phone and re.search(r'\+?\d[\d\s\-]{8,}', line):
-                    phone = re.search(r'\+?\d[\d\s\-]{8,}', line).group()
-                if not location and re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', line) and "India" in line:
-                    location = re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', line).group()
-
-        if "miscellaneous" in final_sections:
-            del final_sections["miscellaneous"]
-
-        contact_details = []
-        if email:
-            contact_details.append(f"Email: {email}")
-        if phone:
-            contact_details.append(f"Phone: {phone}")
-        if location:
-            contact_details.append(f"Location: {location}")
-        final_sections["personal_details"] = "\n".join(contact_details)
-
-        # Merge sections to avoid duplicates
-        merged_sections = {}
-        for section, content in final_sections.items():
-            section_key = section.lower()
-            if section_key in merged_sections:
-                merged_sections[section_key] += f"\n{content}"
-            else:
-                merged_sections[section_key] = content
-
-        final_sections = merged_sections
-
-        # Define a strict order for sections
-        section_order = [
-            "personal_details",
-            "summary",
-            "objective",
-            "skills",
-            "experience",
-            "education",
-            "certifications",
-            "languages",
-            "hobbies",
-            "additional_courses",
-            "projects",
-            "volunteer_experience",
-            "achievements",
-            "publications",
-            "references"
-        ]
-
-        ordered_sections_dict = {}
-        for section in section_order:
-            if section in final_sections:
-                ordered_sections_dict[section] = final_sections[section]
-
-        final_sections = ordered_sections_dict
-
-        name = ""
-        for line in resume_text.splitlines():
-            line = line.strip()
-            if re.search(r'^[A-Z][a-z]+\s[A-Z][a-z]+', line):
-                name = line
-                break
-        if not name and final_sections.get("personal_details"):
-            for line in final_sections["personal_details"].splitlines():
-                if re.search(r'^[A-Z][a-z]+\s[A-Z][a-z]+', line):
-                    name = line
-                    break
-        if not name:
-            name = "Riya Sharma"
-
-        if return_sections:
-            return jsonify({"sections": final_sections})
-
-        if format_type == 'docx':
-            try:
-                doc = Document()
-                for s in doc.sections:
-                    s.top_margin = s.bottom_margin = Inches(0.5)
-                    s.left_margin = s.right_margin = Inches(0.75)
-
-                heading = doc.add_heading(name, level=1)
-                heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                run = heading.runs[0]
-                run.font.size = Pt(16)
-                run.bold = True
-                run.font.color.rgb = RGBColor(0, 113, 188)
-
-                doc.add_paragraph()
-
-                section_display_names = {
-                    "personal_details": "Personal Details",
-                    "summary": "Professional Summary",
-                    "objective": "Objective",
-                    "skills": "Skills",
-                    "experience": "Experience",
-                    "education": "Education",
-                    "certifications": "Certifications",
-                    "languages": "Languages",
-                    "hobbies": "Hobbies",
-                    "additional_courses": "Additional Courses",
-                    "projects": "Projects",
-                    "volunteer_experience": "Volunteer Experience",
-                    "achievements": "Achievements",
-                    "publications": "Publications",
-                    "references": "References"
-                }
-
-                ordered_sections = [(key, final_sections[key]) for key in section_order if key in final_sections]
-
-                for section_key, content in ordered_sections:
-                    if content:
-                        display_name = section_display_names.get(section_key, ' '.join(word.capitalize() for word in section_key.split('_')))
-                        p = doc.add_paragraph()
-                        run = p.add_run(display_name.upper())
-                        run.bold = True
-                        run.font.color.rgb = RGBColor(255, 255, 255)
-                        shading = parse_xml(r'<w:shd {} w:fill="0071BC"/>'.format(nsdecls('w')))
-                        p._element.get_or_add_pPr().append(shading)
-
-                        for line in content.splitlines():
-                            if line:
-                                bullet_sections = ["skills", "experience", "hobbies", "additional_courses", "projects", "volunteer_experience", "achievements"]
-                                para = doc.add_paragraph(style='List Bullet' if section_key in bullet_sections else None)
-                                para.add_run(line)
-
-                os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                doc.save(output_path)
-                if not os.path.exists(output_path):
-                    logger.error(f"DOCX file not created at {output_path}")
-                    return jsonify({'error': 'Failed to create DOCX file on the server'}), 500
-                logger.info(f"DOCX file created successfully at {output_path}")
-                return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.docx",
-                                mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-            except Exception as e:
-                logger.error(f"Error generating DOCX file: {str(e)}")
-                return jsonify({'error': f'Failed to generate DOCX file: {str(e)}'}), 500
-
-        elif format_type == 'pdf':
-            try:
-                os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-                doc = SimpleDocTemplate(
-                    output_path,
-                    pagesize=letter,
-                    leftMargin=0.75 * inch,
-                    rightMargin=0.75 * inch,
-                    topMargin=0.5 * inch,
-                    bottomMargin=0.5 * inch
-                )
-                styles = getSampleStyleSheet()
-
-                styles.add(ParagraphStyle(name='Name', fontSize=16, alignment=1, spaceAfter=6, textColor=HexColor('#0071BC')))
-                styles.add(ParagraphStyle(name='SectionHeading', fontSize=12, spaceBefore=10, spaceAfter=5, textColor=HexColor('#FFFFFF')))
-                styles.add(ParagraphStyle(name='Body', fontSize=11, spaceAfter=6, textColor=HexColor('#323232')))
-                if 'Bullet' not in styles.byName:
-                    styles.add(ParagraphStyle(
-                        name='Bullet',
-                        fontSize=11,
-                        spaceAfter=6,
-                        leftIndent=0.5 * inch,
-                        firstLineIndent=-0.25 * inch,
-                        bulletFontName='Times-Roman',
-                        bulletFontSize=11,
-                        bulletIndent=0.25 * inch,
-                        textColor=HexColor('#323232')
-                    ))
-
-                story = [
-                    Paragraph(f"<b>{name}</b>", styles['Name']),
-                    Spacer(1, 12)
-                ]
-
-                section_display_names = {
-                    "personal_details": "Personal Details",
-                    "summary": "Professional Summary",
-                    "objective": "Objective",
-                    "skills": "Skills",
-                    "experience": "Experience",
-                    "education": "Education",
-                    "certifications": "Certifications",
-                    "languages": "Languages",
-                    "hobbies": "Hobbies",
-                    "additional_courses": "Additional Courses",
-                    "projects": "Projects",
-                    "volunteer_experience": "Volunteer Experience",
-                    "achievements": "Achievements",
-                    "publications": "Publications",
-                    "references": "References"
-                }
-
-                ordered_sections = [(key, final_sections[key]) for key in section_order if key in final_sections]
-
-                for section_key, content in ordered_sections:
-                    if content:
-                        display_name = section_display_names.get(section_key, ' '.join(word.capitalize() for word in section_key.split('_')))
-                        heading = Table([[Paragraph(f"<b>{display_name.upper()}</b>", styles['SectionHeading'])]], colWidths=[6.5 * inch])
-                        heading.setStyle(TableStyle([
-                            ('BACKGROUND', (0, 0), (-1, -1), HexColor('#0071BC')),
-                            ('TEXTCOLOR', (0, 0), (-1, -1), HexColor('#FFFFFF')),
-                            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                            ('FONTNAME', (0, 0), (-1, -1), 'Times-Roman'),
-                            ('FONTSIZE', (0, 0), (-1, -1), 12),
-                            ('LEFTPADDING', (0, 0), (-1, -1), 10),
-                            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
-                            ('TOPPADDING', (0, 0), (-1, -1), 5),
-                            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-                        ]))
-                        story.append(heading)
-
-                        for line in content.splitlines():
-                            if line:
-                                bullet_sections = ["skills", "experience", "hobbies", "additional_courses", "projects", "volunteer_experience", "achievements"]
-                                if section_key in bullet_sections:
-                                    story.append(Paragraph(f"â€¢ {line}", styles['Bullet']))
-                                else:
-                                    story.append(Paragraph(line, styles['Body']))
-
-                doc.build(story)
-                if not os.path.exists(output_path):
-                    logger.error(f"PDF file not created at {output_path}")
-                    return jsonify({'error': 'Failed to create PDF file on the server'}), 500
-                logger.info(f"PDF file created successfully at {output_path}")
-                return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.pdf", mimetype="application/pdf")
-            except Exception as e:
-                logger.error(f"Error generating PDF file: {str(e)}")
-                return jsonify({'error': f'Failed to generate PDF file: {str(e)}'}), 500
-
-        else:
-            return jsonify({'error': 'Invalid format specified'}), 400
-
-    except Exception as e:
-        logger.error(f"Error in /final-resume: {str(e)}")
-        return jsonify({'error': f'Failed to generate resume: {str(e)}'}), 500
-    finally:
-        cleanup_file(filepath)
-        cleanup_file(output_path)
 
 @app.route('/generate-ai-resume', methods=['POST'])
 def generate_ai_resume():
@@ -996,7 +648,7 @@ Format the output as plain text, e.g., 'Software Intern, ABC Corp, June 2023 - A
                 "skills": f"""
 You are a resume writing assistant. The user has provided the following skills: '{user_input}'.
 Based on this, generate a professional skills section for a resume. Expand the list by adding 2-3 relevant skills if possible, and format as a bullet list.
-Format the output as plain text with bullet points, e.g., 'â€¢ Python\nâ€¢ JavaScript\nâ€¢ SQL'.
+Format the output as plain text with bullet points, e.g., '• Python\n• JavaScript\n• SQL'.
 """,
                 "certifications": f"""
 You are a resume writing assistant. The user has provided the following certifications: '{user_input}'.
@@ -1011,7 +663,7 @@ Format the output as plain text, e.g., 'English (Fluent), Spanish (Intermediate)
                 "hobbies": f"""
 You are a resume writing assistant. The user has provided the following hobbies: '{user_input}'.
 Based on this, generate a professional hobbies section for a resume. Expand with 1-2 related hobbies if possible, and format as a list.
-Format the output as plain text with bullet points, e.g., 'â€¢ Reading\nâ€¢ Hiking'.
+Format the output as plain text with bullet points, e.g., '• Reading\n• Hiking'.
 """
             }
             prompt = prompts.get(section_name, "")
@@ -1022,9 +674,7 @@ Format the output as plain text with bullet points, e.g., 'â€¢ Reading\nâ�
                 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
                 res = client.chat.completions.create(
                     model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "user", "content": prompt}
-                    ]
+                    messages=[{"role": "user", "content": prompt}]
                 )
                 content = res.choices[0].message.content.strip()
                 if isinstance(content, list):
@@ -1049,9 +699,7 @@ Write a 2-3 line professional summary for a resume.
                 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
                 res = client.chat.completions.create(
                     model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "user", "content": prompt}
-                    ]
+                    messages=[{"role": "user", "content": prompt}]
                 )
                 summary = res.choices[0].message.content.strip()
                 if isinstance(summary, list):
@@ -1100,128 +748,18 @@ Write a 2-3 line professional summary for a resume.
         logger.error(f"Error in /generate-ai-resume: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
-@app.route('/generate-cover-letter', methods=['POST'])
-def generate_cover_letter():
-    file = request.files.get('file')
-    job_title = request.form.get('job_title')
-    company_name = request.form.get('company_name')
-
-    if not file or not job_title or not company_name:
-        return jsonify({'error': 'File, job title, and company name are required'}), 400
-
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    try:
-        file.save(filepath)
-        logger.debug(f"Saved file to {filepath}")
-        ext = os.path.splitext(filename)[1].lower()
-        if ext == '.pdf':
-            resume_text = extract_text_from_pdf(filepath)
-        elif ext == '.docx':
-            resume_text = extract_text_from_docx(filepath)
-        else:
-            return jsonify({'error': 'Unsupported file format'}), 400
-
-        if not resume_text.strip():
-            return jsonify({'error': 'Could not extract text from resume'}), 400
-
-        name = ""
-        email = ""
-        phone = ""
-        location = ""
-
-        for line in resume_text.splitlines():
-            line = line.strip()
-            if not name and re.search(r'^[A-Z][a-z]+\s[A-Z][a-z]+', line):
-                name = line
-            if not email and re.search(r'[\w\.-]+@[\w\.-]+', line):
-                email = re.search(r'[\w\.-]+@[\w\.-]+', line).group()
-            if not phone and re.search(r'\+?\d[\d\s\-]{8,}', line):
-                phone = re.search(r'\+?\d[\d\s\-]{8,}', line).group()
-            if not location and re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', line):
-                location = re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', line).group()
-            if name and email and phone and location:
-                break
-
-        prompt = f"""
-You are a career coach and expert cover letter writer. Based on the resume content and the job title and company name below, write a compelling cover letter.
-
-Candidate Details:
-Name: {name}
-Email: {email}
-Phone: {phone}
-Location: {location}
-
-Resume:
-{resume_text}
-
-Job Title: {job_title}
-Company Name: {company_name}
-
-Cover Letter:
-"""
-
-        try:
-            from openai import OpenAI
-            client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are a professional cover letter writing assistant."},
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            cover_letter = response.choices[0].message.content.strip()
-            return jsonify({"cover_letter": cover_letter})
-        except Exception as e:
-            logger.error(f"Error in OpenAI API call for /generate-cover-letter: {str(e)}")
-            return jsonify({"cover_letter": "Unable to generate cover letter. Please check if the API key is set."})
-    except Exception as e:
-        logger.error(f"Error generating cover letter: {str(e)}")
-        return jsonify({"cover_letter": "Unable to generate cover letter. Please check if the API key is set."})
-    finally:
-        cleanup_file(filepath)
-
-@app.route('/download-cover-letter', methods=['POST'])
-def download_cover_letter():
-    data = request.get_json()
-    cover_letter = data.get('cover_letter')
-
-    if not cover_letter:
-        return jsonify({'error': 'No cover letter provided'}), 400
-
-    output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"cover_letter_{uuid.uuid4()}.docx")
-    try:
-        doc = Document()
-        doc.add_heading("Cover Letter", level=1)
-        for line in cover_letter.splitlines():
-            line = line.strip()
-            if line:
-                doc.add_paragraph(line)
-        doc.save(output_path)
-        return send_file(output_path, as_attachment=True, download_name="Cover_Letter.docx")
-    except Exception as e:
-        logger.error(f"Error saving cover letter DOCX file: {str(e)}")
-        return jsonify({'error': f'Failed to save cover letter DOCX file: {str(e)}'}), 500
-    finally:
-        cleanup_file(output_path)
-        
 @app.route('/analyze-jd', methods=['POST'])
 def analyze_jd():
     try:
         data = request.get_json()
         jd_text = data.get('job_description', '')
-
         if not jd_text:
             return jsonify({'error': 'No job description provided'}), 400
-
         result = analyze_job_description(jd_text)
-
         return jsonify(result)
-
     except Exception as e:
         return jsonify({'error': f'Failed to analyze job description: {str(e)}'}), 500
-    
+
 @app.route('/convert-format', methods=['POST'])
 def convert_format():
     file = request.files.get('file')
@@ -1381,7 +919,7 @@ def convert_format():
         cleanup_file(upload_path)
         cleanup_file(output_path)
         cleanup_file(html_temp_path)
-    
+
 @app.route('/fix-formatting', methods=['POST'])
 def fix_formatting():
     file = request.files.get('resume')
@@ -1399,7 +937,7 @@ def fix_formatting():
         return jsonify({'error': 'Failed to process resume formatting'}), 500
     finally:
         cleanup_file(filepath)
-        
+
 @app.route("/generate-resume-summary", methods=["POST"])
 def generate_resume_summary_api():
     data = request.get_json()
@@ -1472,7 +1010,7 @@ Message:
     except Exception as e:
         logger.error(f"Error sending feedback: {str(e)}")
         return jsonify({"success": False, "error": str(e)})
-    
+
 @app.route('/ask-ai', methods=['POST'])
 def ask_ai():
     try:
@@ -1482,14 +1020,14 @@ def ask_ai():
         data = request.get_json()
         question = data.get("question", "")
         if not question.strip():
-            return jsonify({"answer": "â�Œ Please enter a question first."})
+            return jsonify({"answer": "Ã¢ï¿½Å’ Please enter a question first."})
 
         system_prompt = {
             "role": "system",
             "content": (
                 "You are ResumeBot, the official AI assistant of ResumeFixerPro.com.\n\n"
                 "You help users improve resumes, get AI suggestions, download resume templates, generate cover letters, "
-                "and check ATS (Applicant Tracking System) compatibility â€” all for free.\n\n"
+                "and check ATS (Applicant Tracking System) compatibility Ã¢â‚¬â€� all for free.\n\n"
                 "Website Overview:\n"
                 "- Website: https://resumefixerpro.com\n"
                 "- Owner: Imran Ali (YouTuber & Developer from India)\n"
@@ -1497,12 +1035,12 @@ def ask_ai():
                 "- Privacy: ResumeFixerPro respects user privacy. No signup required. No resumes are stored.\n"
                 "- Cost: 100% Free to use. No hidden charges. No login required.\n\n"
                 "Key Features of ResumeFixerPro:\n"
-                "1. AI Resume Fixer Tool â€“ Upload your resume and get instant improvement suggestions with AI fixes.\n"
-                "2. Resume Score Checker â€“ See how strong your resume is (0 to 100).\n"
-                "3. ATS Compatibility Checker â€“ Check if your resume is ATS-friendly.\n"
-                "4. Cover Letter Generator â€“ Instantly generate a job-specific cover letter.\n"
-                "5. Resume Template Builder â€“ Choose from 5 student-friendly templates, edit live, and download as PDF/DOCX.\n"
-                "6. AI Resume Generator â€“ Fill out a simple form and get a full professional resume in seconds.\n\n"
+                "1. AI Resume Fixer Tool Ã¢â‚¬â€œ Upload your resume and get instant improvement suggestions with AI fixes.\n"
+                "2. Resume Score Checker Ã¢â‚¬â€œ See how strong your resume is (0 to 100).\n"
+                "3. ATS Compatibility Checker Ã¢â‚¬â€œ Check if your resume is ATS-friendly.\n"
+                "4. Cover Letter Generator Ã¢â‚¬â€œ Instantly generate a job-specific cover letter.\n"
+                "5. Resume Template Builder Ã¢â‚¬â€“ Choose from 5 student-friendly templates, edit live, and download as PDF/DOCX.\n"
+                "6. AI Resume Generator Ã¢â‚¬â€“ Fill out a simple form and get a full professional resume in seconds.\n\n"
                 "Guidelines:\n"
                 "- Always give short, helpful, and positive replies.\n"
                 "- If someone asks about the site, privacy, location, features, or Imran Ali, give accurate info.\n"
@@ -1524,13 +1062,13 @@ def ask_ai():
         )
 
         answer = response.choices[0].message.content.strip()
-        return jsonify({"answer": f"ðŸ¤– ResumeBot:\n{answer}"})
+        return jsonify({"answer": f"Ã°Å¸Â¤â€“ ResumeBot:\n{answer}"})
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({"answer": "âš ï¸� AI error: " + str(e)})
-    
+        return jsonify({"answer": "Ã¢Å¡Â Ã¯Â¸ï¿½ AI error: " + str(e)})
+
 @app.route('/send-message', methods=['POST'])
 def send_message():
     try:
@@ -1552,7 +1090,7 @@ def send_message():
         msg = MIMEMultipart()
         msg['From'] = sender_email
         msg['To'] = receiver_email
-        msg['Subject'] = "ðŸ“¬ New Contact Message from ResumeFixerPro"
+        msg['Subject'] = "Ã°Å¸â€œÂ¬ New Contact Message from ResumeFixerPro"
 
         body = f"""
 New message from Contact Us page:
