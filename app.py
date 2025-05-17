@@ -87,7 +87,7 @@ def health_check():
 
 @app.route('/upload', methods=['POST'])
 def upload_resume():
-    file = request.files.get('resume')
+    file = request.files.get('file') or request.files.get('resume')
     if not file or file.filename == '':
         logger.error("No file uploaded in request")
         return jsonify({'error': 'No file uploaded'}), 400
