@@ -178,18 +178,10 @@ def extract_text_from_resume(resume_file):
         except Exception as e:
             logger.error(f"Error cleaning up temporary file {temp_path}: {str(e)}")
 
-def analyze_resume_with_openai(file_path, atsfix=False):
+def analyze_resume_with_openai(resume_text, atsfix=False):
     try:
-        ext = os.path.splitext(file_path)[1].lower()
-        if ext == ".pdf":
-            text = extract_text_from_pdf(file_path)
-        elif ext == ".docx":
-            text = extract_text_from_docx(file_path)
-        else:
-            return {"error": "Unsupported file type."}
-
-        if not text.strip():
-            return {"error": "No readable text found in resume."}
+        if not isinstance(resume_text, str) or not resume_text.strip():
+            return {"error": "No readable text provided."}
 
         prompt = f"""
 You are a professional resume analyzer.
@@ -197,7 +189,7 @@ Analyze the following resume and provide key suggestions to improve its impact, 
 Give up to 7 specific, actionable suggestions only. Avoid generic advice.
 
 Resume:
-{text[:6000]}
+{resume_text[:6000]}
         """
 
         if atsfix:
@@ -207,7 +199,7 @@ Analyze the following resume and provide specific suggestions to improve its ATS
 Give up to 7 specific, actionable suggestions only. Focus on ATS-specific improvements like keywords, section headings, and formatting.
 
 Resume:
-{text[:6000]}
+{resume_text[:6000]}
             """
 
         response = client.chat.completions.create(
@@ -215,7 +207,7 @@ Resume:
             messages=[{"role": "user", "content": prompt}]
         )
         suggestions = response.choices[0].message.content.strip()
-        return {"text": text, "suggestions": suggestions}
+        return {"text": resume_text, "suggestions": suggestions}
 
     except Exception as e:
         logger.error(f"[ERROR in analyze_resume_with_openai]: {str(e)}")
@@ -594,5 +586,4 @@ Summary:
         return response.choices[0].message.content.strip()
 
     except Exception as e:
-        logger.error(f"[ERROR in generate_resume_summary]: {str(e)}")
-        return f"A {role} with {experience} of experience, skilled in {skills}. Committed to delivering high-quality results."
+        logger.error(f"[ERROR in generate_resume_summary]: {str

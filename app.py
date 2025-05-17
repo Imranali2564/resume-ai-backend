@@ -195,10 +195,10 @@ def check_ats():
 def analyze_resume():
     try:
         data = request.get_json()
-        file_path = data.get('file_path')
-        if not file_path or not os.path.exists(file_path):
-            return jsonify({'error': 'Invalid file path'}), 400
-        result = analyze_resume_with_openai(file_path, atsfix=False)
+        resume_text = data.get('resume_text')
+        if not resume_text or not isinstance(resume_text, str) or not resume_text.strip():
+            return jsonify({'error': 'Invalid or empty resume text'}), 400
+        result = analyze_resume_with_openai(resume_text, atsfix=False)
         if "error" in result:
             return jsonify({"suggestions": "Unable to generate suggestions. Please check if the API key is set."})
         return jsonify(result)
@@ -1077,7 +1077,7 @@ def ask_ai():
                 "- Cost: 100% Free to use. No hidden charges. No login required.\n\n"
                 "Key Features of ResumeFixerPro:\n"
                 "1. AI Resume Fixer Tool Ã¢â‚¬â€“ Upload your resume and get instant improvement suggestions with AI fixes.\n"
-                "2. Resume Score Checker Ã¢â‚¬â€œ See how strong your resume is (0 to 100).\n"
+                "2. Resume Score Checker Ã¢â‚¬â€“ See how strong your resume is (0 to 100).\n"
                 "3. ATS Compatibility Checker Ã¢â‚¬â€“ Check if your resume is ATS-friendly.\n"
                 "4. Cover Letter Generator Ã¢â‚¬â€“ Instantly generate a job-specific cover letter.\n"
                 "5. Resume Template Builder Ã¢â‚¬â€“ Choose from 5 student-friendly templates, edit live, and download as PDF/DOCX.\n"
