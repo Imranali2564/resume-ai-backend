@@ -162,7 +162,7 @@ def extract_sections():
 
 @app.route('/ats-check', methods=['POST'])
 def check_ats():
-    file = request.files.get('resume')
+    file = request.files.get('file') or request.files.get('resume')
     if not file or file.filename == '':
         return jsonify({'error': 'No file selected for upload'}), 400
     ext = os.path.splitext(file.filename)[1].lower()
@@ -516,7 +516,7 @@ def final_resume():
 
 @app.route('/generate-cover-letter', methods=['POST'])
 def generate_cover_letter():
-    file = request.files.get('file')
+    file = request.files.get('file') or request.files.get('resume')
     job_title = request.form.get('job_title')
     company_name = request.form.get('company_name')
 
@@ -963,7 +963,7 @@ def convert_format():
 
 @app.route('/fix-formatting', methods=['POST'])
 def fix_formatting():
-    file = request.files.get('resume')
+    file = request.files.get('file') or request.files.get('resume')
     if not file:
         return jsonify({'error': 'No file uploaded'}), 400
 
