@@ -354,7 +354,7 @@ def generate_section_content(suggestion, full_text):
         prompt = f"""
 You are a professional resume writer.
 Based on the suggestion and resume text provided, generate improved content for the relevant resume section.
-Return the section name and the improved content in this format:
+Return the section name and the improved content in JSON format as follows:
 {{
   "section": "section_name",
   "fixedContent": "Improved content here"
@@ -367,6 +367,7 @@ Instructions:
 2. If the suggestion involves adding a new section, only add it if it doesn't already exist and is relevant to the resume.
 3. Avoid generic or irrelevant suggestions. Focus on actionable improvements that align with the resume's content.
 4. Format the content as plain text, with bullet points using "- " if appropriate.
+5. Ensure the output is valid JSON.
 
 Suggestion:
 {suggestion}
@@ -379,8 +380,22 @@ Resume:
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
-        result = eval(response.choices[0].message.content.strip())
+        raw_response = response.choices[0].message.content.strip()
         
+        logger.debug(f"OpenAI response for generate_section_content: {raw_response}")
+
+        # Parse the response as JSON
+        try:
+            result = json.loads(raw_response)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse OpenAI response as JSON: {raw_response}, error: {str(e)}")
+            return {"error": f"Invalid response format from AI: {str(e)}"}
+
+        # Validate the response
+        if not isinstance(result, dict) or "section" not in result or "fixedContent" not in result:
+            logger.error(f"Unexpected response format from OpenAI: {raw_response}")
+            return {"error": "Unexpected response format from AI"}
+
         # Ensure section name is lowercase and underscore-separated
         result["section"] = result["section"].lower().replace(" ", "_")
         
