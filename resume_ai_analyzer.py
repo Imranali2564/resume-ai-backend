@@ -552,7 +552,9 @@ def compare_resume_with_keywords(resume_text, keywords_text):
         missing = [kw for kw in keywords if kw not in resume_words]
         return {
             "present_keywords": present,
-            "missing_keywords": missing perspective, the `compare_resume_with_keywords` function doesn’t use OpenAI, so it’s not affected by the API key issue, but I’ll include it for completeness:
+            "missing_keywords": missing,
+            "match_percentage": round((len(present) / len(keywords)) * 100, 2) if keywords else 0
+        }          
 
 def compare_resume_with_keywords(resume_text, keywords_text):
     try:
