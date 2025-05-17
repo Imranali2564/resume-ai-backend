@@ -8,9 +8,25 @@ from difflib import SequenceMatcher
 from collections import Counter
 import json
 import re
+from PIL import Image
+import pytesseract
+import io
 
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Initialize OpenAI client with error handling for missing API key
+api_key = os.environ.get("OPENAI_API_KEY")
+if not api_key:
+    logger.error("OPENAI_API_KEY environment variable not set.")
+    client = None  # Set client to None if API key is missing
+else:
+    try:
+        client = OpenAI(api_key=api_key)
+    except Exception as e:
+        logger.error(f"Failed to initialize OpenAI client: {str(e)}")
+        client = None
 
 def extract_text_from_pdf(file_path):
     try:
@@ -33,10 +49,6 @@ def extract_text_from_pdf(file_path):
     except Exception as e:
         logger.error(f"[ERROR in extract_text_from_pdf]: {str(e)}")
         return ""
-
-from PIL import Image
-import pytesseract
-import io
 
 def extract_text_with_ocr(file_path):
     try:
@@ -179,6 +191,9 @@ def extract_text_from_resume(resume_file):
             logger.error(f"Error cleaning up temporary file {temp_path}: {str(e)}")
 
 def analyze_resume_with_openai(resume_text, atsfix=False):
+    if not client:
+        return {"error": "OpenAI API key not set. Please configure the OPENAI_API_KEY environment variable."}
+
     try:
         if not isinstance(resume_text, str) or not resume_text.strip():
             return {"error": "No readable text provided."}
@@ -262,7 +277,8 @@ def check_ats_compatibility(file_path):
             issues.append(f"✅ Passed: Found common keywords: {', '.join(found_keywords)}.")
 
         # AI-based ATS check
-        prompt = f"""
+        if client:
+            prompt = f"""
 You are an ATS scanner. Review this resume and provide a list of key compatibility checks in this format:
 
 ✅ Passed: Proper section headings used  
@@ -277,13 +293,15 @@ Ensure the checks are accurate and specific to ATS requirements, such as:
 
 Text:
 {text[:6000]}
-        """
+            """
 
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        ai_checks = response.choices[0].message.content.strip().splitlines()
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            ai_checks = response.choices[0].message.content.strip().splitlines()
+        else:
+            ai_checks = ["❌ Issue: Cannot perform AI-based ATS check due to missing OpenAI API key."]
 
         # Combine heuristic and AI checks
         issues.extend([check for check in ai_checks if check.strip()])
@@ -342,6 +360,9 @@ Resume:
 {text}
     """
 
+    if not client:
+        return {"error": "Cannot format resume: OpenAI API key not set."}
+
     try:
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -371,6 +392,9 @@ Resume:
         return {"error": "Failed to fix resume formatting due to an API error"}
 
 def generate_section_content(suggestion, full_text):
+    if not client:
+        return {"error": "Cannot generate section content: OpenAI API key not set."}
+
     try:
         # Extract existing sections to avoid duplicates
         sections = extract_resume_sections(full_text)
@@ -431,6 +455,9 @@ Resume:
         return {"error": f"Failed to generate section content: {str(e)}"}
 
 def extract_resume_sections(text):
+    if not client:
+        return {"error": "Cannot extract resume sections: OpenAI API key not set."}
+
     try:
         prompt = f"""
 Split the following resume text into structured sections. Return a dictionary in JSON format where each key is a lowercase, underscore-separated section name (e.g., 'work_experience') and the value is the content as a string.
@@ -496,6 +523,9 @@ Resume:
         return {}
 
 def extract_keywords_from_jd(jd_text):
+    if not client:
+        return "Cannot extract keywords: OpenAI API key not set."
+
     try:
         prompt = f"""
 From the following job description, extract the most important keywords that should be reflected in a resume.
@@ -522,6 +552,16 @@ def compare_resume_with_keywords(resume_text, keywords_text):
         missing = [kw for kw in keywords if kw not in resume_words]
         return {
             "present_keywords": present,
+            "missing_keywords": missing perspective, the `compare_resume_with_keywords` function doesn’t use OpenAI, so it’s not affected by the API key issue, but I’ll include it for completeness:
+
+def compare_resume_with_keywords(resume_text, keywords_text):
+    try:
+        resume_words = set(resume_text.lower().split())
+        keywords = [kw.strip().lower() for kw in keywords_text.split(",") if kw.strip()]
+        present = [kw for kw in keywords if kw in resume_words]
+        missing = [kw for kw in keywords if kw not in resume_words]
+        return {
+            "present_keywords": present,
             "missing_keywords": missing,
             "match_percentage": round((len(present) / len(keywords)) * 100, 2) if keywords else 0
         }
@@ -530,6 +570,16 @@ def compare_resume_with_keywords(resume_text, keywords_text):
         return {"present_keywords": [], "missing_keywords": [], "match_percentage": 0}
 
 def analyze_job_description(jd_text):
+    if not client:
+        return {
+            "required_skills": [],
+            "preferred_skills": [],
+            "experience_level": "Unknown",
+            "education": "Not specified",
+            "keywords": [],
+            "error": "Cannot analyze job description: OpenAI API key not set."
+        }
+
     try:
         prompt = f"""
 You are a job description analyzer. Analyze the following job description and return a structured analysis in this format:
@@ -565,6 +615,9 @@ Job Description:
         }
 
 def generate_resume_summary(name, role, experience, skills):
+    if not client:
+        return "Cannot generate resume summary: OpenAI API key not set."
+
     try:
         prompt = f"""
 You are a resume writing expert. Write a concise 2-3 line professional summary for a resume based on the following details:
@@ -586,4 +639,5 @@ Summary:
         return response.choices[0].message.content.strip()
 
     except Exception as e:
-        logger.error(f"[ERROR in generate_resume_summary]: {str
+        logger.error(f"[ERROR in generate_resume_summary]: {str(e)}")
+        return "Failed to generate summary due to an API error."
