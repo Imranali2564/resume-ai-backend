@@ -89,17 +89,58 @@ def health_check():
 def upload_resume():
     file = request.files.get('resume')
     if not file or file.filename == '':
+        logger.error("No file uploaded in request")
         return jsonify({'error': 'No file uploaded'}), 400
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
+
+    # Validate file extension
+    ext = os.path.splitext(file.filename)[1].lower()
+    allowed_extensions = {'.pdf', '.docx'}
+    if ext not in allowed_extensions:
+        logger.error(f"Unsupported file format: {ext}")
+        return jsonify({'error': f'Unsupported file format: {ext}. Please upload a PDF or DOCX file.'}), 400
+
+    # Validate file size
+    file.seek(0, os.SEEK_END)
+    file_size = file.tell() / 1024  # Size in KB
+    file.seek(0)  # Reset file pointer
+    if file_size == 0:
+        logger.error(f"Uploaded file {file.filename} is empty")
+        return jsonify({'error': 'Uploaded file is empty'}), 400
+    if file_size > 10240:  # 10MB limit
+        logger.error(f"File {file.filename} is too large: {file_size:.2f} KB")
+        return jsonify({'error': f'File is too large: {file_size:.2f} KB. Maximum allowed size is 10MB.'}), 400
+    logger.debug(f"File size: {file_size:.2f} KB")
+
+    # Save the file
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     try:
         file.save(filepath)
+        if not os.path.exists(filepath):
+            logger.error(f"Failed to save file to {filepath}")
+            return jsonify({'error': 'Failed to save file on server'}), 500
+
+        # Set file permissions for Render compatibility
+        os.chmod(filepath, 0o644)
+
+        # Verify saved file size
+        saved_size = os.path.getsize(filepath) / 1024
+        if saved_size == 0:
+            logger.error(f"Saved file {filepath} is empty")
+            return jsonify({'error': 'Saved file is empty'}), 500
+
+        # Extract text from the resume
         resume_text = extract_text_from_resume(file)
         if not resume_text:
-            return jsonify({'error': 'Failed to extract text from resume.'}), 500
+            logger.error(f"Failed to extract text from {filepath}")
+            return jsonify({'error': 'Failed to extract text from resume. The file might be unreadable or contain only images.'}), 500
+
+        logger.info(f"Successfully processed file {filename}: {len(resume_text)} characters extracted")
         return jsonify({'resume_text': resume_text})
+
     except Exception as e:
         logger.error(f"Error in /upload: {str(e)}")
-        return jsonify({'error': 'Failed to extract resume text'}), 500
+        return jsonify({'error': f'Failed to process file: {str(e)}'}), 500
     finally:
         cleanup_file(filepath)
 
@@ -1035,10 +1076,10 @@ def ask_ai():
                 "- Privacy: ResumeFixerPro respects user privacy. No signup required. No resumes are stored.\n"
                 "- Cost: 100% Free to use. No hidden charges. No login required.\n\n"
                 "Key Features of ResumeFixerPro:\n"
-                "1. AI Resume Fixer Tool Ã¢â‚¬â€œ Upload your resume and get instant improvement suggestions with AI fixes.\n"
+                "1. AI Resume Fixer Tool Ã¢â‚¬â€“ Upload your resume and get instant improvement suggestions with AI fixes.\n"
                 "2. Resume Score Checker Ã¢â‚¬â€œ See how strong your resume is (0 to 100).\n"
-                "3. ATS Compatibility Checker Ã¢â‚¬â€œ Check if your resume is ATS-friendly.\n"
-                "4. Cover Letter Generator Ã¢â‚¬â€œ Instantly generate a job-specific cover letter.\n"
+                "3. ATS Compatibility Checker Ã¢â‚¬â€“ Check if your resume is ATS-friendly.\n"
+                "4. Cover Letter Generator Ã¢â‚¬â€“ Instantly generate a job-specific cover letter.\n"
                 "5. Resume Template Builder Ã¢â‚¬â€“ Choose from 5 student-friendly templates, edit live, and download as PDF/DOCX.\n"
                 "6. AI Resume Generator Ã¢â‚¬â€“ Fill out a simple form and get a full professional resume in seconds.\n\n"
                 "Guidelines:\n"

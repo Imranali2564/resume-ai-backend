@@ -110,6 +110,7 @@ def extract_text_from_docx(file_path):
 
 def extract_text_from_resume(resume_file):
     try:
+        # Validate input
         if not resume_file or resume_file.filename == '':
             logger.error("No resume file provided")
             return ""
@@ -123,7 +124,34 @@ def extract_text_from_resume(resume_file):
         filename = secure_filename(resume_file.filename)
         temp_path = os.path.join('/tmp/Uploads', filename)  # Use /tmp for Render compatibility
         os.makedirs('/tmp/Uploads', exist_ok=True)
+        logger.debug(f"Saving file to {temp_path}")
+
+        # Check file size before saving
+        resume_file.seek(0, os.SEEK_END)
+        file_size = resume_file.tell() / 1024  # Size in KB
+        resume_file.seek(0)  # Reset file pointer
+        if file_size == 0:
+            logger.error(f"File {filename} is empty")
+            return ""
+        if file_size > 10240:  # 10MB limit
+            logger.error(f"File {filename} is too large: {file_size:.2f} KB")
+            return ""
+        logger.debug(f"File size: {file_size:.2f} KB")
+
+        # Save the file
         resume_file.save(temp_path)
+        if not os.path.exists(temp_path):
+            logger.error(f"Failed to save file to {temp_path}")
+            return ""
+
+        # Ensure file permissions are correct for Render
+        os.chmod(temp_path, 0o644)
+
+        # Verify file size after saving
+        saved_size = os.path.getsize(temp_path) / 1024
+        if saved_size == 0:
+            logger.error(f"Saved file {temp_path} is empty")
+            return ""
 
         # Extract text based on file type
         if ext == '.pdf':
@@ -131,19 +159,24 @@ def extract_text_from_resume(resume_file):
         elif ext == '.docx':
             text = extract_text_from_docx(temp_path)
 
-        # Clean up the temporary file
-        try:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-                logger.debug(f"Cleaned up temporary file: {temp_path}")
-        except Exception as e:
-            logger.error(f"Error cleaning up temporary file {temp_path}: {str(e)}")
+        if not text.strip():
+            logger.warning(f"No text extracted from {temp_path}")
+            return ""
 
-        return text.strip() if text else ""
+        logger.info(f"Successfully extracted text from {filename}: {len(text)} characters")
+        return text.strip()
 
     except Exception as e:
         logger.error(f"[ERROR in extract_text_from_resume]: {str(e)}")
         return ""
+    finally:
+        # Clean up the temporary file
+        try:
+            if 'temp_path' in locals() and os.path.exists(temp_path):
+                os.remove(temp_path)
+                logger.debug(f"Cleaned up temporary file: {temp_path}")
+        except Exception as e:
+            logger.error(f"Error cleaning up temporary file {temp_path}: {str(e)}")
 
 def analyze_resume_with_openai(file_path, atsfix=False):
     try:
