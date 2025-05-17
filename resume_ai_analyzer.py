@@ -6,6 +6,8 @@ from openai import OpenAI
 from werkzeug.utils import secure_filename
 from difflib import SequenceMatcher
 from collections import Counter
+import json
+import re
 
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 logger = logging.getLogger(__name__)
@@ -159,20 +161,20 @@ def analyze_resume_with_openai(file_path, atsfix=False):
         prompt = f"""
 You are a professional resume analyzer.
 Analyze the following resume and provide key suggestions to improve its impact, clarity, and formatting.
-Give up to 7 suggestions only. Be specific.
+Give up to 7 specific, actionable suggestions only. Avoid generic advice.
 
 Resume:
-{text[:4000]}
+{text[:6000]}
         """
 
         if atsfix:
             prompt = f"""
 You are an expert in optimizing resumes for Applicant Tracking Systems (ATS).
 Analyze the following resume and provide specific suggestions to improve its ATS compatibility.
-Give up to 7 suggestions only. Be practical.
+Give up to 7 specific, actionable suggestions only. Focus on ATS-specific improvements like keywords, section headings, and formatting.
 
 Resume:
-{text[:4000]}
+{text[:6000]}
             """
 
         response = client.chat.completions.create(
@@ -184,7 +186,7 @@ Resume:
 
     except Exception as e:
         logger.error(f"[ERROR in analyze_resume_with_openai]: {str(e)}")
-        return {"error": "Failed to analyze resume."}
+        return {"error": f"Failed to analyze resume: {str(e)}"}
 
 def check_ats_compatibility(file_path):
     try:
@@ -194,11 +196,47 @@ def check_ats_compatibility(file_path):
         elif ext == ".docx":
             text = extract_text_from_docx(file_path)
         else:
-            return "❌ Unsupported file type."
+            return {"error": "Unsupported file type."}
 
         if not text.strip():
-            return "❌ No readable text found in resume."
+            return {"error": "No readable text found in resume."}
 
+        # Basic heuristic checks
+        issues = []
+        score = 100
+
+        # Check for contact information
+        if not re.search(r'[\w\.-]+@[\w\.-]+', text):
+            issues.append("❌ Issue: Missing email address - ATS systems often require contact information.")
+            score -= 20
+        else:
+            issues.append("✅ Passed: Email address present.")
+
+        if not re.search(r'\+?\d[\d\s\-]{8,}', text):
+            issues.append("❌ Issue: Missing phone number - ATS systems often require contact information.")
+            score -= 10
+        else:
+            issues.append("✅ Passed: Phone number present.")
+
+        # Check for section headings
+        section_headings = ['education', 'experience', 'skills', 'certifications']
+        found_headings = [heading for heading in section_headings if heading in text.lower()]
+        if len(found_headings) < 2:
+            issues.append("❌ Issue: Missing key section headings (e.g., Education, Experience, Skills) - ATS systems rely on these.")
+            score -= 30
+        else:
+            issues.append(f"✅ Passed: Found key section headings: {', '.join(found_headings)}.")
+
+        # Check for keywords (basic check for common terms)
+        common_keywords = ['python', 'javascript', 'sql', 'project management', 'communication', 'teamwork']
+        found_keywords = [kw for kw in common_keywords if kw in text.lower()]
+        if not found_keywords:
+            issues.append("❌ Issue: No common keywords (e.g., Python, JavaScript, SQL) - ATS systems may not rank the resume well.")
+            score -= 20
+        else:
+            issues.append(f"✅ Passed: Found common keywords: {', '.join(found_keywords)}.")
+
+        # AI-based ATS check
         prompt = f"""
 You are an ATS scanner. Review this resume and provide a list of key compatibility checks in this format:
 
@@ -206,19 +244,31 @@ You are an ATS scanner. Review this resume and provide a list of key compatibili
 ❌ Issue: No mention of technical skills  
 ✅ Passed: Education section is clear
 
+Ensure the checks are accurate and specific to ATS requirements, such as:
+- Presence of contact information (email, phone)
+- Clear section headings (Education, Experience, Skills, etc.)
+- Use of relevant keywords
+- Avoidance of complex formatting (e.g., headers/footers, tables)
+
 Text:
-{text[:4000]}
+{text[:6000]}
         """
 
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
-        return response.choices[0].message.content.strip()
+        ai_checks = response.choices[0].message.content.strip().splitlines()
+
+        # Combine heuristic and AI checks
+        issues.extend([check for check in ai_checks if check.strip()])
+        score = max(0, score)  # Ensure score doesn't go below 0
+
+        return {"issues": issues, "score": score}
 
     except Exception as e:
         logger.error(f"[ERROR in check_ats_compatibility]: {str(e)}")
-        return "❌ Failed to generate ATS compatibility report."
+        return {"error": f"Failed to generate ATS compatibility report: {str(e)}"}
 
 def fix_resume_formatting(file_path):
     ext = os.path.splitext(file_path)[1].lower()
@@ -241,17 +291,18 @@ Clean and reformat the following resume into plain text with the following rules
 - Ensure exactly one blank line between sections.
 - Remove extra spaces, normalize line breaks, and ensure consistent formatting.
 - Do not use HTML, markdown, or any other markup language—just plain text.
+- Order sections as follows: PERSONAL DETAILS, SUMMARY, OBJECTIVE, SKILLS, EXPERIENCE, EDUCATION, CERTIFICATIONS, LANGUAGES, HOBBIES, PROJECTS, VOLUNTEER EXPERIENCE, ACHIEVEMENTS, PUBLICATIONS, REFERENCES.
 
 Example output:
 NAME
 John Doe
 
-CONTACT
-Email: john.doe@email.com
-Phone: +1234567890
+PERSONAL DETAILS
+- Email: john.doe@email.com
+- Phone: +1234567890
 
-EDUCATION
-- Bachelor of Science in Computer Science, XYZ University, 2020-2024
+SUMMARY
+- A dedicated Software Engineer with 3 years of experience.
 
 EXPERIENCE
 - Software Engineer Intern, ABC Corp, June 2023 - August 2023
@@ -296,47 +347,63 @@ Resume:
 
 def generate_section_content(suggestion, full_text):
     try:
+        # Extract existing sections to avoid duplicates
+        sections = extract_resume_sections(full_text)
+        existing_sections = list(sections.keys())
+
         prompt = f"""
 You are a professional resume writer.
 Based on the suggestion and resume text provided, generate improved content for the relevant resume section.
 Return the section name and the improved content in this format:
 {{
-  "section": "Section Name",
+  "section": "section_name",
   "fixedContent": "Improved content here"
 }}
+
+Existing Sections: {', '.join(existing_sections)}
+
+Instructions:
+1. If the suggestion involves improving an existing section, update that section with specific, relevant improvements.
+2. If the suggestion involves adding a new section, only add it if it doesn't already exist and is relevant to the resume.
+3. Avoid generic or irrelevant suggestions. Focus on actionable improvements that align with the resume's content.
+4. Format the content as plain text, with bullet points using "- " if appropriate.
 
 Suggestion:
 {suggestion}
 
 Resume:
-{full_text[:4000]}
+{full_text[:6000]}
         """
 
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
-        return eval(response.choices[0].message.content.strip())
+        result = eval(response.choices[0].message.content.strip())
+        
+        # Ensure section name is lowercase and underscore-separated
+        result["section"] = result["section"].lower().replace(" ", "_")
+        
+        return result
 
     except Exception as e:
         logger.error(f"[ERROR in generate_section_content]: {str(e)}")
-        return {"error": "Failed to generate section content."}
-
-import json
+        return {"error": f"Failed to generate section content: {str(e)}"}
 
 def extract_resume_sections(text):
     try:
         prompt = f"""
-Split the following resume text into structured sections. Return a dictionary in JSON format where each key is a lowercase, underscore-separated section name (e.g., 'work_experience') and the value is the content.
+Split the following resume text into structured sections. Return a dictionary in JSON format where each key is a lowercase, underscore-separated section name (e.g., 'work_experience') and the value is the content as a string.
 
 Include common sections like:
+- personal_details
 - summary
 - objective
 - education
-- work_experience
+- work_experience (also map 'experience' to this)
 - internship
 - projects
-- technical_skills
+- technical_skills (also map 'skills' to this)
 - soft_skills
 - certifications
 - courses
@@ -345,16 +412,21 @@ Include common sections like:
 - languages
 - hobbies
 - extracurricular
-- volunteering
+- volunteering (also map 'volunteer_experience' to this)
 - publications
 - research_projects
 - strengths
 - references
 
-Exclude any section that is not found. Ensure the output is valid JSON.
+Instructions:
+- Normalize section names (e.g., map 'experience' to 'work_experience', 'skills' to 'technical_skills', 'volunteer_experience' to 'volunteering').
+- Avoid duplicate sections by merging content under the normalized section name.
+- Exclude any section that is not found.
+- Ensure the output is valid JSON.
+- Order sections as follows: personal_details, summary, objective, technical_skills, work_experience, education, certifications, languages, hobbies, projects, volunteering, achievements, publications, references.
 
 Resume:
-{text[:4000]}
+{text[:6000]}
         """
 
         response = client.chat.completions.create(
@@ -368,6 +440,12 @@ Resume:
         clean_output = raw_output.replace("null", "\"\"")
 
         sections = json.loads(clean_output)
+        
+        # Ensure content is a string, not a list
+        for key in sections:
+            if isinstance(sections[key], list):
+                sections[key] = '\n'.join(sections[key]).strip()
+
         return sections
 
     except json.JSONDecodeError as e:
