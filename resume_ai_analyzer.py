@@ -554,22 +554,14 @@ def compare_resume_with_keywords(resume_text, keywords_text):
             "present_keywords": present,
             "missing_keywords": missing,
             "match_percentage": round((len(present) / len(keywords)) * 100, 2) if keywords else 0
-        }          
-
-def compare_resume_with_keywords(resume_text, keywords_text):
-    try:
-        resume_words = set(resume_text.lower().split())
-        keywords = [kw.strip().lower() for kw in keywords_text.split(",") if kw.strip()]
-        present = [kw for kw in keywords if kw in resume_words]
-        missing = [kw for kw in keywords if kw not in resume_words]
-        return {
-            "present_keywords": present,
-            "missing_keywords": missing,
-            "match_percentage": round((len(present) / len(keywords)) * 100, 2) if keywords else 0
         }
     except Exception as e:
-        logger.error(f"[ERROR in compare_resume_with_keywords]: {str(e)}")
-        return {"present_keywords": [], "missing_keywords": [], "match_percentage": 0}
+        logger.error(f"[ERROR in compare_resume_with_keywords: {str(e)}]")
+        return {
+            "present_keywords": [],
+            "missing_keywords": [],
+            "match_percentage": 0
+        }
 
 def analyze_job_description(jd_text):
     if not client:
