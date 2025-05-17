@@ -214,6 +214,11 @@ def parse_resume():
 
         sections = extract_resume_sections(resume_text)
 
+        # Ensure all section content is a string, not a list
+        for key in sections:
+            if isinstance(sections[key], list):
+                sections[key] = '\n'.join(sections[key]).strip()
+
         logger.debug(f"Detected sections: {json.dumps(sections, indent=2)}")
 
         return jsonify({"sections": sections})
@@ -234,6 +239,11 @@ def fix_suggestion():
             return jsonify({"error": "Missing suggestion or full resume text"}), 400
 
         result = generate_section_content(suggestion, full_text)
+
+        # Ensure fixedContent is a string, not a list
+        if "fixedContent" in result and isinstance(result["fixedContent"], list):
+            result["fixedContent"] = '\n'.join(result["fixedContent"]).strip()
+
         return jsonify(result)
 
     except Exception as e:
@@ -373,13 +383,19 @@ def final_resume():
                 section = fix.get('section')
                 fixed_text = fix.get('fixedText') or fix.get('fixedContent')
                 if section and fixed_text:
-                    fixed_sections[section] = fixed_text.strip()
+                    # Ensure fixed_text is a string
+                    if isinstance(fixed_text, list):
+                        fixed_text = '\n'.join(fixed_text).strip()
+                    fixed_sections[section] = fixed_text
             elif "sections" in fix:
                 for section_fix in fix.get('sections', []):
                     section = section_fix.get('section')
                     fixed_text = section_fix.get('fixedContent')
                     if section and fixed_text:
-                        fixed_sections[section] = fixed_text.strip()
+                        # Ensure fixed_text is a string
+                        if isinstance(fixed_text, list):
+                            fixed_text = '\n'.join(fixed_text).strip()
+                        fixed_sections[section] = fixed_text
 
         logger.debug(f"Fixed sections: {json.dumps(fixed_sections, indent=2)}")
 
@@ -452,6 +468,10 @@ def final_resume():
 
         try:
             final_sections = extract_resume_sections(merged_text)
+            # Ensure all section content is a string
+            for key in final_sections:
+                if isinstance(final_sections[key], list):
+                    final_sections[key] = '\n'.join(final_sections[key]).strip()
             logger.debug(f"Final deduplicated sections: {json.dumps(final_sections, indent=2)}")
         except Exception as e:
             logger.error(f"Error deduplicating sections: {str(e)}")
@@ -631,7 +651,7 @@ def final_resume():
                             if line:
                                 bullet_sections = ["skills", "experience", "hobbies", "additional_courses", "projects", "volunteer_experience", "achievements"]
                                 if section_key in bullet_sections:
-                                    story.append(Paragraph(f"• {line}", styles['Bullet']))
+                                    story.append(Paragraph(f"â€¢ {line}", styles['Bullet']))
                                 else:
                                     story.append(Paragraph(line, styles['Body']))
 
@@ -697,7 +717,7 @@ Format the output as plain text, e.g., 'Software Intern, ABC Corp, June 2023 - A
                 "skills": f"""
 You are a resume writing assistant. The user has provided the following skills: '{user_input}'.
 Based on this, generate a professional skills section for a resume. Expand the list by adding 2-3 relevant skills if possible, and format as a bullet list.
-Format the output as plain text with bullet points, e.g., '• Python\n• JavaScript\n• SQL'.
+Format the output as plain text with bullet points, e.g., 'â€¢ Python\nâ€¢ JavaScript\nâ€¢ SQL'.
 """,
                 "certifications": f"""
 You are a resume writing assistant. The user has provided the following certifications: '{user_input}'.
@@ -712,7 +732,7 @@ Format the output as plain text, e.g., 'English (Fluent), Spanish (Intermediate)
                 "hobbies": f"""
 You are a resume writing assistant. The user has provided the following hobbies: '{user_input}'.
 Based on this, generate a professional hobbies section for a resume. Expand with 1-2 related hobbies if possible, and format as a list.
-Format the output as plain text with bullet points, e.g., '• Reading\n• Hiking'.
+Format the output as plain text with bullet points, e.g., 'â€¢ Reading\nâ€¢ Hiking'.
 """
             }
             prompt = prompts.get(section_name, "")
@@ -727,7 +747,11 @@ Format the output as plain text with bullet points, e.g., '• Reading\n• Hiki
                         {"role": "user", "content": prompt}
                     ]
                 )
-                return res.choices[0].message.content.strip()
+                content = res.choices[0].message.content.strip()
+                # Ensure the content is a string, not a list
+                if isinstance(content, list):
+                    content = '\n'.join(content).strip()
+                return content
             except Exception as e:
                 logger.error(f"Error generating {section_name}: {str(e)}")
                 return user_input
@@ -752,6 +776,9 @@ Write a 2-3 line professional summary for a resume.
                     ]
                 )
                 summary = res.choices[0].message.content.strip()
+                # Ensure summary is a string
+                if isinstance(summary, list):
+                    summary = '\n'.join(summary).strip()
             except Exception as e:
                 logger.error(f"Error generating summary: {str(e)}")
                 summary = "Unable to generate summary. Please check if the API key is set."
@@ -1198,14 +1225,14 @@ def ask_ai():
         data = request.get_json()
         question = data.get("question", "")
         if not question.strip():
-            return jsonify({"answer": "❌ Please enter a question first."})
+            return jsonify({"answer": "â�Œ Please enter a question first."})
 
         system_prompt = {
             "role": "system",
             "content": (
                 "You are ResumeBot, the official AI assistant of ResumeFixerPro.com.\n\n"
                 "You help users improve resumes, get AI suggestions, download resume templates, generate cover letters, "
-                "and check ATS (Applicant Tracking System) compatibility — all for free.\n\n"
+                "and check ATS (Applicant Tracking System) compatibility â€” all for free.\n\n"
                 "Website Overview:\n"
                 "- Website: https://resumefixerpro.com\n"
                 "- Owner: Imran Ali (YouTuber & Developer from India)\n"
@@ -1213,12 +1240,12 @@ def ask_ai():
                 "- Privacy: ResumeFixerPro respects user privacy. No signup required. No resumes are stored.\n"
                 "- Cost: 100% Free to use. No hidden charges. No login required.\n\n"
                 "Key Features of ResumeFixerPro:\n"
-                "1. AI Resume Fixer Tool – Upload your resume and get instant improvement suggestions with AI fixes.\n"
-                "2. Resume Score Checker – See how strong your resume is (0 to 100).\n"
-                "3. ATS Compatibility Checker – Check if your resume is ATS-friendly.\n"
-                "4. Cover Letter Generator – Instantly generate a job-specific cover letter.\n"
-                "5. Resume Template Builder – Choose from 5 student-friendly templates, edit live, and download as PDF/DOCX.\n"
-                "6. AI Resume Generator – Fill out a simple form and get a full professional resume in seconds.\n\n"
+                "1. AI Resume Fixer Tool â€“ Upload your resume and get instant improvement suggestions with AI fixes.\n"
+                "2. Resume Score Checker â€“ See how strong your resume is (0 to 100).\n"
+                "3. ATS Compatibility Checker â€“ Check if your resume is ATS-friendly.\n"
+                "4. Cover Letter Generator â€“ Instantly generate a job-specific cover letter.\n"
+                "5. Resume Template Builder â€“ Choose from 5 student-friendly templates, edit live, and download as PDF/DOCX.\n"
+                "6. AI Resume Generator â€“ Fill out a simple form and get a full professional resume in seconds.\n\n"
                 "Guidelines:\n"
                 "- Always give short, helpful, and positive replies.\n"
                 "- If someone asks about the site, privacy, location, features, or Imran Ali, give accurate info.\n"
@@ -1240,12 +1267,13 @@ def ask_ai():
         )
 
         answer = response.choices[0].message.content.strip()
-        return jsonify({"answer": f"🤖 ResumeBot:\n{answer}"})
+        return jsonify({"answer": f"ðŸ¤– ResumeBot:\n{answer}"})
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({"answer": "⚠️ AI error: " + str(e)})
+        return jsonify({"answer": "âš ï¸� AI error: " + str(e)})
+    
 @app.route('/send-message', methods=['POST'])
 def send_message():
     try:
@@ -1267,7 +1295,7 @@ def send_message():
         msg = MIMEMultipart()
         msg['From'] = sender_email
         msg['To'] = receiver_email
-        msg['Subject'] = "📬 New Contact Message from ResumeFixerPro"
+        msg['Subject'] = "ðŸ“¬ New Contact Message from ResumeFixerPro"
 
         body = f"""
 New message from Contact Us page:
