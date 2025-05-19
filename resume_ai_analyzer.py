@@ -587,3 +587,33 @@ Job Description:
 
     except Exception as e:
         logger
+def generate_resume_summary(name, role, experience, skills):
+    if not client:
+        return "OpenAI API key not set. Cannot generate summary."
+
+    try:
+        prompt = f"""
+You are a professional resume expert.
+
+Write a concise 2–3 line professional summary for the following person:
+- Name: {name}
+- Role: {role}
+- Experience: {experience}
+- Skills: {skills}
+
+Make it ATS-friendly, use action words, and highlight strengths. Do not include heading or labels.
+        """
+
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7
+        )
+
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        logger.error(f"[ERROR in generate_resume_summary]: {str(e)}")
+        return "Failed to generate summary due to AI error."
