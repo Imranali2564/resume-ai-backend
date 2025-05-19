@@ -214,6 +214,7 @@ def fix_suggestion():
         full_text = data.get("full_text")  # Adjusted to match frontend payload
 
         if not suggestion or not full_text:
+            logger.error("Missing suggestion or full_text in /fix-suggestion request")
             return jsonify({"error": "Missing suggestion or full text"}), 400
 
         result = generate_section_content(suggestion, full_text)
@@ -221,6 +222,12 @@ def fix_suggestion():
             logger.error(f"Error in generate_section_content: {result['error']}")
             return jsonify({'error': result['error']}), 500
 
+        # Validate the response
+        if not isinstance(result, dict) or "section" not in result or "fixedContent" not in result:
+            logger.error(f"Invalid response format from generate_section_content: {result}")
+            return jsonify({'error': 'Invalid response format from AI'}), 500
+
+        logger.info(f"Successfully generated content for section: {result['section']}")
         return jsonify(result)
 
     except Exception as e:
@@ -229,33 +236,51 @@ def fix_suggestion():
 
 @app.route('/preview-resume', methods=['POST'])
 def preview_resume():
-    data = request.get_json()
-    sections = data.get('sections')
-    if not sections:
-        return jsonify({'error': 'No sections provided'}), 400
-    formatted_resume = []
-    for section, content in sections.items():
-        section_title = section.replace('_', ' ').upper()
-        formatted_resume.append(section_title)
-        lines = content.split('\n')
-        for line in lines:
-            line = line.strip()
-            if line:
-                if not line.startswith('- '):
-                    line = '- ' + line
-                formatted_resume.append(line)
-        formatted_resume.append('')
-    resume_text = '\n'.join(formatted_resume).strip()
-    return jsonify({'preview_text': resume_text})
+    try:
+        data = request.get_json()
+        sections = data.get('sections')
+        if not sections:
+            logger.error("No sections provided in /preview-resume request")
+            return jsonify({'error': 'No sections provided'}), 400
+        formatted_resume = []
+        for section, content in sections.items():
+            section_title = section.replace('_', ' ').upper()
+            formatted_resume.append(section_title)
+            lines = content.split('\n')
+            for line in lines:
+                line = line.strip()
+                if line:
+                    if not line.startswith('- '):
+                        line = '- ' + line
+                    formatted_resume.append(line)
+            formatted_resume.append('')
+        # Clean up excessive blank lines
+        cleaned_resume = []
+        last_was_blank = False
+        for line in formatted_resume:
+            if line == '' and last_was_blank:
+                continue
+            cleaned_resume.append(line)
+            last_was_blank = (line == '')
+        resume_text = '\n'.join(cleaned_resume).strip()
+        return jsonify({'preview_text': resume_text})
+    except Exception as e:
+        logger.error(f"Error in /preview-resume: {str(e)}")
+        return jsonify({'error': f'Failed to generate preview: {str(e)}'}), 500
 
 @app.route('/final-resume', methods=['POST'])
 def final_resume():
     data = request.get_json()
     sections = data.get('sections')
     if not sections:
+        logger.error("No sections provided in /final-resume request")
         return jsonify({'error': 'No sections provided'}), 400
 
-    format_type = request.args.get('format', 'docx')
+    format_type = request.args.get('format', 'docx').lower()
+    if format_type not in ['docx', 'pdf']:
+        logger.error(f"Invalid format specified: {format_type}")
+        return jsonify({'error': 'Invalid format specified. Use "docx" or "pdf".'}), 400
+
     output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"fixed_resume_{uuid.uuid4()}.{format_type}")
 
     try:
@@ -267,17 +292,17 @@ def final_resume():
             lines = sections['personal_details'].split('\n')
             for i, line in enumerate(lines):
                 line = line.strip()
-                if i == 0 and not line.includes(":"):
+                if i == 0 and ':' not in line:
                     name = line
-                elif "technical service representative" in line.lower():
+                elif any(keyword in line.lower() for keyword in ['representative', 'engineer', 'manager']):
                     role = line
-                elif "📞" in line or "phone" in line.lower():
+                elif any(keyword in line.lower() for keyword in ['phone', '📞']):
                     contact['phone'] = line.replace("📞", "").strip()
-                elif "📧" in line or "email" in line.lower():
+                elif any(keyword in line.lower() for keyword in ['email', '📧']):
                     contact['email'] = line.replace("📧", "").strip()
-                elif "📍" in line or "city" in line.lower():
+                elif any(keyword in line.lower() for keyword in ['location', 'city', '📍']):
                     contact['location'] = line.replace("📍", "").strip()
-                elif "🌐" in line or "www" in line.lower():
+                elif any(keyword in line.lower() for keyword in ['website', 'www', '🌐']):
                     contact['website'] = line.replace("🌐", "").strip()
 
         if not name:
@@ -296,90 +321,52 @@ def final_resume():
             run.font.size = Pt(20)
             run.bold = True
 
-            subheading = doc.add_heading(role, level=2)
-            subheading.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            run = subheading.runs[0]
-            run.font.size = Pt(12)
+            if role:
+                subheading = doc.add_heading(role, level=2)
+                subheading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run = subheading.runs[0]
+                run.font.size = Pt(12)
 
             doc.add_paragraph()
 
-            # Contact Section (Sidebar-like)
-            doc.add_heading("Contact", level=3)
-            if contact['phone']:
-                doc.add_paragraph(f"📞 {contact['phone']}")
-            if contact['email']:
-                doc.add_paragraph(f"📧 {contact['email']}")
-            if contact['location']:
-                doc.add_paragraph(f"📍 {contact['location']}")
-            if contact['website']:
-                doc.add_paragraph(f"🌐 {contact['website']}")
+            # Contact Section
+            if any(contact.values()):
+                doc.add_heading("Contact", level=3)
+                if contact['phone']:
+                    doc.add_paragraph(f"📞 {contact['phone']}")
+                if contact['email']:
+                    doc.add_paragraph(f"📧 {contact['email']}")
+                if contact['location']:
+                    doc.add_paragraph(f"📍 {contact['location']}")
+                if contact['website']:
+                    doc.add_paragraph(f"🌐 {contact['website']}")
 
-            # Education
-            if 'education' in sections:
-                doc.add_heading("Education", level=3)
-                entries = sections['education'].split('\n\n')
-                for entry in entries:
-                    lines = entry.split('\n')
-                    p = doc.add_paragraph()
-                    p.add_run(lines[0]).bold = True
-                    p.add_run(f"\n{lines[1]}\n{lines[2]}")
-
-            # Skills
-            if 'skills' in sections:
-                doc.add_heading("Skills", level=3)
-                items = sections['skills'].split('\n')
-                for item in items:
-                    doc.add_paragraph(item, style='ListBullet')
-
-            # Certifications
-            if 'certifications' in sections:
-                doc.add_heading("Certifications", level=3)
-                items = sections['certifications'].split('\n')
-                for item in items:
-                    doc.add_paragraph(item, style='ListBullet')
-
-            # Languages
-            if 'languages' in sections:
-                doc.add_heading("Languages", level=3)
-                items = sections['languages'].split('\n')
-                for item in items:
-                    doc.add_paragraph(item, style='ListBullet')
-
-            # Profile
-            if 'profile' in sections:
-                doc.add_heading("Profile", level=3)
-                doc.add_paragraph(sections['profile'])
-
-            # Professional Experience
-            if 'professional_experience' in sections:
-                doc.add_heading("Professional Experience", level=3)
-                jobs = sections['professional_experience'].split('\n\n')
-                for job in jobs:
-                    lines = job.split('\n')
-                    p = doc.add_paragraph()
-                    p.add_run(lines[0]).bold = True
-                    p.add_run(f"\n{lines[1]}")
-                    for line in lines[2:]:
-                        doc.add_paragraph(line, style='ListBullet')
-
-            # Projects
-            if 'projects' in sections:
-                doc.add_heading("Projects", level=3)
-                items = sections['projects'].split('\n')
-                for item in items:
-                    doc.add_paragraph(item, style='ListBullet')
-
-            # Achievements
-            if 'achievements' in sections:
-                doc.add_heading("Achievements", level=3)
-                items = sections['achievements'].split('\n')
-                for item in items:
-                    doc.add_paragraph(item, style='ListBullet')
-
-            # References
-            if 'references' in sections:
-                doc.add_heading("References", level=3)
-                doc.add_paragraph(sections['references'])
+            # Other sections
+            section_order = [
+                'summary', 'objective', 'technical_skills', 'work_experience', 'education',
+                'certifications', 'languages', 'hobbies', 'projects', 'volunteering',
+                'achievements', 'publications', 'references'
+            ]
+            for section in section_order:
+                if section in sections and sections[section].strip():
+                    display_name = section.replace('_', ' ').title()
+                    doc.add_heading(display_name, level=3)
+                    if section in ['summary', 'objective', 'references']:
+                        doc.add_paragraph(sections[section])
+                    elif section in ['education', 'work_experience']:
+                        entries = sections[section].split('\n\n')
+                        for entry in entries:
+                            lines = entry.split('\n')
+                            p = doc.add_paragraph()
+                            p.add_run(lines[0]).bold = True
+                            for line in lines[1:]:
+                                if line.strip():
+                                    doc.add_paragraph(line, style='ListBullet')
+                    else:
+                        items = sections[section].split('\n')
+                        for item in items:
+                            if item.strip():
+                                doc.add_paragraph(item, style='ListBullet')
 
             doc.save(output_path)
             return send_file(
@@ -416,86 +403,47 @@ def final_resume():
 
             story = [
                 Paragraph(name, styles['Name']),
-                Paragraph(role, styles['Role']),
+                Paragraph(role, styles['Role']) if role else Spacer(1, 12),
                 Spacer(1, 12)
             ]
 
             # Contact
-            story.append(Paragraph("Contact", styles['SectionHeading']))
-            if contact['phone']:
-                story.append(Paragraph(f"📞 {contact['phone']}", styles['Body']))
-            if contact['email']:
-                story.append(Paragraph(f"📧 {contact['email']}", styles['Body']))
-            if contact['location']:
-                story.append(Paragraph(f"📍 {contact['location']}", styles['Body']))
-            if contact['website']:
-                story.append(Paragraph(f"🌐 {contact['website']}", styles['Body']))
+            if any(contact.values()):
+                story.append(Paragraph("Contact", styles['SectionHeading']))
+                if contact['phone']:
+                    story.append(Paragraph(f"📞 {contact['phone']}", styles['Body']))
+                if contact['email']:
+                    story.append(Paragraph(f"📧 {contact['email']}", styles['Body']))
+                if contact['location']:
+                    story.append(Paragraph(f"📍 {contact['location']}", styles['Body']))
+                if contact['website']:
+                    story.append(Paragraph(f"🌐 {contact['website']}", styles['Body']))
 
-            # Education
-            if 'education' in sections:
-                story.append(Paragraph("Education", styles['SectionHeading']))
-                entries = sections['education'].split('\n\n')
-                for entry in entries:
-                    lines = entry.split('\n')
-                    story.append(Paragraph(f"<b>{lines[0]}</b>", styles['Body']))
-                    story.append(Paragraph(lines[1], styles['Body']))
-                    story.append(Paragraph(lines[2], styles['Body']))
-
-            # Skills
-            if 'skills' in sections:
-                story.append(Paragraph("Skills", styles['SectionHeading']))
-                items = sections['skills'].split('\n')
-                for item in items:
-                    story.append(Paragraph(f"• {item}", styles['Bullet']))
-
-            # Certifications
-            if 'certifications' in sections:
-                story.append(Paragraph("Certifications", styles['SectionHeading']))
-                items = sections['certifications'].split('\n')
-                for item in items:
-                    story.append(Paragraph(f"• {item}", styles['Bullet']))
-
-            # Languages
-            if 'languages' in sections:
-                story.append(Paragraph("Languages", styles['SectionHeading']))
-                items = sections['languages'].split('\n')
-                for item in items:
-                    story.append(Paragraph(f"• {item}", styles['Bullet']))
-
-            # Profile
-            if 'profile' in sections:
-                story.append(Paragraph("Profile", styles['SectionHeading']))
-                story.append(Paragraph(sections['profile'], styles['Body']))
-
-            # Professional Experience
-            if 'professional_experience' in sections:
-                story.append(Paragraph("Professional Experience", styles['SectionHeading']))
-                jobs = sections['professional_experience'].split('\n\n')
-                for job in jobs:
-                    lines = job.split('\n')
-                    story.append(Paragraph(f"<b>{lines[0]}</b>", styles['Body']))
-                    story.append(Paragraph(lines[1], styles['Body']))
-                    for line in lines[2:]:
-                        story.append(Paragraph(f"• {line}", styles['Bullet']))
-
-            # Projects
-            if 'projects' in sections:
-                story.append(Paragraph("Projects", styles['SectionHeading']))
-                items = sections['projects'].split('\n')
-                for item in items:
-                    story.append(Paragraph(f"• {item}", styles['Bullet']))
-
-            # Achievements
-            if 'achievements' in sections:
-                story.append(Paragraph("Achievements", styles['SectionHeading']))
-                items = sections['achievements'].split('\n')
-                for item in items:
-                    story.append(Paragraph(f"• {item}", styles['Bullet']))
-
-            # References
-            if 'references' in sections:
-                story.append(Paragraph("References", styles['SectionHeading']))
-                story.append(Paragraph(sections['references'], styles['Body']))
+            # Other sections
+            section_order = [
+                'summary', 'objective', 'technical_skills', 'work_experience', 'education',
+                'certifications', 'languages', 'hobbies', 'projects', 'volunteering',
+                'achievements', 'publications', 'references'
+            ]
+            for section in section_order:
+                if section in sections and sections[section].strip():
+                    display_name = section.replace('_', ' ').title()
+                    story.append(Paragraph(display_name, styles['SectionHeading']))
+                    if section in ['summary', 'objective', 'references']:
+                        story.append(Paragraph(sections[section], styles['Body']))
+                    elif section in ['education', 'work_experience']:
+                        entries = sections[section].split('\n\n')
+                        for entry in entries:
+                            lines = entry.split('\n')
+                            story.append(Paragraph(f"<b>{lines[0]}</b>", styles['Body']))
+                            for line in lines[1:]:
+                                if line.strip():
+                                    story.append(Paragraph(f"• {line}", styles['Bullet']))
+                    else:
+                        items = sections[section].split('\n')
+                        for item in items:
+                            if item.strip():
+                                story.append(Paragraph(f"• {item}", styles['Bullet']))
 
             doc.build(story)
             return send_file(
@@ -505,12 +453,9 @@ def final_resume():
                 mimetype="application/pdf"
             )
 
-        else:
-            return jsonify({'error': 'Invalid format specified'}), 400
-
     except Exception as e:
         logger.error(f"Error in /final-resume: {str(e)}")
-        return jsonify({'error': 'Failed to generate final resume'}), 500
+        return jsonify({'error': f'Failed to generate final resume: {str(e)}'}), 500
     finally:
         cleanup_file(output_path)
 
@@ -576,7 +521,6 @@ def download_cover_letter():
     finally:
         cleanup_file(output_path)
 
-# Keep the remaining endpoints unchanged
 @app.route('/resume-score', methods=['POST'])
 def resume_score():
     file = request.files.get('file')

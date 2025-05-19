@@ -241,55 +241,85 @@ def check_ats_compatibility(file_path):
         if not text.strip():
             return {"error": "No readable text found in resume."}
 
-        # Basic heuristic checks
+        # Initialize issues and score
         issues = []
         score = 100
 
-        # Check for contact information
-        if not re.search(r'[\w\.-]+@[\w\.-]+', text):
-            issues.append("❌ Issue: Missing email address - ATS systems often require contact information.")
-            score -= 20
+        # Heuristic checks
+        if not re.search(r'[\w\.-]+@[\w\.-]+', text, re.IGNORECASE):
+            issues.append("❌ Issue: Missing email address - ATS systems require contact information.")
+            score -= 15
         else:
             issues.append("✅ Passed: Email address present.")
 
         if not re.search(r'\+?\d[\d\s\-]{8,}', text):
-            issues.append("❌ Issue: Missing phone number - ATS systems often require contact information.")
+            issues.append("❌ Issue: Missing phone number - ATS systems require contact information.")
             score -= 10
         else:
             issues.append("✅ Passed: Phone number present.")
 
-        # Check for section headings
-        section_headings = ['education', 'experience', 'skills', 'certifications']
+        section_headings = ['education', 'experience', 'skills', 'certifications', 'projects']
         found_headings = [heading for heading in section_headings if heading in text.lower()]
-        if len(found_headings) < 2:
-            issues.append("❌ Issue: Missing key section headings (e.g., Education, Experience, Skills) - ATS systems rely on these.")
-            score -= 30
+        if len(found_headings) < 3:
+            issues.append(f"❌ Issue: Insufficient section headings (found: {', '.join(found_headings)}) - ATS systems rely on clear sections like Education, Experience, Skills.")
+            score -= 25
         else:
             issues.append(f"✅ Passed: Found key section headings: {', '.join(found_headings)}.")
 
-        # Check for keywords (basic check for common terms)
-        common_keywords = ['python', 'javascript', 'sql', 'project management', 'communication', 'teamwork']
+        common_keywords = ['python', 'javascript', 'sql', 'project management', 'communication', 'teamwork', 'leadership']
         found_keywords = [kw for kw in common_keywords if kw in text.lower()]
-        if not found_keywords:
-            issues.append("❌ Issue: No common keywords (e.g., Python, JavaScript, SQL) - ATS systems may not rank the resume well.")
+        if len(found_keywords) < 3:
+            issues.append(f"❌ Issue: Limited keywords (found: {', '.join(found_keywords)}) - ATS systems prioritize relevant keywords.")
             score -= 20
         else:
-            issues.append(f"✅ Passed: Found common keywords: {', '.join(found_keywords)}.")
+            issues.append(f"✅ Passed: Found relevant keywords: {', '.join(found_keywords)}.")
+
+        # Check for complex formatting (e.g., headers/footers, tables)
+        if ext == ".pdf":
+            try:
+                doc = fitz.open(file_path)
+                for page in doc:
+                    if page.get_text("dict")['blocks']:
+                        blocks = page.get_text("dict")['blocks']
+                        for block in blocks:
+                            if block['type'] == 0:  # Text block
+                                for line in block['lines']:
+                                    for span in line['spans']:
+                                        if span['size'] > 20 or span['flags'] & 16:  # Large font or header
+                                            issues.append("❌ Issue: Possible header/footer detected - ATS may skip these.")
+                                            score -= 10
+                                            break
+            except Exception as e:
+                logger.warning(f"Failed to check PDF formatting: {str(e)}")
 
         # AI-based ATS check
         if client:
             prompt = f"""
-You are an ATS scanner. Review this resume and provide a list of key compatibility checks in this format:
+You are an advanced ATS scanner. Review this resume and provide a detailed list of compatibility checks in this format:
 
 ✅ Passed: Proper section headings used  
 ❌ Issue: No mention of technical skills  
 ✅ Passed: Education section is clear
 
-Ensure the checks are accurate and specific to ATS requirements, such as:
-- Presence of contact information (email, phone)
-- Clear section headings (Education, Experience, Skills, etc.)
-- Use of relevant keywords
-- Avoidance of complex formatting (e.g., headers/footers, tables)
+Focus on ATS-specific criteria:
+- Presence of contact information (email, phone, location)
+- Clear, standard section headings (Education, Experience, Skills, Certifications, Projects)
+- Use of relevant, job-specific keywords (technical skills, soft skills, tools)
+- Avoidance of complex formatting (headers, footers, tables, images, non-standard fonts)
+- Proper date formats (e.g., MM/YYYY or Month YYYY)
+- Quantifiable achievements (e.g., "Increased sales by 20%")
+- Consistency in bullet points and structure
+
+Assign a weight to each issue (1-10) to deduct from the score (e.g., missing email = 8, missing keywords = 6).
+Return the checks as a list and a total score deduction.
+
+Example output:
+[
+  "✅ Passed: Proper section headings used",
+  "❌ Issue: No mention of technical skills (weight: 6)",
+  "✅ Passed: Education section is clear"
+]
+Total score deduction: 6
 
 Text:
 {text[:6000]}
@@ -297,16 +327,28 @@ Text:
 
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}]
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7
             )
-            ai_checks = response.choices[0].message.content.strip().splitlines()
+            ai_output = response.choices[0].message.content.strip()
+
+            # Parse AI output
+            try:
+                lines = ai_output.splitlines()
+                ai_checks = [line.strip() for line in lines if line.strip() and not line.startswith("Total score deduction")]
+                deduction_line = next((line for line in lines if line.startswith("Total score deduction")), "Total score deduction: 0")
+                ai_deduction = int(re.search(r'\d+', deduction_line).group()) if re.search(r'\d+', deduction_line) else 0
+                score -= ai_deduction
+                issues.extend(ai_checks)
+            except Exception as e:
+                logger.error(f"Failed to parse AI ATS output: {ai_output}, error: {str(e)}")
+                issues.append("❌ Issue: Unable to perform advanced AI ATS check.")
+                score -= 5
         else:
-            ai_checks = ["❌ Issue: Cannot perform AI-based ATS check due to missing OpenAI API key."]
+            issues.append("❌ Issue: Cannot perform AI-based ATS check due to missing OpenAI API key.")
+            score -= 10
 
-        # Combine heuristic and AI checks
-        issues.extend([check for check in ai_checks if check.strip()])
-        score = max(0, score)  # Ensure score doesn't go below 0
-
+        score = max(0, score)
         return {"issues": issues, "score": score}
 
     except Exception as e:
@@ -412,11 +454,13 @@ Return the section name and the improved content in JSON format as follows:
 Existing Sections: {', '.join(existing_sections)}
 
 Instructions:
-1. If the suggestion involves improving an existing section, update that section with specific, relevant improvements.
-2. If the suggestion involves adding a new section, only add it if it doesn't already exist and is relevant to the resume.
-3. Avoid generic or irrelevant suggestions. Focus on actionable improvements that align with the resume's content.
+1. Identify the section related to the suggestion (e.g., 'skills' for 'add technical skills').
+2. If the suggestion involves improving an existing section, update that section with specific, relevant improvements.
+3. If the suggestion involves adding a new section, only add it if it doesn't already exist and is relevant.
 4. Format the content as plain text, with bullet points using "- " if appropriate.
 5. Ensure the output is valid JSON.
+6. Use lowercase, underscore-separated section names (e.g., 'work_experience', 'technical_skills').
+7. If the suggestion is unclear, return an error message in JSON format.
 
 Suggestion:
 {suggestion}
@@ -427,7 +471,8 @@ Resume:
 
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7
         )
         raw_response = response.choices[0].message.content.strip()
         
@@ -541,97 +586,4 @@ Job Description:
         return response.choices[0].message.content.strip()
 
     except Exception as e:
-        logger.error(f"[ERROR in extract_keywords_from_jd]: {str(e)}")
-        return ""
-
-def compare_resume_with_keywords(resume_text, keywords_text):
-    try:
-        resume_words = set(resume_text.lower().split())
-        keywords = [kw.strip().lower() for kw in keywords_text.split(",") if kw.strip()]
-        present = [kw for kw in keywords if kw in resume_words]
-        missing = [kw for kw in keywords if kw not in resume_words]
-        return {
-            "present_keywords": present,
-            "missing_keywords": missing,
-            "match_percentage": round((len(present) / len(keywords)) * 100, 2) if keywords else 0
-        }
-    except Exception as e:
-        logger.error(f"[ERROR in compare_resume_with_keywords: {str(e)}]")
-        return {
-            "present_keywords": [],
-            "missing_keywords": [],
-            "match_percentage": 0
-        }
-
-def analyze_job_description(jd_text):
-    if not client:
-        return {
-            "required_skills": [],
-            "preferred_skills": [],
-            "experience_level": "Unknown",
-            "education": "Not specified",
-            "keywords": [],
-            "error": "Cannot analyze job description: OpenAI API key not set."
-        }
-
-    try:
-        prompt = f"""
-You are a job description analyzer. Analyze the following job description and return a structured analysis in this format:
-
-{
-  "required_skills": ["skill1", "skill2", ...],
-  "preferred_skills": ["skill3", "skill4", ...],
-  "experience_level": "Entry-level/Mid-level/Senior-level",
-  "education": "Bachelor's in XYZ or equivalent",
-  "keywords": ["keyword1", "keyword2", ...]
-}
-
-Identify required and preferred skills, experience level, education requirements, and important keywords.
-
-Job Description:
-{jd_text[:3000]}
-        """
-
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return json.loads(response.choices[0].message.content.strip())
-
-    except Exception as e:
-        logger.error(f"[ERROR in analyze_job_description]: {str(e)}")
-        return {
-            "required_skills": [],
-            "preferred_skills": [],
-            "experience_level": "Unknown",
-            "education": "Not specified",
-            "keywords": []
-        }
-
-def generate_resume_summary(name, role, experience, skills):
-    if not client:
-        return "Cannot generate resume summary: OpenAI API key not set."
-
-    try:
-        prompt = f"""
-You are a resume writing expert. Write a concise 2-3 line professional summary for a resume based on the following details:
-
-Name: {name}
-Role: {role}
-Experience: {experience}
-Skills: {skills}
-
-Example:
-A dedicated Software Engineer with over 3 years of experience in developing scalable web applications. Proficient in Python, JavaScript, and cloud technologies, with a proven track record of delivering high-quality solutions. Passionate about optimizing code and improving user experiences.
-
-Summary:
-"""
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response.choices[0].message.content.strip()
-
-    except Exception as e:
-        logger.error(f"[ERROR in generate_resume_summary]: {str(e)}")
-        return "Failed to generate summary due to an API error."
+        logger
