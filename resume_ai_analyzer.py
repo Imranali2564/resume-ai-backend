@@ -619,3 +619,20 @@ Make it ATS-friendly, use action words, and highlight strengths. Do not include 
     except Exception as e:
         logger.error(f"[ERROR in generate_resume_summary]: {str(e)}")
         return "Failed to generate summary due to AI error."
+
+def compare_resume_with_keywords(resume_text, job_keywords):
+    if not resume_text or not job_keywords:
+        return {"match_score": 0, "missing_keywords": job_keywords}
+
+    resume_lower = resume_text.lower()
+    keywords = [kw.strip().lower() for kw in job_keywords.split(",") if kw.strip()]
+    missing_keywords = [kw for kw in keywords if kw not in resume_lower]
+    matched_keywords = [kw for kw in keywords if kw in resume_lower]
+
+    match_score = int((len(matched_keywords) / len(keywords)) * 100) if keywords else 0
+
+    return {
+        "match_score": match_score,
+        "matched_keywords": matched_keywords,
+        "missing_keywords": missing_keywords
+    }
