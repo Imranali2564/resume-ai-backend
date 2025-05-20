@@ -1,667 +1,203 @@
 import os
-import logging
-import docx
-import fitz  # PyMuPDF
-from openai import OpenAI
-from werkzeug.utils import secure_filename
-from difflib import SequenceMatcher
-from collections import Counter
-import json
 import re
-from PIL import Image
+import json
+import docx
+import logging
+import fitz  # PyMuPDF
 import pytesseract
-import io
+from PIL import Image
+from io import BytesIO
+from openai import OpenAI
 
-# Configure logging
+# Initialize logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize OpenAI client with error handling for missing API key
+# GPT-3.5 model selection
 api_key = os.environ.get("OPENAI_API_KEY")
-if not api_key:
-    logger.error("OPENAI_API_KEY environment variable not set.")
-    client = None  # Set client to None if API key is missing
-else:
-    try:
-        client = OpenAI(api_key=api_key)
-    except Exception as e:
-        logger.error(f"Failed to initialize OpenAI client: {str(e)}")
-        client = None
+client = OpenAI(api_key=api_key)
 
 def extract_text_from_pdf(file_path):
+    text = ""
     try:
-        # First, try to extract text directly using PyMuPDF
-        doc = fitz.open(file_path)
-        text = "\n".join(page.get_text() for page in doc).strip()
-        doc.close()
-
-        # If no text is extracted, try OCR
-        if not text:
-            logger.warning(f"No text extracted from {file_path} using PyMuPDF, attempting OCR...")
-            try:
-                text = extract_text_with_ocr(file_path)
-            except Exception as ocr_error:
-                logger.error(f"OCR failed for {file_path}: {str(ocr_error)}")
-                return ""  # Return empty string if OCR fails
-
-        return text if text.strip() else ""
-
+        with fitz.open(file_path) as doc:
+            for page in doc:
+                text += page.get_text()
     except Exception as e:
-        logger.error(f"[ERROR in extract_text_from_pdf]: {str(e)}")
-        return ""
-
-def extract_text_with_ocr(file_path):
-    try:
-        # Check if Tesseract is installed and accessible
-        tesseract_version = pytesseract.get_tesseract_version()
-        logger.info(f"Tesseract version: {tesseract_version}")
-    except Exception as e:
-        logger.error(f"Tesseract OCR engine not found: {str(e)}. Falling back to empty text.")
-        return ""  # Fallback to empty text instead of raising error
-
-    try:
-        doc = fitz.open(file_path)
-        if doc.page_count == 0:
-            logger.error(f"PDF {file_path} has no pages")
-            doc.close()
-            return ""
-
-        text_parts = []
-        for page_index in range(len(doc)):
-            page = doc[page_index]
-            # Try to get text first
-            text = page.get_text().strip()
-            if text:
-                logger.debug(f"Text extracted from page {page_index + 1} without OCR")
-                text_parts.append(text)
-                continue
-
-            # If no text, extract images and run OCR
-            images = page.get_images(full=True)
-            if not images:
-                logger.warning(f"No images found on page {page_index + 1} for OCR")
-                continue
-
-            for img_index, img in enumerate(images):
-                try:
-                    xref = img[0]
-                    base_image = doc.extract_image(xref)
-                    if not base_image:
-                        logger.warning(f"Failed to extract image {img_index + 1} from page {page_index + 1}")
-                        continue
-
-                    image_bytes = base_image["image"]
-                    image = Image.open(io.BytesIO(image_bytes)).convert("L")
-                    custom_config = r'--oem 3 --psm 6 -l eng'
-                    text = pytesseract.image_to_string(image, config=custom_config)
-                    if text.strip():
-                        logger.debug(f"OCR extracted text from image {img_index + 1} on page {page_index + 1}: {text[:100]}...")
-                        text_parts.append(text.strip())
-                    else:
-                        logger.warning(f"No text extracted via OCR from image {img_index + 1} on page {page_index + 1}")
-                except Exception as img_error:
-                    logger.error(f"Error processing image {img_index + 1} on page {page_index + 1}: {str(img_error)}")
-                    continue
-
-        doc.close()
-        combined_text = "\n".join(text_parts).strip()
-        if not combined_text:
-            logger.warning(f"No text extracted via OCR from {file_path}")
-        return combined_text
-    except Exception as e:
-        logger.error(f"[ERROR in extract_text_with_ocr]: {str(e)}")
-        return ""  # Fallback to empty text
+        logger.error(f"Error reading PDF: {e}")
+    return text.strip()
 
 def extract_text_from_docx(file_path):
     try:
         doc = docx.Document(file_path)
-        return "\n".join(p.text for p in doc.paragraphs).strip()
+        return "\n".join(p.text for p in doc.paragraphs if p.text.strip()).strip()
     except Exception as e:
-        logger.error(f"[ERROR in extract_text_from_docx]: {str(e)}")
+        logger.error(f"Error reading DOCX: {e}")
         return ""
 
-def extract_text_from_resume(resume_file):
+def extract_text_with_ocr(image_path):
     try:
-        # Validate input
-        if not resume_file or resume_file.filename == '':
-            logger.error("No resume file provided")
-            return ""
-        
-        ext = os.path.splitext(resume_file.filename)[1].lower()
-        if ext not in {'.pdf', '.docx'}:
-            logger.error(f"Unsupported file format: {ext}")
-            return ""
-
-        # Save the file temporarily
-        filename = secure_filename(resume_file.filename)
-        temp_path = os.path.join('/tmp/Uploads', filename)  # Use /tmp for Render compatibility
-        os.makedirs('/tmp/Uploads', exist_ok=True)
-        logger.debug(f"Saving file to {temp_path}")
-
-        # Check file size before saving
-        resume_file.seek(0, os.SEEK_END)
-        file_size = resume_file.tell() / 1024  # Size in KB
-        resume_file.seek(0)  # Reset file pointer
-        if file_size == 0:
-            logger.error(f"File {filename} is empty")
-            return ""
-        if file_size > 10240:  # 10MB limit
-            logger.error(f"File {filename} is too large: {file_size:.2f} KB")
-            return ""
-        logger.debug(f"File size: {file_size:.2f} KB")
-
-        # Save the file
-        resume_file.save(temp_path)
-        if not os.path.exists(temp_path):
-            logger.error(f"Failed to save file to {temp_path}")
-            return ""
-
-        # Ensure file permissions are correct for Render
-        os.chmod(temp_path, 0o644)
-
-        # Verify file size after saving
-        saved_size = os.path.getsize(temp_path) / 1024
-        if saved_size == 0:
-            logger.error(f"Saved file {temp_path} is empty")
-            return ""
-
-        # Extract text based on file type
-        if ext == '.pdf':
-            text = extract_text_from_pdf(temp_path)
-        elif ext == '.docx':
-            text = extract_text_from_docx(temp_path)
-
-        if not text.strip():
-            logger.warning(f"No text extracted from {temp_path}")
-            return ""
-
-        logger.info(f"Successfully extracted text from {filename}: {len(text)} characters")
-        return text.strip()
-
+        image = Image.open(image_path)
+        return pytesseract.image_to_string(image)
     except Exception as e:
-        logger.error(f"[ERROR in extract_text_from_resume]: {str(e)}")
+        logger.error(f"OCR error: {e}")
         return ""
-    finally:
-        # Clean up the temporary file
-        try:
-            if 'temp_path' in locals() and os.path.exists(temp_path):
-                os.remove(temp_path)
-                logger.debug(f"Cleaned up temporary file: {temp_path}")
-        except Exception as e:
-            logger.error(f"Error cleaning up temporary file {temp_path}: {str(e)}")
 
-def analyze_resume_with_openai(resume_text, atsfix=False):
-    if not client:
-        return {"error": "OpenAI API key not set. Please configure the OPENAI_API_KEY environment variable."}
+def extract_resume_sections(text):
+    """
+    Split resume text into identified sections.
+    """
+    section_patterns = {
+        'personal_details': r'(?:Contact|Personal|Details)[\s\S]{0,300}',
+        'summary': r'(?:Summary|Objective)[\s\S]{0,800}',
+        'education': r'(?:Education|Academics)[\s\S]{0,1200}',
+        'work_experience': r'(?:Experience|Employment|Work)[\s\S]{0,2000}',
+        'skills': r'(?:Skills|Technologies)[\s\S]{0,1000}',
+        'certifications': r'(?:Certifications|Licenses)[\s\S]{0,800}',
+        'projects': r'(?:Projects|Portfolio)[\s\S]{0,1200}',
+        'languages': r'(?:Languages|Spoken Languages)[\s\S]{0,300}',
+        'achievements': r'(?:Achievements|Awards|Honors)[\s\S]{0,500}',
+    }
 
+    extracted = {}
+    for key, pattern in section_patterns.items():
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            extracted[key] = match.group().strip()
+
+    return extracted
+def generate_section_content(prompt, model="gpt-3.5-turbo"):
     try:
-        if not isinstance(resume_text, str) or not resume_text.strip():
-            return {"error": "No readable text provided."}
-
-        prompt = f"""
-You are a professional resume analyzer.
-Analyze the following resume and provide key suggestions to improve its impact, clarity, and formatting.
-Give up to 7 specific, actionable suggestions only. Avoid generic advice.
-
-Resume:
-{resume_text[:6000]}
-        """
-
-        if atsfix:
-            prompt = f"""
-You are an expert in optimizing resumes for Applicant Tracking Systems (ATS).
-Analyze the following resume and provide specific suggestions to improve its ATS compatibility.
-Give up to 7 specific, actionable suggestions only. Focus on ATS-specific improvements like keywords, section headings, and formatting.
-
-Resume:
-{resume_text[:6000]}
-            """
-
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
+            model=model,
+            messages=[
+                {"role": "system", "content": "You're a resume expert trained to improve resumes using clean, professional language."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7
         )
-        suggestions = response.choices[0].message.content.strip()
-        return {"text": resume_text, "suggestions": suggestions}
-
+        return response.choices[0].message.content.strip()
     except Exception as e:
-        logger.error(f"[ERROR in analyze_resume_with_openai]: {str(e)}")
-        return {"error": f"Failed to analyze resume: {str(e)}"}
+        logger.error(f"OpenAI error: {e}")
+        return "Error generating content."
 
-def check_ats_compatibility(file_path):
+def generate_suggestions(resume_text):
+    prompt = f"""Analyze the following resume text and give improvement suggestions. Keep the suggestions relevant to ATS optimization, clarity, grammar, and structure. Give bullet-point style suggestions (5–7 max).
+
+Resume Text:
+\"\"\"
+{resume_text}
+\"\"\"
+"""
+    return generate_section_content(prompt)
+
+def fix_suggestion(resume_text, suggestion):
+    prompt = f"""You are a resume improvement assistant.
+
+Based on the following resume text, apply the suggested fix below to the appropriate section. Return the improved version of the section only, and also specify which section it belongs to (like education, skills, work_experience, etc).
+
+Resume Text:
+\"\"\"
+{resume_text}
+\"\"\"
+
+Suggested Fix:
+\"\"\"
+{suggestion}
+\"\"\"
+
+Give JSON output like:
+{{"section": "skills", "fixedContent": "updated content here"}}
+"""
+    result = generate_section_content(prompt)
     try:
-        ext = os.path.splitext(file_path)[1].lower()
-        if ext == ".pdf":
-            text = extract_text_from_pdf(file_path)
-        elif ext == ".docx":
-            text = extract_text_from_docx(file_path)
-        else:
-            return {"error": "Unsupported file type."}
+        data = json.loads(result)
+        return data
+    except:
+        logger.warning("Failed to parse AI response. Using fallback.")
+        return {"section": "general", "fixedContent": result}
 
-        if not text.strip():
-            return {"error": "No readable text found in resume."}
+def analyze_ats_compatibility(resume_text):
+    prompt = f"""Analyze this resume for ATS (Applicant Tracking System) compatibility. Check for presence of relevant sections, use of action verbs, measurable results, keyword matching, formatting, and overall professionalism.
 
-        # Initialize issues and score
-        issues = []
-        score = 100
+Resume:
+\"\"\"
+{resume_text}
+\"\"\"
 
-        # Heuristic checks
-        if not re.search(r'[\w\.-]+@[\w\.-]+', text, re.IGNORECASE):
-            issues.append("❌ Issue: Missing email address - ATS systems require contact information.")
-            score -= 15
-        else:
-            issues.append("✅ Passed: Email address present.")
+Give a JSON with:
+- score (out of 100)
+- list of short bullet points (max 5–6) showing strengths/weaknesses
 
-        if not re.search(r'\+?\d[\d\s\-]{8,}', text):
-            issues.append("❌ Issue: Missing phone number - ATS systems require contact information.")
-            score -= 10
-        else:
-            issues.append("✅ Passed: Phone number present.")
-
-        section_headings = ['education', 'experience', 'skills', 'certifications', 'projects']
-        found_headings = [heading for heading in section_headings if heading in text.lower()]
-        if len(found_headings) < 3:
-            issues.append(f"❌ Issue: Insufficient section headings (found: {', '.join(found_headings)}) - ATS systems rely on clear sections like Education, Experience, Skills.")
-            score -= 25
-        else:
-            issues.append(f"✅ Passed: Found key section headings: {', '.join(found_headings)}.")
-
-        common_keywords = ['python', 'javascript', 'sql', 'project management', 'communication', 'teamwork', 'leadership']
-        found_keywords = [kw for kw in common_keywords if kw in text.lower()]
-        if len(found_keywords) < 3:
-            issues.append(f"❌ Issue: Limited keywords (found: {', '.join(found_keywords)}) - ATS systems prioritize relevant keywords.")
-            score -= 20
-        else:
-            issues.append(f"✅ Passed: Found relevant keywords: {', '.join(found_keywords)}.")
-
-        # Check for complex formatting (e.g., headers/footers, tables)
-        if ext == ".pdf":
-            try:
-                doc = fitz.open(file_path)
-                for page in doc:
-                    if page.get_text("dict")['blocks']:
-                        blocks = page.get_text("dict")['blocks']
-                        for block in blocks:
-                            if block['type'] == 0:  # Text block
-                                for line in block['lines']:
-                                    for span in line['spans']:
-                                        if span['size'] > 20 or span['flags'] & 16:  # Large font or header
-                                            issues.append("❌ Issue: Possible header/footer detected - ATS may skip these.")
-                                            score -= 10
-                                            break
-            except Exception as e:
-                logger.warning(f"Failed to check PDF formatting: {str(e)}")
-
-        # AI-based ATS check
-        if client:
-            prompt = f"""
-You are an advanced ATS scanner. Review this resume and provide a detailed list of compatibility checks in this format:
-
-✅ Passed: Proper section headings used  
-❌ Issue: No mention of technical skills  
-✅ Passed: Education section is clear
-
-Focus on ATS-specific criteria:
-- Presence of contact information (email, phone, location)
-- Clear, standard section headings (Education, Experience, Skills, Certifications, Projects)
-- Use of relevant, job-specific keywords (technical skills, soft skills, tools)
-- Avoidance of complex formatting (headers, footers, tables, images, non-standard fonts)
-- Proper date formats (e.g., MM/YYYY or Month YYYY)
-- Quantifiable achievements (e.g., "Increased sales by 20%")
-- Consistency in bullet points and structure
-
-Assign a weight to each issue (1-10) to deduct from the score (e.g., missing email = 8, missing keywords = 6).
-Return the checks as a list and a total score deduction.
-
-Example output:
-[
-  "✅ Passed: Proper section headings used",
-  "❌ Issue: No mention of technical skills (weight: 6)",
-  "✅ Passed: Education section is clear"
-]
-Total score deduction: 6
-
-Text:
-{text[:6000]}
-            """
-
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.7
-            )
-            ai_output = response.choices[0].message.content.strip()
-
-            # Parse AI output
-            try:
-                lines = ai_output.splitlines()
-                ai_checks = [line.strip() for line in lines if line.strip() and not line.startswith("Total score deduction")]
-                deduction_line = next((line for line in lines if line.startswith("Total score deduction")), "Total score deduction: 0")
-                ai_deduction = int(re.search(r'\d+', deduction_line).group()) if re.search(r'\d+', deduction_line) else 0
-                score -= ai_deduction
-                issues.extend(ai_checks)
-            except Exception as e:
-                logger.error(f"Failed to parse AI ATS output: {ai_output}, error: {str(e)}")
-                issues.append("❌ Issue: Unable to perform advanced AI ATS check.")
-                score -= 5
-        else:
-            issues.append("❌ Issue: Cannot perform AI-based ATS check due to missing OpenAI API key.")
-            score -= 10
-
-        score = max(0, score)
-        return {"issues": issues, "score": score}
-
-    except Exception as e:
-        logger.error(f"[ERROR in check_ats_compatibility]: {str(e)}")
-        return {"error": f"Failed to generate ATS compatibility report: {str(e)}"}
-
-def fix_resume_formatting(file_path):
+Output format:
+{{
+  "score": 78,
+  "issues": [
+    "✅ Includes key sections like education, experience, and skills",
+    "❌ Missing measurable achievements",
+    "✅ Good use of action verbs",
+    "❌ No keywords matching common job descriptions",
+    "✅ Simple and readable formatting"
+  ]
+}}
+"""
+    result = generate_section_content(prompt)
+    try:
+        data = json.loads(result)
+        return data
+    except:
+        logger.warning("Failed to parse ATS response. Using fallback.")
+        return {
+            "score": 70,
+            "issues": result.split("\n")[:5]
+        }
+def process_resume_file(file_path):
     ext = os.path.splitext(file_path)[1].lower()
     if ext == ".pdf":
         text = extract_text_from_pdf(file_path)
     elif ext == ".docx":
         text = extract_text_from_docx(file_path)
     else:
-        return {"error": "Unsupported file type"}
+        return None, "Unsupported file format"
 
     if not text.strip():
-        return {"error": "No readable text found in resume"}
+        return None, "No extractable text found in resume"
 
-    prompt = f"""
-You are a professional resume formatting expert.
-Clean and reformat the following resume into plain text with the following rules:
-- Organize the resume into clear sections (e.g., Education, Experience, Skills, etc.).
-- Use section headings in all caps (e.g., EDUCATION, EXPERIENCE, SKILLS).
-- Use a single dash and space ("- ") for all bullet points.
-- Ensure exactly one blank line between sections.
-- Remove extra spaces, normalize line breaks, and ensure consistent formatting.
-- Do not use HTML, markdown, or any other markup language—just plain text.
-- Order sections as follows: PERSONAL DETAILS, SUMMARY, OBJECTIVE, SKILLS, EXPERIENCE, EDUCATION, CERTIFICATIONS, LANGUAGES, HOBBIES, PROJECTS, VOLUNTEER EXPERIENCE, ACHIEVEMENTS, PUBLICATIONS, REFERENCES.
+    return text, None
 
-Example output:
-NAME
-John Doe
-
-PERSONAL DETAILS
-- Email: john.doe@email.com
-- Phone: +1234567890
-
-SUMMARY
-- A dedicated Software Engineer with 3 years of experience.
-
-EXPERIENCE
-- Software Engineer Intern, ABC Corp, June 2023 - August 2023
-- Developed web applications using React and Node.js
-
-SKILLS
-- Python
-- JavaScript
-- SQL
-
-Resume:
-{text}
-    """
-
-    if not client:
-        return {"error": "Cannot format resume: OpenAI API key not set."}
-
+def prepare_final_resume(sections):
     try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are an expert in resume formatting."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        formatted_text = response.choices[0].message.content.strip()
-        # Additional cleanup to ensure consistent formatting
-        lines = formatted_text.split('\n')
-        cleaned_lines = []
-        for i, line in enumerate(lines):
-            line = line.strip()
-            if line:
-                # Ensure bullet points start with "- "
-                if line.startswith(('-', '*', '•')):
-                    line = '- ' + line.lstrip('-*•').strip()
-                cleaned_lines.append(line)
-            elif i < len(lines) - 1 and lines[i + 1].strip():
-                # Ensure exactly one blank line between sections
-                if cleaned_lines and cleaned_lines[-1]:
-                    cleaned_lines.append('')
-        return {"formatted_text": '\n'.join(cleaned_lines).strip()}
-    except Exception as e:
-        logger.error(f"[ERROR in fix_resume_formatting]: {str(e)}")
-        return {"error": "Failed to fix resume formatting due to an API error"}
+        name = sections.get("personal_details", "").split('\n')[0] if sections.get("personal_details") else "Your Name"
+        title = sections.get("summary", "").split('\n')[0] if sections.get("summary") else "Professional Summary"
 
-def generate_section_content(suggestion, full_text):
-    if not client:
-        return {"error": "Cannot generate section content: OpenAI API key not set."}
-
-    try:
-        # Extract existing sections to avoid duplicates
-        sections = extract_resume_sections(full_text)
-        existing_sections = list(sections.keys())
-
-        prompt = f"""
-You are a professional resume writer.
-Based on the suggestion and resume text provided, generate improved content for the relevant resume section.
-Return the section name and the improved content in JSON format as follows:
-{{
-  "section": "section_name",
-  "fixedContent": "Improved content here"
-}}
-
-Existing Sections: {', '.join(existing_sections)}
-
-Instructions:
-1. Identify the section related to the suggestion (e.g., 'skills' for 'add technical skills').
-2. If the suggestion involves improving an existing section, update that section with specific, relevant improvements.
-3. If the suggestion involves adding a new section, only add it if it doesn't already exist and is relevant.
-4. Format the content as plain text, with bullet points using "- " if appropriate.
-5. Ensure the output is valid JSON.
-6. Use lowercase, underscore-separated section names (e.g., 'work_experience', 'technical_skills').
-7. If the suggestion is unclear, return an error message in JSON format.
-
-Suggestion:
-{suggestion}
-
-Resume:
-{full_text[:6000]}
+        html = f"""
+        <html>
+        <head><meta charset='utf-8'><style>
+        body {{ font-family: Arial, sans-serif; margin: 40px; }}
+        h1 {{ font-size: 28px; text-align:center; margin-bottom: 4px; }}
+        h2 {{ font-size: 18px; text-align:center; color: #555; margin-top: 0; }}
+        h3 {{ margin-top:20px; border-bottom:1px solid #ccc; padding-bottom:5px; font-size: 17px; }}
+        ul {{ padding-left:20px; }}
+        li {{ margin-bottom:6px; }}
+        </style></head>
+        <body>
+        <h1>{name}</h1>
+        <h2>{title}</h2>
         """
 
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7
-        )
-        raw_response = response.choices[0].message.content.strip()
-        
-        logger.debug(f"OpenAI response for generate_section_content: {raw_response}")
+        ordered_sections = [
+            "education", "skills", "work_experience", "certifications",
+            "projects", "languages", "achievements"
+        ]
+        for key in ordered_sections:
+            if sections.get(key):
+                html += f"<h3>{key.replace('_', ' ').title()}</h3><ul>"
+                for line in sections[key].split('\n'):
+                    html += f"<li>{line}</li>"
+                html += "</ul>"
 
-        # Parse the response as JSON
-        try:
-            result = json.loads(raw_response)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse OpenAI response as JSON: {raw_response}, error: {str(e)}")
-            return {"error": f"Invalid response format from AI: {str(e)}"}
-
-        # Validate the response
-        if not isinstance(result, dict) or "section" not in result or "fixedContent" not in result:
-            logger.error(f"Unexpected response format from OpenAI: {raw_response}")
-            return {"error": "Unexpected response format from AI"}
-
-        # Ensure section name is lowercase and underscore-separated
-        result["section"] = result["section"].lower().replace(" ", "_")
-        
-        return result
-
+        html += "</body></html>"
+        return html
     except Exception as e:
-        logger.error(f"[ERROR in generate_section_content]: {str(e)}")
-        return {"error": f"Failed to generate section content: {str(e)}"}
-
-def extract_resume_sections(text):
-    if not client:
-        return {"error": "Cannot extract resume sections: OpenAI API key not set."}
-
-    try:
-        prompt = f"""
-Split the following resume text into structured sections. Return a dictionary in JSON format where each key is a lowercase, underscore-separated section name (e.g., 'work_experience') and the value is the content as a string.
-
-Include common sections like:
-- personal_details
-- summary
-- objective
-- education
-- work_experience (also map 'experience' to this)
-- internship
-- projects
-- technical_skills (also map 'skills' to this)
-- soft_skills
-- certifications
-- courses
-- achievements
-- awards
-- languages
-- hobbies
-- extracurricular
-- volunteering (also map 'volunteer_experience' to this)
-- publications
-- research_projects
-- strengths
-- references
-
-Instructions:
-- Normalize section names (e.g., map 'experience' to 'work_experience', 'skills' to 'technical_skills', 'volunteer_experience' to 'volunteering').
-- Avoid duplicate sections by merging content under the normalized section name.
-- Exclude any section that is not found.
-- Ensure the output is valid JSON.
-- Order sections as follows: personal_details, summary, objective, technical_skills, work_experience, education, certifications, languages, hobbies, projects, volunteering, achievements, publications, references.
-
-Resume:
-{text[:6000]}
-        """
-
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        raw_output = response.choices[0].message.content.strip()
-
-        # Replace null with empty string
-        clean_output = raw_output.replace("null", "\"\"")
-
-        sections = json.loads(clean_output)
-        
-        # Ensure content is a string, not a list
-        for key in sections:
-            if isinstance(sections[key], list):
-                sections[key] = '\n'.join(sections[key]).strip()
-
-        return sections
-
-    except json.JSONDecodeError as e:
-        logger.error(f"[JSON Decode Error in extract_resume_sections]: {str(e)}")
-        return {}
-    except Exception as e:
-        logger.error(f"[ERROR in extract_resume_sections]: {str(e)}")
-        return {}
-
-def extract_keywords_from_jd(jd_text):
-    if not client:
-        return "Cannot extract keywords: OpenAI API key not set."
-
-    try:
-        prompt = f"""
-From the following job description, extract the most important keywords that should be reflected in a resume.
-Return the keywords as a comma-separated string.
-
-Job Description:
-{jd_text[:3000]}
-        """
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response.choices[0].message.content.strip()
-
-    except Exception as e:
-        logger.error(f"[ERROR in extract_keywords_from_jd]: {str(e)}")
-        return "Failed to extract keywords from job description."
-
-def generate_resume_summary(name, role, experience, skills):
-    if not client:
-        return "OpenAI API key not set. Cannot generate summary."
-
-    try:
-        prompt = f"""
-You are a professional resume expert.
-
-Write a concise 2–3 line professional summary for the following person:
-- Name: {name}
-- Role: {role}
-- Experience: {experience}
-- Skills: {skills}
-
-Make it ATS-friendly, use action words, and highlight strengths. Do not include heading or labels.
-        """
-
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7
-        )
-
-        return response.choices[0].message.content.strip()
-
-    except Exception as e:
-        logger.error(f"[ERROR in generate_resume_summary]: {str(e)}")
-        return "Failed to generate summary due to AI error."
-
-def compare_resume_with_keywords(resume_text, job_keywords):
-    if not resume_text or not job_keywords:
-        return {"match_score": 0, "missing_keywords": job_keywords}
-
-    resume_lower = resume_text.lower()
-    keywords = [kw.strip().lower() for kw in job_keywords.split(",") if kw.strip()]
-    missing_keywords = [kw for kw in keywords if kw not in resume_lower]
-    matched_keywords = [kw for kw in keywords if kw in resume_lower]
-
-    match_score = int((len(matched_keywords) / len(keywords)) * 100) if keywords else 0
-
-    return {
-        "match_score": match_score,
-        "matched_keywords": matched_keywords,
-        "missing_keywords": missing_keywords
-    }
-def analyze_job_description(jd_text):
-    if not client:
-        return "OpenAI API key not set. Cannot analyze job description."
-
-    try:
-        prompt = f"""
-You are an expert resume reviewer.
-
-Analyze the following job description and extract the most relevant:
-1. Key Skills
-2. Required Qualifications
-3. Recommended Action Verbs
-
-Format the result clearly in 3 sections with headings.
-
-Job Description:
-{jd_text}
-        """
-
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        return response.choices[0].message.content.strip()
-
-    except Exception as e:
-        logger.error(f"[ERROR in analyze_job_description]: {str(e)}")
-        return "Failed to analyze job description."
+        logger.error(f"Error generating final resume HTML: {e}")
+        return "<html><body><p>Error generating resume.</p></body></html>"
