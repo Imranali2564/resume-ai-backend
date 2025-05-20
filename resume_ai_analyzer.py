@@ -452,7 +452,7 @@ Given the suggestion and full resume text, return a JSON with:
 - If the section is missing, generate it with relevant content
 - Use bullet points where applicable
 - Respond in this format:
-{{"section": "skills", "fixedContent": "- Python\n- Communication\n- Teamwork"}}
+{{"section": "skills", "fixedContent": "- Python\\n- Communication\\n- Teamwork"}}
 
 Suggestion:
 {suggestion}
@@ -460,30 +460,36 @@ Suggestion:
 Resume:
 {full_text[:6000]}
         """
-response = client.chat.completions.create(
-    model="gpt-3.5-turbo",
-    messages=[{"role": "user", "content": prompt}],
-    temperature=0.7
-)
 
-raw_response = response.choices[0].message.content.strip()
+        try:
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7
+            )
+            raw_response = response.choices[0].message.content.strip()
 
-try:
-    result = json.loads(raw_response)
-except json.JSONDecodeError:
-    import ast
-    try:
-        result = ast.literal_eval(raw_response)
+            try:
+                result = json.loads(raw_response)
+            except json.JSONDecodeError:
+                import ast
+                try:
+                    result = ast.literal_eval(raw_response)
+                except Exception as e:
+                    logger.error(f"[ERROR in generate_section_content]: {str(e)}")
+                    return {"error": f"Failed to generate section content: {str(e)}"}
+
+        except Exception as e:
+            logger.error(f"[ERROR in OpenAI response]: {str(e)}")
+            return {"error": f"Failed to contact OpenAI: {str(e)}"}
+
+        # Clean and normalize
+        result["section"] = result["section"].lower().replace(" ", "_")
+        return result
+
     except Exception as e:
         logger.error(f"[ERROR in generate_section_content]: {str(e)}")
         return {"error": f"Failed to generate section content: {str(e)}"}
-except Exception as e:
-    logger.error(f"[ERROR in generate_section_content]: {str(e)}")
-    return {"error": f"Failed to generate section content: {str(e)}"}
-
-# Clean and normalize
-result["section"] = result["section"].lower().replace(" ", "_")
-return result
 
 def extract_resume_sections(text):
     if not client:
