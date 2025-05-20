@@ -433,34 +433,26 @@ Resume:
         logger.error(f"[ERROR in fix_resume_formatting]: {str(e)}")
         return {"error": "Failed to fix resume formatting due to an API error"}
 
+# ✅ Updated generate_section_content with grammar/spell check + missing section handler
 def generate_section_content(suggestion, full_text):
     if not client:
         return {"error": "Cannot generate section content: OpenAI API key not set."}
 
     try:
-        # Extract existing sections to avoid duplicates
         sections = extract_resume_sections(full_text)
         existing_sections = list(sections.keys())
 
         prompt = f"""
-You are a professional resume writer.
-Based on the suggestion and resume text provided, generate improved content for the relevant resume section.
-Return the section name and the improved content in JSON format as follows:
-{{
-  "section": "section_name",
-  "fixedContent": "Improved content here"
-}}
+You are an AI resume improvement expert.
 
-Existing Sections: {', '.join(existing_sections)}
-
-Instructions:
-1. Identify the section related to the suggestion (e.g., 'skills' for 'add technical skills').
-2. If the suggestion involves improving an existing section, update that section with specific, relevant improvements.
-3. If the suggestion involves adding a new section, only add it if it doesn't already exist and is relevant.
-4. Format the content as plain text, with bullet points using "- " if appropriate.
-5. Ensure the output is valid JSON.
-6. Use lowercase, underscore-separated section names (e.g., 'work_experience', 'technical_skills').
-7. If the suggestion is unclear, return an error message in JSON format.
+Given the suggestion and full resume text, return a JSON with:
+- 'section': which section to update (e.g. skills, summary, education)
+- 'fixedContent': fixed or new content based on the suggestion
+- Add grammar/spelling correction where needed
+- If the section is missing, generate it with relevant content
+- Use bullet points where applicable
+- Respond in this format:
+{{"section": "skills", "fixedContent": "- Python\n- Communication\n- Teamwork"}}
 
 Suggestion:
 {suggestion}
@@ -474,25 +466,12 @@ Resume:
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7
         )
+
         raw_response = response.choices[0].message.content.strip()
-        
-        logger.debug(f"OpenAI response for generate_section_content: {raw_response}")
+        result = json.loads(raw_response)
 
-        # Parse the response as JSON
-        try:
-            result = json.loads(raw_response)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse OpenAI response as JSON: {raw_response}, error: {str(e)}")
-            return {"error": f"Invalid response format from AI: {str(e)}"}
-
-        # Validate the response
-        if not isinstance(result, dict) or "section" not in result or "fixedContent" not in result:
-            logger.error(f"Unexpected response format from OpenAI: {raw_response}")
-            return {"error": "Unexpected response format from AI"}
-
-        # Ensure section name is lowercase and underscore-separated
+        # Clean and normalize
         result["section"] = result["section"].lower().replace(" ", "_")
-        
         return result
 
     except Exception as e:
@@ -714,3 +693,84 @@ def generate_michelle_template_html(sections):
       </div>
     </div>
     """
+# ✅ Updated resume_ai_analyzer.py (Add this to bottom of file)
+
+def check_ats_compatibility_fast(text):
+    score = 100
+    issues = []
+
+    if not re.search(r'\b\w+@\w+\.\w+\b', text):
+        issues.append("❌ Missing email address")
+        score -= 15
+    else:
+        issues.append("✅ Email address found")
+
+    if not re.search(r'\+?\d[\d\s\-]{8,}', text):
+        issues.append("❌ Missing phone number")
+        score -= 10
+    else:
+        issues.append("✅ Phone number present")
+
+    keywords = ["education", "experience", "skills", "certifications"]
+    found = [k for k in keywords if k in text.lower()]
+    if len(found) < 3:
+        issues.append(f"❌ Weak section headings (found: {', '.join(found)})")
+        score -= 20
+    else:
+        issues.append(f"✅ Found section headings: {', '.join(found)}")
+
+    return {"score": max(0, score), "issues": issues}
+
+
+def check_ats_compatibility_deep(file_path):
+    try:
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext == ".pdf":
+            text = extract_text_from_pdf(file_path)
+        elif ext == ".docx":
+            text = extract_text_from_docx(file_path)
+        else:
+            return {"error": "Unsupported file type"}
+
+        if not text.strip():
+            return {"error": "No readable text found in resume"}
+
+        # Basic Checks
+        score = 100
+        issues = []
+
+        if not re.search(r'\b\w+@\w+\.\w+\b', text):
+            issues.append("❌ Missing email address")
+            score -= 10
+
+        if not re.search(r'\+?\d[\d\s\-]{8,}', text):
+            issues.append("❌ Missing phone number")
+            score -= 10
+
+        if len(text.split()) < 150:
+            issues.append("❌ Resume too short")
+            score -= 10
+
+        # AI validation
+        prompt = f"""
+You are an ATS expert. Check the following resume and give up to 5 issues:
+Resume:
+{text[:6000]}
+Return in this format:
+["✅ Passed: ...", "❌ Issue: ..."]
+        """
+
+        ai_resp = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5
+        )
+        ai_lines = ai_resp.choices[0].message.content.strip().splitlines()
+        issues += [line for line in ai_lines if line.strip()]
+        score -= sum(5 for line in ai_lines if line.startswith("❌"))
+
+        return {"score": max(score, 0), "issues": issues}
+
+    except Exception as e:
+        return {"error": str(e)}
+
