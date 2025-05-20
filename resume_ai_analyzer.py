@@ -255,3 +255,29 @@ Return the suggestions as bullet points.
 
     except Exception as e:
         return {"error": str(e)}
+def check_ats_compatibility(resume_text):
+    issues = []
+    score = 100
+
+    # Example logic – customize as needed
+    if "@" not in resume_text:
+        issues.append("❌ Issue: Email address missing.")
+        score -= 10
+    else:
+        issues.append("✅ Passed: Email address present.")
+
+    if not any(keyword in resume_text.lower() for keyword in ["experience", "education", "skills"]):
+        issues.append("❌ Issue: Standard resume section headings missing.")
+        score -= 10
+    else:
+        issues.append("✅ Passed: Found key section headings: education, experience, skills.")
+
+    if len(resume_text.split()) < 150:
+        issues.append("❌ Issue: Resume appears too short. Add more detail.")
+        score -= 10
+    else:
+        issues.append("✅ Passed: Resume has sufficient content length.")
+
+    # Add more checks as needed
+
+    return {"issues": issues, "score": max(score, 0)}
