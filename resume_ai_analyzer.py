@@ -245,109 +245,37 @@ def check_ats_compatibility(file_path):
         issues = []
         score = 100
 
-        # Heuristic checks
+        # Simplified checks
         if not re.search(r'[\w\.-]+@[\w\.-]+', text, re.IGNORECASE):
-            issues.append("❌ Issue: Missing email address - ATS systems require contact information.")
+            issues.append("❌ Missing email - Add your email.")
             score -= 15
         else:
-            issues.append("✅ Passed: Email address present.")
+            issues.append("✅ Email found.")
 
         if not re.search(r'\+?\d[\d\s\-]{8,}', text):
-            issues.append("❌ Issue: Missing phone number - ATS systems require contact information.")
+            issues.append("❌ Missing phone - Add your phone number.")
             score -= 10
         else:
-            issues.append("✅ Passed: Phone number present.")
+            issues.append("✅ Phone number found.")
 
         section_headings = ['education', 'experience', 'skills', 'certifications', 'projects']
         found_headings = [heading for heading in section_headings if heading in text.lower()]
         if len(found_headings) < 3:
-            issues.append(f"❌ Issue: Insufficient section headings (found: {', '.join(found_headings)}) - ATS systems rely on clear sections like Education, Experience, Skills.")
-            score -= 25
+            issues.append(f"❌ Missing sections - Add {', '.join(set(section_headings) - set(found_headings))}.")
+            score -= 20
         else:
-            issues.append(f"✅ Passed: Found key section headings: {', '.join(found_headings)}.")
+            issues.append("✅ Key sections found.")
 
         common_keywords = ['python', 'javascript', 'sql', 'project management', 'communication', 'teamwork', 'leadership']
         found_keywords = [kw for kw in common_keywords if kw in text.lower()]
         if len(found_keywords) < 3:
-            issues.append(f"❌ Issue: Limited keywords (found: {', '.join(found_keywords)}) - ATS systems prioritize relevant keywords.")
-            score -= 20
+            issues.append("❌ Add more keywords like 'communication' or 'leadership'.")
+            score -= 15
         else:
-            issues.append(f"✅ Passed: Found relevant keywords: {', '.join(found_keywords)}.")
+            issues.append("✅ Keywords found.")
 
-        # Check for complex formatting (e.g., headers/footers, tables)
-        if ext == ".pdf":
-            try:
-                doc = fitz.open(file_path)
-                for page in doc:
-                    if page.get_text("dict")['blocks']:
-                        blocks = page.get_text("dict")['blocks']
-                        for block in blocks:
-                            if block['type'] == 0:  # Text block
-                                for line in block['lines']:
-                                    for span in line['spans']:
-                                        if span['size'] > 20 or span['flags'] & 16:  # Large font or header
-                                            issues.append("❌ Issue: Possible header/footer detected - ATS may skip these.")
-                                            score -= 10
-                                            break
-            except Exception as e:
-                logger.warning(f"Failed to check PDF formatting: {str(e)}")
-
-        # AI-based ATS check
-        if client:
-            prompt = f"""
-You are an advanced ATS scanner. Review this resume and provide a detailed list of compatibility checks in this format:
-
-✅ Passed: Proper section headings used  
-❌ Issue: No mention of technical skills  
-✅ Passed: Education section is clear
-
-Focus on ATS-specific criteria:
-- Presence of contact information (email, phone, location)
-- Clear, standard section headings (Education, Experience, Skills, Certifications, Projects)
-- Use of relevant, job-specific keywords (technical skills, soft skills, tools)
-- Avoidance of complex formatting (headers, footers, tables, images, non-standard fonts)
-- Proper date formats (e.g., MM/YYYY or Month YYYY)
-- Quantifiable achievements (e.g., "Increased sales by 20%")
-- Consistency in bullet points and structure
-
-Assign a weight to each issue (1-10) to deduct from the score (e.g., missing email = 8, missing keywords = 6).
-Return the checks as a list and a total score deduction.
-
-Example output:
-[
-  "✅ Passed: Proper section headings used",
-  "❌ Issue: No mention of technical skills (weight: 6)",
-  "✅ Passed: Education section is clear"
-]
-Total score deduction: 6
-
-Text:
-{text[:6000]}
-            """
-
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.7
-            )
-            ai_output = response.choices[0].message.content.strip()
-
-            # Parse AI output
-            try:
-                lines = ai_output.splitlines()
-                ai_checks = [line.strip() for line in lines if line.strip() and not line.startswith("Total score deduction")]
-                deduction_line = next((line for line in lines if line.startswith("Total score deduction")), "Total score deduction: 0")
-                ai_deduction = int(re.search(r'\d+', deduction_line).group()) if re.search(r'\d+', deduction_line) else 0
-                score -= ai_deduction
-                issues.extend(ai_checks)
-            except Exception as e:
-                logger.error(f"Failed to parse AI ATS output: {ai_output}, error: {str(e)}")
-                issues.append("❌ Issue: Unable to perform advanced AI ATS check.")
-                score -= 5
-        else:
-            issues.append("❌ Issue: Cannot perform AI-based ATS check due to missing OpenAI API key.")
-            score -= 10
-
+        # Limit to 5 issues max
+        issues = issues[:5]
         score = max(0, score)
         return {"issues": issues, "score": score}
 
@@ -433,7 +361,6 @@ Resume:
         logger.error(f"[ERROR in fix_resume_formatting]: {str(e)}")
         return {"error": "Failed to fix resume formatting due to an API error"}
 
-# ✅ Updated generate_section_content with grammar/spell check + missing section handler
 def generate_section_content(suggestion, full_text):
     if not client:
         return {"error": "Cannot generate section content: OpenAI API key not set."}
@@ -441,6 +368,12 @@ def generate_section_content(suggestion, full_text):
     try:
         sections = extract_resume_sections(full_text)
         existing_sections = list(sections.keys())
+
+        # Check for personal details to avoid incorrect suggestions
+        personal_details = sections.get("personal_details", "").lower()
+        has_email = bool(re.search(r'[\w\.-]+@[\w\.-]+', personal_details))
+        has_phone = bool(re.search(r'\+?\d[\d\s\-]{8,}', personal_details))
+        has_location = "location" in personal_details or "city" in personal_details or "📍" in personal_details
 
         prompt = f"""
 You are an AI resume improvement expert.
@@ -453,6 +386,16 @@ Given the suggestion and full resume text, return a JSON with:
 - Use bullet points where applicable
 - Respond in this format:
 {{"section": "skills", "fixedContent": "- Python\\n- Communication\\n- Teamwork"}}
+
+Additional Instructions:
+- If the suggestion is about adding an email, phone, or location, and these already exist in the personal_details section, do not suggest adding them again. Instead, confirm they are present.
+- For the 'technical_skills' section:
+  - If there are more than 10 skills, reduce to the top 8 most relevant skills.
+  - If there are fewer than 5 skills, expand by adding 3-5 relevant skills based on the resume context.
+- Do not suggest adding personal details if they already exist:
+  - Email present: {has_email}
+  - Phone present: {has_phone}
+  - Location present: {has_location}
 
 Suggestion:
 {suggestion}
@@ -628,6 +571,7 @@ def compare_resume_with_keywords(resume_text, job_keywords):
         "matched_keywords": matched_keywords,
         "missing_keywords": missing_keywords
     }
+
 def analyze_job_description(jd_text):
     if not client:
         return "OpenAI API key not set. Cannot analyze job description."
@@ -657,19 +601,35 @@ Job Description:
     except Exception as e:
         logger.error(f"[ERROR in analyze_job_description]: {str(e)}")
         return "Failed to analyze job description."
+
 def generate_michelle_template_html(sections):
     def list_items(text):
         return ''.join(f"<li>{line.strip()}</li>" for line in text.strip().split('\n') if line.strip())
 
-    name = sections.get("personal_details", "").split('\n')[0] if sections.get("personal_details") else "Your Name"
-    title = sections.get("summary", "").split('\n')[0] if sections.get("summary") else "Your Role"
-
+    # Extract personal details more reliably
+    name = "Your Name"
     phone = email = location = website = ""
-    details = sections.get("personal_details", "").split('\n')[2:]
-    if len(details) > 0: phone = details[0]
-    if len(details) > 1: email = details[1]
-    if len(details) > 2: location = details[2]
-    if len(details) > 3: website = details[3]
+    personal_lines = sections.get("personal_details", "").split('\n')
+    
+    # First line is typically the name
+    if personal_lines and personal_lines[0].strip():
+        name = personal_lines[0].strip()
+
+    # Parse remaining lines for contact details
+    for line in personal_lines[1:]:
+        line = line.strip()
+        if not line:
+            continue
+        if "email" in line.lower() or "@" in line or "📧" in line:
+            email = line.replace("📧", "").strip()
+        elif "phone" in line.lower() or re.search(r'\+?\d[\d\s\-]{8,}', line) or "📞" in line:
+            phone = line.replace("📞", "").strip()
+        elif "location" in line.lower() or "city" in line.lower() or "📍" in line:
+            location = line.replace("📍", "").strip()
+        elif "website" in line.lower() or "www" in line.lower() or "🌐" in line:
+            website = line.replace("🌐", "").strip()
+
+    title = sections.get("summary", "").split('\n')[0] if sections.get("summary") else "Your Role"
 
     return f"""
     <div class='resume-wrapper' style='max-width:850px;margin:auto;background:#fff;border:1px solid #ccc;box-shadow:0 0 10px rgba(0,0,0,0.1);'>
@@ -680,14 +640,14 @@ def generate_michelle_template_html(sections):
       <div class='content' style='display:flex;padding:30px;'>
         <div class='left-panel' style='width:30%;background:#f5f5f5;padding-right:20px;border-right:1px solid #ccc;box-sizing:border-box;'>
           <h3>Contact</h3>
-          <div class='contact-item'>📞 {phone}</div>
-          <div class='contact-item'>✉️ {email}</div>
-          <div class='contact-item'>📍 {location}</div>
-          <div class='contact-item'>🌐 {website}</div>
+          <div class='contact-item'>📞 {phone if phone else 'Not Provided'}</div>
+          <div class='contact-item'>✉️ {email if email else 'Not Provided'}</div>
+          <div class='contact-item'>📍 {location if location else 'Not Provided'}</div>
+          <div class='contact-item'>🌐 {website if website else 'Not Provided'}</div>
           <h3>Education</h3>
           <ul>{list_items(sections.get('education', ''))}</ul>
           <h3>Skills</h3>
-          <ul>{list_items(sections.get('skills', ''))}</ul>
+          <ul>{list_items(sections.get('technical_skills', ''))}</ul>
         </div>
         <div class='right-panel' style='width:70%;padding-left:30px;box-sizing:border-box;'>
           <h3>Objective</h3>
@@ -706,34 +666,34 @@ def generate_michelle_template_html(sections):
       </div>
     </div>
     """
-# ✅ Updated resume_ai_analyzer.py (Add this to bottom of file)
 
 def check_ats_compatibility_fast(text):
     score = 100
     issues = []
 
     if not re.search(r'\b\w+@\w+\.\w+\b', text):
-        issues.append("❌ Missing email address")
+        issues.append("❌ Missing email - Add your email.")
         score -= 15
     else:
-        issues.append("✅ Email address found")
+        issues.append("✅ Email found.")
 
     if not re.search(r'\+?\d[\d\s\-]{8,}', text):
-        issues.append("❌ Missing phone number")
+        issues.append("❌ Missing phone - Add your phone number.")
         score -= 10
     else:
-        issues.append("✅ Phone number present")
+        issues.append("✅ Phone number found.")
 
     keywords = ["education", "experience", "skills", "certifications"]
     found = [k for k in keywords if k in text.lower()]
     if len(found) < 3:
-        issues.append(f"❌ Weak section headings (found: {', '.join(found)})")
+        issues.append(f"❌ Missing sections - Add {', '.join(set(keywords) - set(found))}.")
         score -= 20
     else:
-        issues.append(f"✅ Found section headings: {', '.join(found)}")
+        issues.append("✅ Key sections found.")
 
+    # Limit to 5 issues max
+    issues = issues[:5]
     return {"score": max(0, score), "issues": issues}
-
 
 def check_ats_compatibility_deep(file_path):
     try:
@@ -753,11 +713,11 @@ def check_ats_compatibility_deep(file_path):
         issues = []
 
         if not re.search(r'\b\w+@\w+\.\w+\b', text):
-            issues.append("❌ Missing email address")
+            issues.append("❌ Missing email - Add your email.")
             score -= 10
 
         if not re.search(r'\+?\d[\d\s\-]{8,}', text):
-            issues.append("❌ Missing phone number")
+            issues.append("❌ Missing phone - Add your phone number.")
             score -= 10
 
         if len(text.split()) < 150:
@@ -776,14 +736,4 @@ Return in this format:
         ai_resp = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.5
-        )
-        ai_lines = ai_resp.choices[0].message.content.strip().splitlines()
-        issues += [line for line in ai_lines if line.strip()]
-        score -= sum(5 for line in ai_lines if line.startswith("❌"))
-
-        return {"score": max(score, 0), "issues": issues}
-
-    except Exception as e:
-        return {"error": str(e)}
-
+            temperature=0

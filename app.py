@@ -6,7 +6,7 @@ import os
 import uuid
 import json
 import re
-from resume_ai_analyzer import generate_resume_summary
+from resume_ai_analyzer import generate_resume_summary, generate_michelle_template_html, extract_text_from_resume, extract_resume_sections
 try:
     from docx import Document
     from docx.shared import Pt, Inches, RGBColor
@@ -32,9 +32,7 @@ try:
         extract_text_from_pdf,
         extract_text_from_docx,        
         check_ats_compatibility,
-        extract_resume_sections,
         extract_keywords_from_jd,
-        extract_text_from_resume,
         compare_resume_with_keywords,
         analyze_job_description,
         fix_resume_formatting,
@@ -271,103 +269,62 @@ def preview_resume():
 
 @app.route('/final-resume', methods=['POST'])
 def final_resume():
-    data = request.get_json()
-    sections = data.get('sections')
-    if not sections:
-        logger.error("No sections provided in /final-resume request")
-        return jsonify({'error': 'No sections provided'}), 400
+    file = request.files.get('file')
+    fixes = request.form.get('fixes')
+    if not file or not fixes:
+        logger.error("Missing file or fixes in /final-resume request")
+        return jsonify({'error': 'Missing file or fixes'}), 400
 
     format_type = request.args.get('format', 'docx').lower()
     if format_type not in ['docx', 'pdf']:
         logger.error(f"Invalid format specified: {format_type}")
         return jsonify({'error': 'Invalid format specified. Use "docx" or "pdf".'}), 400
 
+    # Save the uploaded file
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+
+    # Parse fixes
+    try:
+        fixes_list = json.loads(fixes)
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid fixes format: {str(e)}")
+        return jsonify({'error': 'Invalid fixes format'}), 400
+
+    # Extract text and sections from the original resume
+    resume_text = extract_text_from_resume(file)
+    if not resume_text:
+        logger.error("Failed to extract text from resume")
+        return jsonify({'error': 'Failed to extract text from resume'}), 500
+
+    sections = extract_resume_sections(resume_text)
+
+    # Apply fixes to sections
+    for fix in fixes_list:
+        section = fix.get('section')
+        fixed_text = fix.get('fixedText')
+        if section and fixed_text:
+            sections[section] = fixed_text
+
     output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"fixed_resume_{uuid.uuid4()}.{format_type}")
 
     try:
-        # Extract name, role, and contact details
-        name = ""
-        role = ""
-        contact = {'phone': "", 'email': "", 'location': "", 'website': ""}
-        if 'personal_details' in sections:
-            lines = sections['personal_details'].split('\n')
-            for i, line in enumerate(lines):
-                line = line.strip()
-                if i == 0 and ':' not in line:
-                    name = line
-                elif any(keyword in line.lower() for keyword in ['representative', 'engineer', 'manager']):
-                    role = line
-                elif any(keyword in line.lower() for keyword in ['phone', '📞']):
-                    contact['phone'] = line.replace("📞", "").strip()
-                elif any(keyword in line.lower() for keyword in ['email', '📧']):
-                    contact['email'] = line.replace("📧", "").strip()
-                elif any(keyword in line.lower() for keyword in ['location', 'city', '📍']):
-                    contact['location'] = line.replace("📍", "").strip()
-                elif any(keyword in line.lower() for keyword in ['website', 'www', '🌐']):
-                    contact['website'] = line.replace("🌐", "").strip()
-
-        if not name:
-            name = "Riya Sharma"
-
         if format_type == 'docx':
             doc = Document()
             for s in doc.sections:
                 s.top_margin = s.bottom_margin = Inches(0.5)
                 s.left_margin = s.right_margin = Inches(0.75)
 
-            # Name and Role (centered)
-            heading = doc.add_heading(name, level=1)
-            heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            run = heading.runs[0]
-            run.font.size = Pt(20)
-            run.bold = True
-
-            if role:
-                subheading = doc.add_heading(role, level=2)
-                subheading.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                run = subheading.runs[0]
-                run.font.size = Pt(12)
-
-            doc.add_paragraph()
-
-            # Contact Section
-            if any(contact.values()):
-                doc.add_heading("Contact", level=3)
-                if contact['phone']:
-                    doc.add_paragraph(f"📞 {contact['phone']}")
-                if contact['email']:
-                    doc.add_paragraph(f"📧 {contact['email']}")
-                if contact['location']:
-                    doc.add_paragraph(f"📍 {contact['location']}")
-                if contact['website']:
-                    doc.add_paragraph(f"🌐 {contact['website']}")
-
-            # Other sections
-            section_order = [
-                'summary', 'objective', 'technical_skills', 'work_experience', 'education',
-                'certifications', 'languages', 'hobbies', 'projects', 'volunteering',
-                'achievements', 'publications', 'references'
-            ]
-            for section in section_order:
-                if section in sections and sections[section].strip():
+            # Use the Michelle template for DOCX
+            html_content = generate_michelle_template_html(sections)
+            # Convert HTML to DOCX (simplified approach)
+            doc.add_paragraph("Resume")  # Placeholder, as HTML-to-DOCX conversion is complex
+            for section, content in sections.items():
+                if content.strip():
                     display_name = section.replace('_', ' ').title()
-                    doc.add_heading(display_name, level=3)
-                    if section in ['summary', 'objective', 'references']:
-                        doc.add_paragraph(sections[section])
-                    elif section in ['education', 'work_experience']:
-                        entries = sections[section].split('\n\n')
-                        for entry in entries:
-                            lines = entry.split('\n')
-                            p = doc.add_paragraph()
-                            p.add_run(lines[0]).bold = True
-                            for line in lines[1:]:
-                                if line.strip():
-                                    doc.add_paragraph(line, style='ListBullet')
-                    else:
-                        items = sections[section].split('\n')
-                        for item in items:
-                            if item.strip():
-                                doc.add_paragraph(item, style='ListBullet')
+                    doc.add_heading(display_name, level=2)
+                    doc.add_paragraph(content)
 
             doc.save(output_path)
             return send_file(
@@ -402,46 +359,18 @@ def final_resume():
                 bulletIndent=0.25 * inch
             ))
 
-            story = [
-                Paragraph(name, styles['Name']),
-                Paragraph(role, styles['Role']) if role else Spacer(1, 12),
-                Spacer(1, 12)
-            ]
-
-            # Contact
-            if any(contact.values()):
-                story.append(Paragraph("Contact", styles['SectionHeading']))
-                if contact['phone']:
-                    story.append(Paragraph(f"📞 {contact['phone']}", styles['Body']))
-                if contact['email']:
-                    story.append(Paragraph(f"📧 {contact['email']}", styles['Body']))
-                if contact['location']:
-                    story.append(Paragraph(f"📍 {contact['location']}", styles['Body']))
-                if contact['website']:
-                    story.append(Paragraph(f"🌐 {contact['website']}", styles['Body']))
-
-            # Other sections
-            section_order = [
-                'summary', 'objective', 'technical_skills', 'work_experience', 'education',
-                'certifications', 'languages', 'hobbies', 'projects', 'volunteering',
-                'achievements', 'publications', 'references'
-            ]
-            for section in section_order:
-                if section in sections and sections[section].strip():
+            # Use the Michelle template for PDF
+            html_content = generate_michelle_template_html(sections)
+            # Convert HTML to PDF content (simplified)
+            story = []
+            for section, content in sections.items():
+                if content.strip():
                     display_name = section.replace('_', ' ').title()
                     story.append(Paragraph(display_name, styles['SectionHeading']))
                     if section in ['summary', 'objective', 'references']:
-                        story.append(Paragraph(sections[section], styles['Body']))
-                    elif section in ['education', 'work_experience']:
-                        entries = sections[section].split('\n\n')
-                        for entry in entries:
-                            lines = entry.split('\n')
-                            story.append(Paragraph(f"<b>{lines[0]}</b>", styles['Body']))
-                            for line in lines[1:]:
-                                if line.strip():
-                                    story.append(Paragraph(f"• {line}", styles['Bullet']))
+                        story.append(Paragraph(content, styles['Body']))
                     else:
-                        items = sections[section].split('\n')
+                        items = content.split('\n')
                         for item in items:
                             if item.strip():
                                 story.append(Paragraph(f"• {item}", styles['Bullet']))
@@ -458,6 +387,7 @@ def final_resume():
         logger.error(f"Error in /final-resume: {str(e)}")
         return jsonify({'error': f'Failed to generate final resume: {str(e)}'}), 500
     finally:
+        cleanup_file(filepath)
         cleanup_file(output_path)
 
 @app.route('/generate-cover-letter', methods=['POST'])
