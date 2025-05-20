@@ -302,3 +302,19 @@ def extract_keywords_from_jd(jd_text):
     except Exception as e:
         print(f"Error extracting keywords: {str(e)}")
     return keywords
+def extract_text_from_resume(file_path):
+    ext = os.path.splitext(file_path)[1].lower()
+    
+    # Try extracting from PDF or DOCX
+    if ext == ".pdf":
+        text = extract_text_from_pdf(file_path)
+    elif ext == ".docx":
+        text = extract_text_from_docx(file_path)
+    else:
+        text = ""
+
+    # 🧠 OCR fallback if extracted text is empty or unsupported file
+    if not text.strip():
+        text = extract_text_with_ocr(file_path)
+
+    return text.strip()
