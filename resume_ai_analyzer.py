@@ -281,3 +281,24 @@ def check_ats_compatibility(resume_text):
     # Add more checks as needed
 
     return {"issues": issues, "score": max(score, 0)}
+def extract_keywords_from_jd(jd_text):
+    keywords = []
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Extract the top 15 relevant job-related keywords from the following job description. Respond with a comma-separated list only."
+                },
+                {
+                    "role": "user",
+                    "content": jd_text
+                }
+            ]
+        )
+        keywords_text = response.choices[0].message.content
+        keywords = [kw.strip() for kw in keywords_text.split(",") if kw.strip()]
+    except Exception as e:
+        print(f"Error extracting keywords: {str(e)}")
+    return keywords
