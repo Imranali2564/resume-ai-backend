@@ -201,3 +201,24 @@ def prepare_final_resume(sections):
     except Exception as e:
         logger.error(f"Error generating final resume HTML: {e}")
         return "<html><body><p>Error generating resume.</p></body></html>"
+def generate_resume_summary(text):
+    prompt = f"""You are a professional resume writer. Read the following resume and write a professional summary of 3-4 lines suitable for the top of the resume.
+
+Resume:
+{text}
+
+Summary:"""
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            temperature=0.7,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+        summary = response.choices[0].message.content.strip()
+        return summary
+    except Exception as e:
+        logger.error(f"Error generating resume summary: {e}")
+        return "Could not generate summary."
