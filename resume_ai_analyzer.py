@@ -636,3 +636,32 @@ def compare_resume_with_keywords(resume_text, job_keywords):
         "matched_keywords": matched_keywords,
         "missing_keywords": missing_keywords
     }
+def analyze_job_description(jd_text):
+    if not client:
+        return "OpenAI API key not set. Cannot analyze job description."
+
+    try:
+        prompt = f"""
+You are an expert resume reviewer.
+
+Analyze the following job description and extract the most relevant:
+1. Key Skills
+2. Required Qualifications
+3. Recommended Action Verbs
+
+Format the result clearly in 3 sections with headings.
+
+Job Description:
+{jd_text}
+        """
+
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        logger.error(f"[ERROR in analyze_job_description]: {str(e)}")
+        return "Failed to analyze job description."
