@@ -222,3 +222,36 @@ Summary:"""
     except Exception as e:
         logger.error(f"Error generating resume summary: {e}")
         return "Could not generate summary."
+def analyze_resume_with_openai(resume_text, client=None, model="gpt-3.5-turbo"):
+    if not resume_text.strip():
+        return {"error": "Empty resume text provided."}
+
+    try:
+        if not client:
+            api_key = os.environ.get("OPENAI_API_KEY")
+            client = OpenAI(api_key=api_key)
+
+        prompt = f"""
+You are a professional resume expert. Analyze the following resume text and identify issues related to clarity, structure, grammar, and ATS optimization. Suggest specific improvements in bullet points.
+
+Resume Text:
+\"\"\"
+{resume_text}
+\"\"\"
+
+Return the suggestions as bullet points.
+"""
+
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "You are a resume expert."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.5,
+        )
+
+        return {"suggestions": response.choices[0].message.content.strip()}
+
+    except Exception as e:
+        return {"error": str(e)}
