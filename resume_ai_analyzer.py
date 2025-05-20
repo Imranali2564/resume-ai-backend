@@ -586,7 +586,9 @@ Job Description:
         return response.choices[0].message.content.strip()
 
     except Exception as e:
-        logger
+        logger.error(f"[ERROR in extract_keywords_from_jd]: {str(e)}")
+        return "Failed to extract keywords from job description."
+
 def generate_resume_summary(name, role, experience, skills):
     if not client:
         return "OpenAI API key not set. Cannot generate summary."
