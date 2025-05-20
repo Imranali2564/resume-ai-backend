@@ -736,6 +736,14 @@ Return in this format:
         ai_resp = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0
-)
-        
+            temperature=0.5
+        )
+        ai_lines = ai_resp.choices[0].message.content.strip().splitlines()
+        issues += [line for line in ai_lines if line.strip()]
+        score -= sum(5 for line in ai_lines if line.startswith("❌"))
+
+        return {"score": max(score, 0), "issues": issues}
+
+    except Exception as e:
+        return {"error": str(e)}
+
