@@ -460,8 +460,7 @@ Suggestion:
 Resume:
 {full_text[:6000]}
         """
-
-        response = client.chat.completions.create(
+response = client.chat.completions.create(
     model="gpt-3.5-turbo",
     messages=[{"role": "user", "content": prompt}],
     temperature=0.7
@@ -473,15 +472,18 @@ try:
     result = json.loads(raw_response)
 except json.JSONDecodeError:
     import ast
-    result = ast.literal_eval(raw_response)
+    try:
+        result = ast.literal_eval(raw_response)
+    except Exception as e:
+        logger.error(f"[ERROR in generate_section_content]: {str(e)}")
+        return {"error": f"Failed to generate section content: {str(e)}"}
+except Exception as e:
+    logger.error(f"[ERROR in generate_section_content]: {str(e)}")
+    return {"error": f"Failed to generate section content: {str(e)}"}
 
 # Clean and normalize
 result["section"] = result["section"].lower().replace(" ", "_")
 return result
-
-    except Exception as e:
-        logger.error(f"[ERROR in generate_section_content]: {str(e)}")
-        return {"error": f"Failed to generate section content: {str(e)}"}
 
 def extract_resume_sections(text):
     if not client:
