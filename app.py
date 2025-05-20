@@ -38,8 +38,8 @@ try:
         compare_resume_with_keywords,
         analyze_job_description,
         fix_resume_formatting,
-        generate_section_content
-        generate_resume_summary
+        generate_section_content,
+        generate_resume_summary,
     )
 except ImportError as e:
     logging.error(f"Failed to import resume_ai_analyzer: {str(e)}")
