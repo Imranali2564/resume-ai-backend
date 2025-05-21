@@ -144,22 +144,6 @@ def upload_resume():
     finally:
         cleanup_file(filepath)
 
-@app.route('/extract-sections', methods=['POST'])
-def extract_sections():
-    try:
-        data = request.get_json()
-        text = data.get('text')
-        if not text:
-            return jsonify({'error': 'No text provided'}), 400
-        sections = extract_resume_sections(text)
-        for key in sections:
-            if isinstance(sections[key], list):
-                sections[key] = '\n'.join(sections[key]).strip()
-        return jsonify(sections)
-    except Exception as e:
-        logger.error(f"Error in /extract-sections: {str(e)}")
-        return jsonify({'error': 'Failed to extract sections'}), 500
-
 @app.route('/ats-check', methods=['POST'])
 def check_ats():
     file = request.files.get('file') or request.files.get('resume')
