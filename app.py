@@ -272,35 +272,26 @@ def final_resume():
     file = request.files.get('file')
     fixes = request.form.get('fixes')
     if not file or not fixes:
-        logger.error("Missing file or fixes in /final-resume request")
         return jsonify({'error': 'Missing file or fixes'}), 400
 
     format_type = request.args.get('format', 'docx').lower()
     if format_type not in ['docx', 'pdf']:
-        logger.error(f"Invalid format specified: {format_type}")
         return jsonify({'error': 'Invalid format specified. Use "docx" or "pdf".'}), 400
 
-    # Save the uploaded file
     filename = secure_filename(file.filename)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(filepath)
 
-    # Parse fixes
     try:
         fixes_list = json.loads(fixes)
     except json.JSONDecodeError as e:
-        logger.error(f"Invalid fixes format: {str(e)}")
         return jsonify({'error': 'Invalid fixes format'}), 400
 
-    # Extract text and sections from the original resume
     resume_text = extract_text_from_resume(file)
     if not resume_text:
-        logger.error("Failed to extract text from resume")
         return jsonify({'error': 'Failed to extract text from resume'}), 500
 
     sections = extract_resume_sections(resume_text)
-
-    # Apply fixes to sections
     for fix in fixes_list:
         section = fix.get('section')
         fixed_text = fix.get('fixedText')
@@ -316,75 +307,49 @@ def final_resume():
                 s.top_margin = s.bottom_margin = Inches(0.5)
                 s.left_margin = s.right_margin = Inches(0.75)
 
-            # Use the Michelle template for DOCX
-            html_content = generate_michelle_template_html(sections)
-            # Convert HTML to DOCX (simplified approach)
-            doc.add_paragraph("Resume")  # Placeholder, as HTML-to-DOCX conversion is complex
+            # Custom section-wise layout
+            name = sections.get("personal_details", "").split('\n')[0] or "Your Name"
+            doc.add_heading(name, level=1)
+
             for section, content in sections.items():
                 if content.strip():
                     display_name = section.replace('_', ' ').title()
                     doc.add_heading(display_name, level=2)
-                    doc.add_paragraph(content)
+                    for line in content.split('\n'):
+                        if line.strip():
+                            doc.add_paragraph(line.strip(), style='List Bullet')
 
             doc.save(output_path)
-            return send_file(
-                output_path,
-                as_attachment=True,
-                download_name="Fixed_Resume.docx",
-                mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            )
+            return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.docx")
 
         elif format_type == 'pdf':
-            doc = SimpleDocTemplate(
-                output_path,
-                pagesize=letter,
-                leftMargin=0.75 * inch,
-                rightMargin=0.75 * inch,
-                topMargin=0.5 * inch,
-                bottomMargin=0.5 * inch
-            )
-            styles = getSampleStyleSheet()
-            styles.add(ParagraphStyle(name='Name', fontSize=20, alignment=1, spaceAfter=6))
-            styles.add(ParagraphStyle(name='Role', fontSize=12, alignment=1, spaceAfter=12, textColor=HexColor('#666666')))
-            styles.add(ParagraphStyle(name='SectionHeading', fontSize=12, spaceBefore=10, spaceAfter=5))
-            styles.add(ParagraphStyle(name='Body', fontSize=11, spaceAfter=6))
-            styles.add(ParagraphStyle(
-                name='Bullet',
-                fontSize=11,
-                spaceAfter=6,
-                leftIndent=0.5 * inch,
-                firstLineIndent=-0.25 * inch,
-                bulletFontName='Times-Roman',
-                bulletFontSize=11,
-                bulletIndent=0.25 * inch
-            ))
+            from reportlab.platypus import SimpleDocTemplate, Paragraph
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.units import inch
+            from reportlab.lib.pagesizes import letter
+            from reportlab.lib.colors import HexColor
 
-            # Use the Michelle template for PDF
-            html_content = generate_michelle_template_html(sections)
-            # Convert HTML to PDF content (simplified)
+            doc = SimpleDocTemplate(output_path, pagesize=letter,
+                                    leftMargin=0.75 * inch, rightMargin=0.75 * inch,
+                                    topMargin=0.5 * inch, bottomMargin=0.5 * inch)
+            styles = getSampleStyleSheet()
+            if 'CustomBullet' not in styles.byName:
+                styles.add(ParagraphStyle(name='CustomBullet', fontSize=11, leftIndent=15, bulletIndent=10, spaceAfter=6))
+            styles.add(ParagraphStyle(name='SectionHeading', fontSize=13, spaceAfter=10, textColor=HexColor('#333333')))
             story = []
+
             for section, content in sections.items():
                 if content.strip():
                     display_name = section.replace('_', ' ').title()
                     story.append(Paragraph(display_name, styles['SectionHeading']))
-                    if section in ['summary', 'objective', 'references']:
-                        story.append(Paragraph(content, styles['Body']))
-                    else:
-                        items = content.split('\n')
-                        for item in items:
-                            if item.strip():
-                                story.append(Paragraph(f"• {item}", styles['Bullet']))
+                    for line in content.split('\n'):
+                        if line.strip():
+                            story.append(Paragraph(f"• {line.strip()}", styles['CustomBullet']))
 
             doc.build(story)
-            return send_file(
-                output_path,
-                as_attachment=True,
-                download_name="Fixed_Resume.pdf",
-                mimetype="application/pdf"
-            )
+            return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.pdf")
 
     except Exception as e:
-        logger.error(f"Error in /final-resume: {str(e)}")
         return jsonify({'error': f'Failed to generate final resume: {str(e)}'}), 500
     finally:
         cleanup_file(filepath)

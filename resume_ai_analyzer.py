@@ -245,9 +245,9 @@ def check_ats_compatibility(file_path):
         issues = []
         score = 100
 
-        # Simplified checks
+        # Check 1: Contact Information (Email, Phone, Location)
         if not re.search(r'[\w\.-]+@[\w\.-]+', text, re.IGNORECASE):
-            issues.append("❌ Missing email - Add your email.")
+            issues.append("❌ Missing email - Add your email address.")
             score -= 15
         else:
             issues.append("✅ Email found.")
@@ -258,30 +258,78 @@ def check_ats_compatibility(file_path):
         else:
             issues.append("✅ Phone number found.")
 
+        if not re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', text):
+            issues.append("❌ Missing location - Add your city and state.")
+            score -= 10
+        else:
+            issues.append("✅ Location found.")
+
+        # Check 2: Required Sections
         section_headings = ['education', 'experience', 'skills', 'certifications', 'projects']
         found_headings = [heading for heading in section_headings if heading in text.lower()]
         if len(found_headings) < 3:
-            issues.append(f"❌ Missing sections - Add {', '.join(set(section_headings) - set(found_headings))}.")
+            missing_sections = list(set(section_headings) - set(found_headings))
+            issues.append(f"❌ Missing key sections - Add {', '.join(missing_sections)}.")
             score -= 20
         else:
             issues.append("✅ Key sections found.")
 
-        common_keywords = ['python', 'javascript', 'sql', 'project management', 'communication', 'teamwork', 'leadership']
+        # Check 3: Keyword Density (Common ATS Keywords)
+        common_keywords = [
+            'communication', 'leadership', 'teamwork', 'project management', 'problem-solving',
+            'python', 'javascript', 'sql', 'java', 'excel', 'data analysis', 'marketing',
+            'sales', 'customer service', 'agile', 'scrum', 'cloud', 'aws', 'azure'
+        ]
         found_keywords = [kw for kw in common_keywords if kw in text.lower()]
-        if len(found_keywords) < 3:
-            issues.append("❌ Add more keywords like 'communication' or 'leadership'.")
+        keyword_density = len(found_keywords) / len(common_keywords)
+        if keyword_density < 0.2:  # Less than 20% of common keywords found
+            issues.append("❌ Low keyword density - Add more keywords like 'communication', 'leadership', or 'teamwork'.")
             score -= 15
         else:
-            issues.append("✅ Keywords found.")
+            issues.append("✅ Sufficient keywords found.")
 
-        # Limit to 5 issues max
-        issues = issues[:5]
-        score = max(0, score)
+        # Check 4: Content Length (Too Short or Too Long)
+        word_count = len(text.split())
+        if word_count < 150:
+            issues.append("❌ Resume too short - Add more details to your experience or skills.")
+            score -= 10
+        elif word_count > 1000:
+            issues.append("❌ Resume too long - Shorten your resume to 1-2 pages.")
+            score -= 10
+        else:
+            issues.append("✅ Appropriate content length.")
+
+        # Check 5: Formatting Issues (e.g., Use of Headers, Fonts, Special Characters)
+        if re.search(r'[^\x00-\x7F]', text):  # Non-ASCII characters
+            issues.append("❌ Special characters detected - Use standard ASCII characters to ensure ATS compatibility.")
+            score -= 10
+        else:
+            issues.append("✅ No special characters detected.")
+
+        # Check 6: Quantifiable Achievements
+        if not re.search(r'\d+\%|\d+\s*(hours|projects|clients|sales)', text, re.IGNORECASE):
+            issues.append("❌ Missing quantifiable achievements - Add metrics like 'increased sales by 20%' or 'managed 5 projects'.")
+            score -= 10
+        else:
+            issues.append("✅ Quantifiable achievements found.")
+
+        # Check 7: Action Verbs
+        action_verbs = ['led', 'developed', 'managed', 'improved', 'designed', 'implemented', 'analyzed', 'increased']
+        found_verbs = [verb for verb in action_verbs if verb in text.lower()]
+        if len(found_verbs) < 2:
+            issues.append("❌ Limited use of action verbs - Start bullet points with verbs like 'led', 'developed', or 'improved'.")
+            score -= 10
+        else:
+            issues.append("✅ Action verbs used effectively.")
+
+        # Limit score to 0-100 range
+        score = max(0, min(100, score))
         return {"issues": issues, "score": score}
 
     except Exception as e:
         logger.error(f"[ERROR in check_ats_compatibility]: {str(e)}")
         return {"error": f"Failed to generate ATS compatibility report: {str(e)}"}
+
 
 def fix_resume_formatting(file_path):
     ext = os.path.splitext(file_path)[1].lower()
@@ -746,4 +794,5 @@ Return in this format:
 
     except Exception as e:
         return {"error": str(e)}
-
+
+
