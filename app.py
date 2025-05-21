@@ -39,6 +39,7 @@ try:
         generate_section_content,
         generate_resume_summary,
         extract_resume_sections,
+        generate_michelle_template_html,
     )
 except ImportError as e:
     logging.error(f"Failed to import resume_ai_analyzer: {str(e)}")
@@ -253,92 +254,39 @@ def preview_resume():
         return jsonify({'error': f'Failed to generate preview: {str(e)}'}), 500
 
 @app.route('/final-resume', methods=['POST'])
-def final_resume():
-    file = request.files.get('file')
-    fixes = request.form.get('fixes')
-    if not file or not fixes:
-        return jsonify({'error': 'Missing file or fixes'}), 400
-
-    format_type = request.args.get('format', 'docx').lower()
-    if format_type not in ['docx', 'pdf']:
-        return jsonify({'error': 'Invalid format specified. Use "docx" or "pdf".'}), 400
-
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    file.save(filepath)
-
+def final_resume_download():
     try:
-        fixes_list = json.loads(fixes)
-    except json.JSONDecodeError as e:
-        return jsonify({'error': 'Invalid fixes format'}), 400
+        data = request.get_json()
+        sections = data.get("sections")
+        file_format = data.get("format", "pdf")
 
-    resume_text = extract_text_from_resume(file)
-    if not resume_text:
-        return jsonify({'error': 'Failed to extract text from resume'}), 500
+        if not sections or not isinstance(sections, dict):
+            return jsonify({"error": "Invalid sections provided"}), 400
 
-    sections = extract_resume_sections(resume_text)
-    for fix in fixes_list:
-        section = fix.get('section')
-        fixed_text = fix.get('fixedText')
-        if section and fixed_text:
-            sections[section] = fixed_text
+        html_content = generate_michelle_template_html(sections)
 
-    output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"fixed_resume_{uuid.uuid4()}.{format_type}")
+        if file_format == "pdf":
+            import pdfkit
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as pdf_file:
+                pdfkit.from_string(html_content, pdf_file.name)
+                pdf_file.seek(0)
+                return send_file(pdf_file.name, as_attachment=True, download_name="Final_Resume.pdf", mimetype='application/pdf')
 
-    try:
-        if format_type == 'docx':
-            doc = Document()
-            for s in doc.sections:
-                s.top_margin = s.bottom_margin = Inches(0.5)
-                s.left_margin = s.right_margin = Inches(0.75)
-
-            # Custom section-wise layout
-            name = sections.get("personal_details", "").split('\n')[0] or "Your Name"
-            doc.add_heading(name, level=1)
-
-            for section, content in sections.items():
-                if content.strip():
-                    display_name = section.replace('_', ' ').title()
-                    doc.add_heading(display_name, level=2)
-                    for line in content.split('\n'):
-                        if line.strip():
-                            doc.add_paragraph(line.strip(), style='List Bullet')
-
-            doc.save(output_path)
-            return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.docx")
-
-        elif format_type == 'pdf':
-            from reportlab.platypus import SimpleDocTemplate, Paragraph
-            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-            from reportlab.lib.units import inch
-            from reportlab.lib.pagesizes import letter
-            from reportlab.lib.colors import HexColor
-
-            doc = SimpleDocTemplate(output_path, pagesize=letter,
-                                    leftMargin=0.75 * inch, rightMargin=0.75 * inch,
-                                    topMargin=0.5 * inch, bottomMargin=0.5 * inch)
-            styles = getSampleStyleSheet()
-            if 'CustomBullet' not in styles.byName:
-                styles.add(ParagraphStyle(name='CustomBullet', fontSize=11, leftIndent=15, bulletIndent=10, spaceAfter=6))
-            styles.add(ParagraphStyle(name='SectionHeading', fontSize=13, spaceAfter=10, textColor=HexColor('#333333')))
-            story = []
-
-            for section, content in sections.items():
-                if content.strip():
-                    display_name = section.replace('_', ' ').title()
-                    story.append(Paragraph(display_name, styles['SectionHeading']))
-                    for line in content.split('\n'):
-                        if line.strip():
-                            story.append(Paragraph(f"• {line.strip()}", styles['CustomBullet']))
-
-            doc.build(story)
-            return send_file(output_path, as_attachment=True, download_name="Fixed_Resume.pdf")
+        elif file_format == "docx":
+            from html2docx import html2docx
+            docx_bytes = html2docx(html_content)
+            return send_file(
+                io.BytesIO(docx_bytes),
+                as_attachment=True,
+                download_name="Final_Resume.docx",
+                mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            )
+        else:
+            return jsonify({"error": "Invalid format. Use 'pdf' or 'docx'."}), 400
 
     except Exception as e:
-        return jsonify({'error': f'Failed to generate final resume: {str(e)}'}), 500
-    finally:
-        cleanup_file(filepath)
-        cleanup_file(output_path)
+        logger.error(f"Error in /final-resume: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/generate-cover-letter', methods=['POST'])
 def generate_cover_letter():
