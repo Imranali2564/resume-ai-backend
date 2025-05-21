@@ -4,11 +4,11 @@ services:
     env: python
     plan: free
     buildCommand: |
-      apt-get update && apt-get install -y poppler-utils tesseract-ocr
+      apt-get update && apt-get install -y wkhtmltopdf
       pip install --no-cache-dir -r requirements.txt
     startCommand: "gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --log-level info"
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
+      - key: OPENAI_API_KEY
+        sync: false
       - key: FLASK_ENV
         value: production
