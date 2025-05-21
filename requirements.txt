@@ -14,3 +14,4 @@ pdf2docx
 PyPDF2
 pytesseract
 Pillow
+html2docx
