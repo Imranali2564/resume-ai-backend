@@ -482,73 +482,83 @@ Resume:
         logger.error(f"[ERROR in generate_section_content]: {str(e)}")
         return {"error": f"Failed to generate section content: {str(e)}"}
 
+import re
+
 def extract_resume_sections(text):
-    if not client:
-        return {"error": "Cannot extract resume sections: OpenAI API key not set."}
+    lines = text.splitlines()
+    sections = {
+        "personal_details": "",
+        "summary": "",
+        "education": "",
+        "skills": "",
+        "work_experience": "",
+        "projects": "",
+        "certifications": "",
+        "languages": "",
+        "achievements": "",
+        "hobbies": ""
+    }
 
-    try:
-        prompt = f"""
-Split the following resume text into structured sections. Return a dictionary in JSON format where each key is a lowercase, underscore-separated section name (e.g., 'work_experience') and the value is the content as a string.
+    current_section = None
+    buffer = []
 
-Include common sections like:
-- personal_details
-- summary
-- objective
-- education
-- work_experience (also map 'experience' to this)
-- internship
-- projects
-- technical_skills (also map 'skills' to this)
-- soft_skills
-- certifications
-- courses
-- achievements
-- awards
-- languages
-- hobbies
-- extracurricular
-- volunteering (also map 'volunteer_experience' to this)
-- publications
-- research_projects
-- strengths
-- references
+    # Define possible section headings
+    section_keywords = {
+        "summary": ["summary", "objective", "career summary", "profile"],
+        "education": ["education", "academics", "qualifications"],
+        "skills": ["skills", "technical skills", "tools", "technologies"],
+        "work_experience": ["experience", "employment", "professional experience", "work"],
+        "projects": ["projects", "project work", "academic projects"],
+        "certifications": ["certifications", "certificates", "courses"],
+        "languages": ["languages", "language proficiency"],
+        "achievements": ["achievements", "accomplishments", "awards"],
+        "hobbies": ["hobbies", "interests", "extracurricular"]
+    }
 
-Instructions:
-- Normalize section names (e.g., map 'experience' to 'work_experience', 'skills' to 'technical_skills', 'volunteer_experience' to 'volunteering').
-- Avoid duplicate sections by merging content under the normalized section name.
-- Exclude any section that is not found.
-- Ensure the output is valid JSON.
-- Order sections as follows: personal_details, summary, objective, technical_skills, work_experience, education, certifications, languages, hobbies, projects, volunteering, achievements, publications, references.
+    def save_buffer_to_section(section):
+        if section and buffer:
+            content = "\n".join(buffer).strip()
+            if content:
+                sections[section] += content + "\n"
+            buffer.clear()
 
-Resume:
-{text[:6000]}
-        """
+    for line in lines:
+        line_clean = line.strip().lower()
 
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
-        )
+        matched_section = None
+        for key, keywords in section_keywords.items():
+            for keyword in keywords:
+                if line_clean.startswith(keyword):
+                    matched_section = key
+                    break
+            if matched_section:
+                break
 
-        raw_output = response.choices[0].message.content.strip()
+        if matched_section:
+            save_buffer_to_section(current_section)
+            current_section = matched_section
+        else:
+            buffer.append(line)
 
-        # Replace null with empty string
-        clean_output = raw_output.replace("null", "\"\"")
+    save_buffer_to_section(current_section)
 
-        sections = json.loads(clean_output)
-        
-        # Ensure content is a string, not a list
-        for key in sections:
-            if isinstance(sections[key], list):
-                sections[key] = '\n'.join(sections[key]).strip()
+    # ✨ Auto-detect personal details
+    personal_lines = []
+    for line in lines:
+        if '@' in line and 'email' in line.lower():
+            personal_lines.append(line.strip())
+        elif re.search(r'\+?\d[\d\s\-]{6,}', line):
+            personal_lines.append(line.strip())
+        elif re.search(r'\b(location|address|city|state|country)\b', line.lower()):
+            personal_lines.append(line.strip())
+        elif re.search(r'(linkedin|github|portfolio|www\.|http)', line.lower()):
+            personal_lines.append(line.strip())
+        elif len(line.strip()) <= 40 and not any(x in line.lower() for x in ['objective', 'summary', 'experience']):
+            personal_lines.insert(0, line.strip())
 
-        return sections
+    sections["personal_details"] = "\n".join(personal_lines[:5])
 
-    except json.JSONDecodeError as e:
-        logger.error(f"[JSON Decode Error in extract_resume_sections]: {str(e)}")
-        return {}
-    except Exception as e:
-        logger.error(f"[ERROR in extract_resume_sections]: {str(e)}")
-        return {}
+    return sections
 
 def extract_keywords_from_jd(jd_text):
     if not client:

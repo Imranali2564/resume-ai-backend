@@ -38,6 +38,7 @@ try:
         fix_resume_formatting,
         generate_section_content,
         generate_resume_summary,
+        extract_resume_sections,
     )
 except ImportError as e:
     logging.error(f"Failed to import resume_ai_analyzer: {str(e)}")
@@ -994,6 +995,19 @@ Message:
     except Exception as e:
         logger.error(f"Error in /send-message: {str(e)}")
         return jsonify({"success": False, "error": str(e)})
+
+@app.route('/extract-sections', methods=['POST'])
+def extract_sections():
+    data = request.get_json()
+    text = data.get("text", "")
+    if not text.strip():
+        return jsonify({"error": "No resume text provided"}), 400
+
+    try:
+        sections = extract_resume_sections(text)
+        return jsonify(sections)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
