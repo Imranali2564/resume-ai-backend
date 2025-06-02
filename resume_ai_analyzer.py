@@ -661,39 +661,87 @@ Job Description:
         return "Failed to analyze job description."
 
 def generate_michelle_template_html(sections):
-    def list_items(text):
-        return ''.join(f"<li>{line.strip()}</li>" for line in text.strip().split('\n') if line.strip())
+    def list_items(text, section_type="other"):
+        if not text:
+            return ""
+        lines = text.strip().split("\n")
+        # For education, avoid bullet points for short entries unless they are clearly list items
+        if section_type == "education":
+            # Check if the content looks like a list (e.g., multiple degrees or details with specific patterns)
+            if len(lines) > 1 and any(line.startswith(("-", "•")) for line in lines):
+                return "".join(
+                    f"<li>{line.strip().lstrip('-• ').strip()}</li>"
+                    for line in lines
+                    if line.strip()
+                )
+            # For single-line or short education entries, use a paragraph instead
+            return f"<p>{text.strip()}</p>"
+        # For other sections, keep bullet points
+        return "".join(
+            f"<li>{line.strip().lstrip('-• ').strip()}</li>"
+            for line in lines
+            if line.strip()
+        )
 
     # Extract personal details more reliably
     name = "Your Name"
     phone = email = location = website = ""
-    personal_lines = sections.get("personal_details", "").split('\n')
-    
-    # First line is typically the name
-    if personal_lines and personal_lines[0].strip():
-        name = personal_lines[0].strip()
+    personal_lines = sections.get("personal_details", "").split("\n")
 
-    # Parse remaining lines for contact details
-    for line in personal_lines[1:]:
+    # Enhanced parsing for personal details
+    for line in personal_lines:
         line = line.strip()
         if not line:
             continue
+        # First line without email, phone, or website is likely the name
+        if (
+            not name != "Your Name"
+            and "@" not in line
+            and not re.search(r"\d{5,}", line)
+            and not any(x in line.lower() for x in ["www", ".com", "city", "state"])
+            and len(line) < 50
+        ):
+            name = line
         if "email" in line.lower() or "@" in line or "📧" in line:
             email = line.replace("📧", "").strip()
-        elif "phone" in line.lower() or re.search(r'\+?\d[\d\s\-]{8,}', line) or "📞" in line:
+        elif "phone" in line.lower() or re.search(r"\+?\d[\d\s\-]{8,}", line) or "📞" in line:
             phone = line.replace("📞", "").strip()
-        elif "location" in line.lower() or "city" in line.lower() or "📍" in line:
+        elif (
+            "location" in line.lower()
+            or "city" in line.lower()
+            or "state" in line.lower()
+            or "📍" in line
+        ):
             location = line.replace("📍", "").strip()
         elif "website" in line.lower() or "www" in line.lower() or "🌐" in line:
             website = line.replace("🌐", "").strip()
 
-    title = sections.get("summary", "").split('\n')[0] if sections.get("summary") else "Your Role"
+    # Fallback for name if not found
+    if name == "Your Name":
+        for section in sections.values():
+            if section:
+                lines = section.split("\n")
+                for line in lines:
+                    line = line.strip()
+                    if (
+                        line
+                        and len(line) < 50
+                        and "@" not in line
+                        and not re.search(r"\d{5,}", line)
+                        and not any(x in line.lower() for x in ["www", ".com", "city", "state"])
+                    ):
+                        name = line
+                        break
+                if name != "Your Name":
+                    break
+
+    title = sections.get("summary", "").split("\n")[0] if sections.get("summary") else "Your Role"
 
     return f"""
     <div class='resume-wrapper' style='max-width:850px;margin:auto;background:#fff;border:1px solid #ccc;box-shadow:0 0 10px rgba(0,0,0,0.1);'>
       <div class='header' style='background:#d3d3d3;padding:30px;text-align:center;'>
-        <h1>{name}</h1>
-        <h2>{title}</h2>
+        <h1 style='font-size: 28px; font-weight: 700; margin: 0; text-transform: uppercase;'>{name}</h1>
+        <h2 style='font-size: 16px; font-weight: 400; margin: 8px 0 0; color: #666;'>{title}</h2>
       </div>
       <div class='content' style='display:flex;padding:30px;'>
         <div class='left-panel' style='width:30%;background:#f5f5f5;padding-right:20px;border-right:1px solid #ccc;box-sizing:border-box;'>
@@ -703,9 +751,11 @@ def generate_michelle_template_html(sections):
           <div class='contact-item'>📍 {location if location else 'Not Provided'}</div>
           <div class='contact-item'>🌐 {website if website else 'Not Provided'}</div>
           <h3>Education</h3>
-          <ul>{list_items(sections.get('education', ''))}</ul>
+          {list_items(sections.get('education', ''), 'education')}
           <h3>Skills</h3>
           <ul>{list_items(sections.get('technical_skills', ''))}</ul>
+          <h3>Hobbies</h3>
+          <ul>{list_items(sections.get('hobbies', ''))}</ul>
         </div>
         <div class='right-panel' style='width:70%;padding-left:30px;box-sizing:border-box;'>
           <h3>Objective</h3>
