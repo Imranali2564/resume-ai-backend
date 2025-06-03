@@ -506,7 +506,7 @@ Format the output as plain text, e.g., 'Software Intern, ABC Corp, June 2023 - A
                 "skills": f"""
 You are a resume writing assistant. The user has provided the following skills: '{user_input}'.
 Based on this, generate a professional skills section for a resume. Expand the list by adding 2-3 relevant skills if possible, and format as a bullet list.
-Format the output as plain text with bullet points, e.g., '• Python\n• JavaScript\n• SQL'.
+Format the output as plain text with bullet points, e.g., '- Python\n- JavaScript\n- SQL'.
 """,
                 "certifications": f"""
 You are a resume writing assistant. The user has provided the following certifications: '{user_input}'.
@@ -520,8 +520,8 @@ Format the output as plain text, e.g., 'English (Fluent), Spanish (Intermediate)
 """,
                 "hobbies": f"""
 You are a resume writing assistant. The user has provided the following hobbies: '{user_input}'.
-Based on this, generate a professional hobbies section for a resume. Expand with 1-2 related hobbies if possible, and format as a list.
-Format the output as plain text with bullet points, e.g., '• Reading\n• Hiking'.
+Based on this, generate a professional hobbies section for a resume. Expand with 1-2 related hobbies if possible, and format as a bullet list.
+Format the output as plain text with bullet points, e.g., '- Reading\n- Hiking'.
 """
             }
             prompt = prompts.get(section_name, "")
