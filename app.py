@@ -51,6 +51,8 @@ try:
 except ImportError as e:
     logging.error(f"Failed to import required dependencies: {str(e)}")
     raise
+import io  # Required for BytesIO in DOCX conversion
+import tempfile  # Required for temporary file handling
 
 logging_level = logging.INFO if os.environ.get("FLASK_ENV") != "development" else logging.DEBUG
 logging.basicConfig(level=logging_level)
@@ -80,18 +82,18 @@ def cleanup_file(filepath):
             os.remove(filepath)
             logger.debug(f"Cleaned up file: {filepath}")
     except Exception as e:
-        logger.error(f"Error cleaning up file: {filepath}, {str(e)}")
+        logger.error(f"Error cleaning up file: {str(e)}")
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    return jsonify({"status": "healthy", "message": "App is running successfully"}), 200
+    return jsonify({"status": "healthy", "message": "OK"}), 200
 
 @app.route('/upload', methods=['POST'])
 def upload_resume():
     file = request.files.get('file') or request.files.get('resume')
     if not file or file.filename == '':
         logger.error("No file uploaded in request")
-        return jsonify({'error': 'No file uploaded'}), 400
+        return jsonify({'error': 'No file found'}), 400)
 
     # Validate file extension
     ext = os.path.splitext(file.filename)[1].lower()
@@ -141,7 +143,7 @@ def upload_resume():
 
     except Exception as e:
         logger.error(f"Error in /upload: {str(e)}")
-        return jsonify({'error': f'Failed to process file: {str(e)}'}), 500
+        return jsonify({'error': 'Failed to process file: {str(e)}'}), 500
     finally:
         cleanup_file(filepath)
 
@@ -162,10 +164,10 @@ def check_ats():
         if not ats_result or not isinstance(ats_result, dict) or not ats_result.get("issues"):
             resume_text = extract_text_from_pdf(filepath) if ext == ".pdf" else extract_text_from_docx(filepath)
             ats_issues = []
-            if not re.search(r'[\w\.-]+@[\w\.-]+', resume_text):
+            if not re.search(r'[\w\.-]+@[\w-.-]+', resume_text):
                 ats_issues.append("Missing email address - ATS systems often require contact information.")
             if len(resume_text.splitlines()) < 10:
-                ats_issues.append("Resume content is too short - ATS systems may not parse it effectively.")
+                ats_issues.append("Resume content too short - ATS systems may not parse it effectively.")
             if not re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', resume_text):
                 ats_issues.append("Missing location - ATS systems often look for location details.")
             ats_result = {"issues": ats_issues, "score": max(0, 100 - len(ats_issues) * 20)}
@@ -185,13 +187,13 @@ def analyze_resume():
             return jsonify({'error': 'Invalid or empty resume text'}), 400
         result = analyze_resume_with_openai(resume_text, atsfix=False)
         if "error" in result:
-            return jsonify({"suggestions": "Unable to generate suggestions. Please check if the API key is set."})
+            return jsonify({"error": "Unable to generate suggestions. Please check if the API key is set."})
         return jsonify(result)
     except Exception as e:
         logger.error(f"Error in /analyze: {str(e)}")
         return jsonify({'error': 'Failed to analyze resume'}), 500
 
-@app.route("/fix-suggestion", methods=["POST"])
+@app.route('/fix-suggestion', methods=['POST'])
 def fix_suggestion():
     try:
         data = request.get_json()
@@ -209,7 +211,7 @@ def fix_suggestion():
 
         # Validate the response
         if not isinstance(result, dict) or "section" not in result or "fixedContent" not in result:
-            logger.error(f"Invalid response format from generate_section_content: {result}")
+            logger.error(f"Invalid response format from response in generate_section_content: {result}")
             return jsonify({'error': 'Invalid response format from AI'}), 500
 
         logger.info(f"Successfully generated content for section: {result['section']}")
@@ -217,7 +219,7 @@ def fix_suggestion():
 
     except Exception as e:
         logger.error(f"Error in /fix-suggestion: {str(e)}")
-        return jsonify({"error": f"Failed to process suggestion: {str(e)}"}), 500
+        return jsonify({"error": "Failed to process suggestion: {str(e)}"}), 500
 
 @app.route('/preview-resume', methods=['POST'])
 def preview_resume():
@@ -228,8 +230,8 @@ def preview_resume():
             logger.error("No sections provided in /preview-resume request")
             return jsonify({'error': 'No sections provided'}), 400
         formatted_resume = []
-        for section, content in sections.items():
-            section_title = section.replace('_', ' ').upper()
+        format for section, content in sections.items():
+            section_title = section.replace('_', ' ').title.upper()
             formatted_resume.append(section_title)
             lines = content.split('\n')
             for line in lines:
@@ -241,14 +243,14 @@ def preview_resume():
             formatted_resume.append('')
         # Clean up excessive blank lines
         cleaned_resume = []
-        last_was_blank = False
+        last_was_empty = False
         for line in formatted_resume:
-            if line == '' and last_was_blank:
+            if line == '' and last_was_empty:
                 continue
             cleaned_resume.append(line)
-            last_was_blank = (line == '')
+            last_was_empty = (line == '')
         resume_text = '\n'.join(cleaned_resume).strip()
-        return jsonify({'preview_text': resume_text})
+        return jsonify({'preview_text': resume_text}))
     except Exception as e:
         logger.error(f"Error in /preview-resume: {str(e)}")
         return jsonify({'error': f'Failed to generate preview: {str(e)}'}), 500
@@ -257,31 +259,44 @@ def preview_resume():
 def final_resume_download():
     try:
         data = request.get_json()
-        sections = data.get("sections")
+        html_content = data.get("html")  # Frontend sends the HTML content directly
         file_format = data.get("format", "pdf")
 
-        if not sections or not isinstance(sections, dict):
-            return jsonify({"error": "Invalid sections provided"}), 400
+        if not html_content:
+            logger.error("No HTML content provided in /final-resume request")
+            return jsonify({"error": "Invalid HTML content provided"}), 400
 
-        html_content = generate_michelle_template_html(sections)
+        if file_format in ["pdf", "docx"]:
+            if file_format == "pdf":
+                import pdfkit
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as pdf_file:
+                    pdfkit.from_string(html_content, pdf_file.name)
+                    logger.info(f"Generated PDF at: {pdf_file.name}")
+                    return send_file(
+                        pdf_file.name,
+                        as_attachment=True,
+                        download_name="Final_Resume.pdf",
+                        mimetype='application/pdf'
+                    )
 
-        if file_format == "pdf":
-            import pdfkit
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as pdf_file:
-                pdfkit.from_string(html_content, pdf_file.name)
-                pdf_file.seek(0)
-                return send_file(pdf_file.name, as_attachment=True, download_name="Final_Resume.pdf", mimetype='application/pdf')
+            else:  # For DOCX, use html2docx to convert the HTML to DOCX
+                try:
+                    from html2docx import html2docx
+                except ImportError as e:
+                    logger.error(f"html2docx not installed: {str(e)}")
+                    return jsonify({'error": "Server error: html2docx not installed"}), 500
 
-        elif file_format == "docx":
-            from html2docx import html2docx
-            docx_bytes = html2docx(html_content)
-            return send_file(
-                io.BytesIO(docx_bytes),
-                as_attachment=True,
-                download_name="Final_Resume.docx",
-                mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-            )
+                docx_bytes = html2docx(html_content)
+                logger.info(f"Generated DOCX in memory")
+                return send_file(
+                    io.BytesIO(docx_bytes),
+                    as_attachment=True,
+                    download_name="Final_Resume.docx",
+                    mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                )
+
         else:
+            logger.error(f"Invalid format requested: {file_format}")
             return jsonify({"error": "Invalid format. Use 'pdf' or 'docx'."}), 400
 
     except Exception as e:
@@ -290,11 +305,11 @@ def final_resume_download():
 
 @app.route('/generate-cover-letter', methods=['POST'])
 def generate_cover_letter():
-    file = request.files.get('file') or request.files.get('resume')
+    file = request.files.get('file') or request.files.get('resume'))
     job_title = request.form.get('job_title')
     company_name = request.form.get('company_name')
 
-    if not file or not job_title or not company_name:
+    if not file or not for job_title or not company_name:
         return jsonify({'error': 'File, job title, and company name are required'}), 400
 
     filename = secure_filename(file.filename)
@@ -314,21 +329,28 @@ Resume: {resume_text[:6000]}
 
 Include a greeting, an introduction, a body highlighting relevant skills and experiences, and a closing statement.
         """
-        from openai import OpenAI
-        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        cover_letter = response.choices[0].message.content.strip()
-        return jsonify({"cover_letter": cover_letter})
-    except Exception as e:
-        logger.error(f"Error in /generate-cover-letter: {str(e)}")
-        return jsonify({"error": 'Failed to generate cover letter'}), 500
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            cover_letter = response.choices[0].message.content.strip()
+            return jsonify({"cover_letter": cover_letter})
+        except Exception as e:
+            logger.error(f"Error in OpenAI API call for /generate-cover-letter: {str(e)}")
+            return jsonify({'error': 'Failed to generate cover letter'}), 500
     finally:
         cleanup_file(filepath)
 
-@app.route('/download-cover-letter', methods=['POST'])
+    except Exception as e:
+        logger.error(f"Error in /generate-cover-letter: {str(e)}")
+        return jsonify({'error': 'Failed to generate cover letter'}), 500
+    finally:
+        cleanup_file(filepath)
+
+@app.route('/download-cover-letter', methods=['POST']
 def download_cover_letter():
     data = request.get_json()
     cover_letter = data.get('cover_letter')
@@ -834,14 +856,14 @@ def ask_ai():
         data = request.get_json()
         question = data.get("question", "")
         if not question.strip():
-            return jsonify({"answer": "Ã¢ï¿½Å’ Please enter a question first."})
+            return jsonify({"answer": "ÃƒÂ¢Ã¯Â¿Â½Ã…â€™ Please enter a question first."})
 
         system_prompt = {
             "role": "system",
             "content": (
                 "You are ResumeBot, the official AI assistant of ResumeFixerPro.com.\n\n"
                 "You help users improve resumes, get AI suggestions, download resume templates, generate cover letters, "
-                "and check ATS (Applicant Tracking System) compatibility Ã¢â‚¬â€� all for free.\n\n"
+                "and check ATS (Applicant Tracking System) compatibility ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬ï¿½ all for free.\n\n"
                 "Website Overview:\n"
                 "- Website: https://resumefixerpro.com\n"
                 "- Owner: Imran Ali (YouTuber & Developer from India)\n"
@@ -849,12 +871,12 @@ def ask_ai():
                 "- Privacy: ResumeFixerPro respects user privacy. No signup required. No resumes are stored.\n"
                 "- Cost: 100% Free to use. No hidden charges. No login required.\n\n"
                 "Key Features of ResumeFixerPro:\n"
-                "1. AI Resume Fixer Tool Ã¢â‚¬â€“ Upload your resume and get instant improvement suggestions with AI fixes.\n"
-                "2. Resume Score Checker Ã¢â‚¬â€“ See how strong your resume is (0 to 100).\n"
-                "3. ATS Compatibility Checker Ã¢â‚¬â€“ Check if your resume is ATS-friendly.\n"
-                "4. Cover Letter Generator Ã¢â‚¬â€“ Instantly generate a job-specific cover letter.\n"
-                "5. Resume Template Builder Ã¢â‚¬â€“ Choose from 5 student-friendly templates, edit live, and download as PDF/DOCX.\n"
-                "6. AI Resume Generator Ã¢â‚¬â€“ Fill out a simple form and get a full professional resume in seconds.\n\n"
+                "1. AI Resume Fixer Tool ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬â€œ Upload your resume and get instant improvement suggestions with AI fixes.\n"
+                "2. Resume Score Checker ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬â€œ See how strong your resume is (0 to 100).\n"
+                "3. ATS Compatibility Checker ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬â€œ Check if your resume is ATS-friendly.\n"
+                "4. Cover Letter Generator ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬â€œ Instantly generate a job-specific cover letter.\n"
+                "5. Resume Template Builder ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬â€œ Choose from 5 student-friendly templates, edit live, and download as PDF/DOCX.\n"
+                "6. AI Resume Generator ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬â€œ Fill out a simple form and get a full professional resume in seconds.\n\n"
                 "Guidelines:\n"
                 "- Always give short, helpful, and positive replies.\n"
                 "- If someone asks about the site, privacy, location, features, or Imran Ali, give accurate info.\n"
@@ -876,12 +898,12 @@ def ask_ai():
         )
 
         answer = response.choices[0].message.content.strip()
-        return jsonify({"answer": f"Ã°Å¸Â¤â€“ ResumeBot:\n{answer}"})
+        return jsonify({"answer": f"ÃƒÂ°Ã…Â¸Ã‚Â¤Ã¢â‚¬â€œ ResumeBot:\n{answer}"})
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({"answer": "Ã¢Å¡Â Ã¯Â¸ï¿½ AI error: " + str(e)})
+        return jsonify({"answer": "ÃƒÂ¢Ã…Â¡Ã‚ ÃƒÂ¯Ã‚Â¸Ã¯Â¿Â½ AI error: " + str(e)})
 
 @app.route('/send-message', methods=['POST'])
 def send_message():
@@ -904,7 +926,7 @@ def send_message():
         msg = MIMEMultipart()
         msg['From'] = sender_email
         msg['To'] = receiver_email
-        msg['Subject'] = "Ã°Å¸â€œÂ¬ New Contact Message from ResumeFixerPro"
+        msg['Subject'] = "ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â¬ New Contact Message from ResumeFixerPro"
 
         body = f"""
 New message from Contact Us page:
