@@ -950,14 +950,28 @@ def extract_sections():
         data = request.get_json()
         text = data.get('text', '')
         if not text.strip():
+            logger.warning("No resume text provided in /extract-sections request")
             return jsonify({"error": "No resume text provided"}), 400
 
         sections = extract_resume_sections(text)
-        return jsonify({"sections": sections})
+
+        # Validate sections output
+        if not sections or not isinstance(sections, dict):
+            logger.warning(f"Invalid sections extracted: {sections}")
+            return jsonify({"error": "Failed to extract sections: Resume format may be unsupported or text is too unstructured."}), 400
+
+        # Ensure sections have content
+        if not any(sections.values()):
+            logger.warning("No sections could be extracted from the resume text")
+            return jsonify({"error": "Failed to extract sections: No recognizable sections found in the resume."}), 400
+
+        logger.info(f"Successfully extracted sections: {list(sections.keys())}")
+        return jsonify(sections)  # ✅ Return the sections directly, not inside {"sections": ...}
 
     except Exception as e:
-        logger.error(f"Error extracting sections: {str(e)}")
+        logger.error(f"Error extracting sections: {str(e)} | Resume text: {text[:500]}")
         return jsonify({"error": f"Failed to extract sections: {str(e)}"}), 500
+
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
