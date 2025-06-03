@@ -4,11 +4,15 @@ services:
     env: python
     plan: free
     buildCommand: |
-      apt-get update && apt-get install -y wkhtmltopdf
-      pip install --no-cache-dir -r requirements.txt
-    startCommand: "gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --log-level info"
+        apt-get update && apt-get install -y wkhtmltopdf libxrender1 libxext6 libfontconfig1
+        pip install --no-cache-dir -r requirements.txt
+    startCommand: gunicorn app:app --timeout 60 --bind 0.0.0.0:$PORT
     envVars:
       - key: OPENAI_API_KEY
         sync: false
+      - key: SMTP_PASSWORD
+        value: ""
       - key: FLASK_ENV
         value: production
+      - key: PYTHONUNBUFFERED
+        value: 1

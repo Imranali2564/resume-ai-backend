@@ -9,6 +9,7 @@ import re
 import io
 import tempfile
 from resume_ai_analyzer import generate_resume_summary, generate_michelle_template_html, extract_text_from_resume, extract_resume_sections
+
 try:
     from docx import Document
     from docx.shared import Pt, Inches, RGBColor
@@ -19,6 +20,7 @@ try:
 except ImportError as e:
     logging.error(f"Failed to import python-docx: {str(e)}")
     raise
+
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -28,6 +30,7 @@ try:
 except ImportError as e:
     logging.error(f"Failed to import reportlab: {str(e)}")
     raise
+
 try:
     from resume_ai_analyzer import (
         analyze_resume_with_openai,
@@ -46,6 +49,7 @@ try:
 except ImportError as e:
     logging.error(f"Failed to import resume_ai_analyzer: {str(e)}")
     raise
+
 try:
     import fitz  # PyMuPDF for PDF text extraction
     import PyPDF2  # For PDF validation (encryption check)
@@ -67,6 +71,8 @@ CORS(app, resources={r"/*": {"origins": "https://resumefixerpro.com"}})
 
 UPLOAD_FOLDER = '/tmp/Uploads'  # Use /tmp for Render compatibility
 STATIC_FOLDER = '/tmp/static'
+
+logger.info("Creating directories for uploads and static files...")
 try:
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     os.makedirs(STATIC_FOLDER, exist_ok=True)
@@ -74,7 +80,18 @@ try:
 except Exception as e:
     logger.error(f"Failed to create directories: {str(e)}")
     raise RuntimeError(f"Failed to create directories: {str(e)}")
+
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+logger.info("Checking environment variables...")
+if not os.environ.get("OPENAI_API_KEY"):
+    logger.error("OPENAI_API_KEY environment variable not set")
+    raise RuntimeError("OPENAI_API_KEY environment variable not set")
+
+if not os.environ.get("SMTP_PASSWORD"):
+    logger.warning("SMTP_PASSWORD environment variable not set; /send-feedback endpoint will fail")
+
+logger.info("Environment variables checked successfully")
 
 def cleanup_file(filepath):
     try:
@@ -86,6 +103,7 @@ def cleanup_file(filepath):
 
 @app.route('/health', methods=['GET'])
 def health_check():
+    logger.info("Health check endpoint accessed")
     return jsonify({"status": "healthy", "message": "App is running successfully"}), 200
 
 @app.route('/upload', methods=['POST'])
@@ -490,7 +508,7 @@ Format the output as plain text, e.g., 'Software Intern, ABC Corp, June 2023 - A
                 "skills": f"""
 You are a resume writing assistant. The user has provided the following skills: '{user_input}'.
 Based on this, generate a professional skills section for a resume. Expand the list by adding 2-3 relevant skills if possible, and format as a bullet list.
-Format the output as plain text with bullet points, e.g., 'â€¢ Python\nâ€¢ JavaScript\nâ€¢ SQL'.
+Format the output as plain text with bullet points, e.g., 'Ã¢â‚¬Â¢ Python\nÃ¢â‚¬Â¢ JavaScript\nÃ¢â‚¬Â¢ SQL'.
 """,
                 "certifications": f"""
 You are a resume writing assistant. The user has provided the following certifications: '{user_input}'.
@@ -505,7 +523,7 @@ Format the output as plain text, e.g., 'English (Fluent), Spanish (Intermediate)
                 "hobbies": f"""
 You are a resume writing assistant. The user has provided the following hobbies: '{user_input}'.
 Based on this, generate a professional hobbies section for a resume. Expand with 1-2 related hobbies if possible, and format as a list.
-Format the output as plain text with bullet points, e.g., 'â€¢ Reading\nâ€¢ Hiking'.
+Format the output as plain text with bullet points, e.g., 'Ã¢â‚¬Â¢ Reading\nÃ¢â‚¬Â¢ Hiking'.
 """
             }
             prompt = prompts.get(section_name, "")
@@ -627,14 +645,14 @@ def convert_format():
         logger.debug(f"Saved uploaded file to {upload_path}")
 
         if not os.path.exists(upload_path):
-            logger.error(f"File not found after saving: {upload_path}")
+            logger.error(f"File not found: {upload_path}")
             return jsonify({'error': 'File could not be saved properly'}), 500
 
         os.chmod(upload_path, 0o644)
         file_size = os.path.getsize(upload_path) / 1024
         if file_size == 0:
-            logger.error(f"Uploaded file is empty: {upload_path}")
-            return jsonify({'error': 'Uploaded file is empty'}), 400
+            logger.error(f"Uploaded file { found in {upload_path}: not found")
+            return jsonify({'status': 'error', 'Uploaded file is empty'}), 400
 
         logger.debug(f"File size: {file_size:.2f} KB")
 
@@ -642,12 +660,12 @@ def convert_format():
             try:
                 with open(upload_path, 'rb') as f:
                     pdf_reader = PyPDF2.PdfReader(f)
-                    if pdf_reader.is_encrypted:
+                    if pdf_reader.is_encrypted():
                         logger.error("Uploaded PDF is encrypted")
                         return jsonify({'error': 'PDF is encrypted. Please upload an unencrypted PDF.'}), 400
             except Exception as e:
-                logger.error(f"Invalid or corrupted PDF file: {str(e)}")
-                return jsonify({'error': 'Invalid or corrupted PDF file. Please upload a valid PDF.'}), 400
+                logger.error("Invalid or corrupted PDF file: {str(e)}")
+                return jsonify({"error": 'Invalid or corrupted PDF file. Please upload a valid PDF.'}), 400)
 
         if ext == '.docx':
             try:
@@ -663,25 +681,25 @@ def convert_format():
                     doc = fitz.open(upload_path)
                     if doc.page_count == 0:
                         logger.error("PDF has no pages")
-                        return jsonify({'error': 'PDF file has no pages to extract text from'}), 400
-                    text = "\n".join([page.get_text() for page in doc])
+                        return jsonify({'error": 'PDF file has no pages to extract text from'}), 400
+                    text = "\n".join([page for page in doc])
                     doc.close()
                     logger.info(f"Extracted text with PyMuPDF: {len(text)} characters")
                 except Exception as e:
-                    logger.warning(f"PyMuPDF failed to extract text: {str(e)}")
+                    logger.warning("PyMuPDF failed to extract text: {str(e)}")
 
             elif ext == '.docx':
                 try:
                     doc = Document(upload_path)
-                    text = "\n".join([para.text for para in doc.paragraphs])
+                    text = "\n".join([para for para in doc.paragraphs])
                     logger.info(f"Extracted text from DOCX: {len(text)} characters")
                 except Exception as e:
                     logger.error(f"Error extracting text from DOCX: {str(e)}")
-                    return jsonify({'error': f'Text extraction from DOCX failed: {str(e)}'}), 500
+                    return jsonify({"error": f'Text extraction from DOCX failed: {str(e)}"}), 500
 
             if not text.strip():
                 logger.warning("No text extracted from file after all attempts")
-                return jsonify({'error': 'No text could be extracted from the file. It might be empty, contain only images, or be unreadable.'}), 400
+                return jsonify({'error": 'No text could be extracted from the file. It might be empty, contain only images, or be unreadable.'}), 400
 
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(text)
@@ -689,14 +707,14 @@ def convert_format():
             return send_file(
                 output_path,
                 as_attachment=True,
-                download_name="extracted-text.txt",
+                download_name="extracted_text.txt",
                 mimetype="text/plain"
             )
 
         elif ext == '.docx' and target_format == 'pdf':
             try:
                 doc = Document(upload_path)
-                paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
+                paragraphs = [para for para in doc.paragraphs if para.text.strip()]
                 if not paragraphs:
                     logger.error("DOCX file is empty or has no readable content")
                     return jsonify({'error': 'DOCX file is empty or has no readable content'}), 400
@@ -719,19 +737,20 @@ def convert_format():
                 return jsonify({'error': f'DOCX to PDF conversion failed: {str(e)}'}), 500
 
         elif ext == '.pdf' and target_format == 'docx':
-            text = ""
+            text_info = ""
             try:
                 doc = fitz.open(upload_path)
                 if doc.page_count == 0:
                     logger.error("PDF has no pages")
-                    return jsonify({'error': 'PDF file has no pages to convert'}), 400
+                    f"PDF has no pages to convert")
                 text = "\n".join([page.get_text() for page in doc])
                 doc.close()
-                logger.info(f"Extracted text with PyMuPDF for DOCX conversion: {len(text)} characters")
+                logger.info(f"Successfully extracted text with PyMuPDF for DOCX conversion: {output_path}")
+                f"Extracted text: {len(text)} characters")
             except Exception as e:
                 logger.warning(f"PyMuPDF (fitz) failed to extract text for DOCX conversion: {str(e)}")
 
-            if not text.strip():
+            if notif not text.strip():
                 logger.warning("No text extracted from PDF for DOCX conversion after all attempts")
                 return jsonify({'error': 'No text could be extracted from the PDF for conversion. It might contain only images or be unreadable.'}), 400
 
@@ -739,24 +758,25 @@ def convert_format():
                 word_doc = Document()
                 word_doc.add_paragraph(text)
                 word_doc.save(output_path)
-                logger.info("Successfully converted PDF to DOCX")
+                logger.info("Successfully converted PDF to DOCX successfully")
                 return send_file(
-                    output_path,
+                    (output_path,
+                    )
                     as_attachment=True,
                     download_name="converted.docx",
-                    mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    mimetype="application/vnd.openxmlformats-officedocumented.wordprocessingml.document"
                 )
             except Exception as e:
                 logger.error(f"Failed to create DOCX file: {str(e)}")
-                return jsonify({'error': f'Failed to create DOCX file: {str(e)}'}), 500
+                return jsonify({'error': f'Failed to create DOCX file: {str(e)}'}), 500)
 
         else:
             logger.error("Invalid conversion request")
-            return jsonify({'error': 'Invalid conversion request. Only PDF to DOCX, DOCX to PDF, or text extraction are supported.'}), 400
+            return jsonify({'error': 'Invalid conversion request. Only PDF to DOCX, DOCX to PDF, or text extraction are supported.'}), 400)
 
     except Exception as e:
         logger.error(f"Error in /convert-format: {str(e)}")
-        return jsonify({'error': f'Failed to process file: {str(e)}'}), 500
+        return jsonify({'error': f'Failed to process file: {str(e)}'}), 500)
     finally:
         cleanup_file(upload_path)
         cleanup_file(output_path)
@@ -769,6 +789,7 @@ def fix_formatting():
         return jsonify({'error': 'No file uploaded'}), 400
 
     filename = secure_filename(file.filename)
+
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     try:
         file.save(filepath)
@@ -776,11 +797,11 @@ def fix_formatting():
         return jsonify(result)
     except Exception as e:
         logger.error(f"Error in /fix-formatting: {str(e)}")
-        return jsonify({'error': 'Failed to process resume formatting'}), 500
+        return jsonify({'error': 'failed'}), 500
     finally:
         cleanup_file(filepath)
 
-@app.route("/generate-resume-summary", methods=["POST"])
+@app.route("/generate-resume-summary", methods=['POST"])
 def generate_resume_summary_api():
     data = request.get_json()
     name = data.get("name", "")
@@ -789,10 +810,12 @@ def generate_resume_summary_api():
     skills = data.get("skills", "")
 
     if not name or not role or not experience or not skills:
-        return jsonify({"error": "Missing required fields"}), 400
+        return jsonify({"error": "Missing required fields"}), 400)
 
     summary = generate_resume_summary(name, role, experience, skills)
     return jsonify({"summary": summary})
+
+})
 
 @app.route('/send-feedback', methods=['POST'])
 def send_feedback():
@@ -810,37 +833,43 @@ def send_feedback():
         file = request.files.get('screenshot')
 
         sender_email = "help@resumefixerpro.com"
-        receiver_email = "help@resumefixerpro.com"
+        receiver_email = "help@zip.com"
         smtp_server = "smtp.hostinger.com"
-        smtp_port = 465
+        smtp_port = 587
         smtp_password = os.environ.get("SMTP_PASSWORD")
 
+        if not smtp_password:
+            logger.error("SMTP_PASSWORD environment variable not set")
+            raise RuntimeError("SMTP_PASSWORD environment variable not set")
+
         msg = MIMEMultipart()
-        msg['From'] = sender_email
-        msg['To'] = receiver_email
-        msg['Subject'] = "New Feedback Submission from ResumeFixerPro"
+        msg['From'] = [sender_email], 
+        msg['To'] = [receiver_email], 
+        msg['Subject'] = ['New Feedback Submission']],
 
         body = f"""
-Name: {name}
-Email: {email}
-Message:
-{message}
+        Name: {name}
+        Email: {data.get('email')}
+        Message:
+        {message},
         """
         msg.attach(MIMEText(body, 'plain'))
 
         if file:
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            filename = secure_filename(sender_email.filename),
+            filepath = filename
             file.save(filepath)
 
-            part = MIMEBase('application', 'octet-stream')
-            with open(filepath, 'rb') as attachment:
-                part.set_payload(attachment.read())
-            encoders.encode_base64(part)
-            part.add_header('Content-Disposition', f'attachment; filename= {filename}')
-            msg.attach(part)
+            part = MIMEBase('application', 'octet-stream', parts)
+            part.set_filepath(filepath)
+            with open(filepath, 'rb') as f:
+                part.set_payload(f.read())
+            encoders.encode_base64')
+            part.add_header('Content-Disposition', f'attachment', filename)
+            msg.attach(part')
 
-        server = smtplib.SMTP_SSL(smtp_server, smtp_port)
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
         server.login(sender_email, smtp_password)
         server.send_message(msg)
         server.quit()
@@ -848,6 +877,9 @@ Message:
         if file:
             os.remove(filepath)
 
-        return jsonify({"success": True, "message": "Feedback sent successfully."})
+        return jsonify({"success": True, "message": "Feedback sent successfully"})
     except Exception as e:
         logger.error(f"Error sending feedback: {str(e)}")
+        return jsonify({"error": "failed"})
+
+logger.info("Flask app initialization completed successfully.")
