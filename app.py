@@ -876,12 +876,12 @@ Message:
         return jsonify({"error": "Failed to send feedback"})
 
 logger.info("Flask app initialization completed successfully.")
+
 @app.before_first_request
 def startup_log():
     logger.info("Flask app fully initialized and ready.")
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
-    logging.info(f"Starting Flask app on port {port}")
+    logger.info(f"Starting Flask app on port {port}")
     app.run(host="0.0.0.0", port=port)
-
