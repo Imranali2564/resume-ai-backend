@@ -189,7 +189,6 @@ def check_ats():
     finally:
         cleanup_file(filepath)
 
-
 @app.route('/analyze', methods=['POST'])
 def analyze_resume():
     try:
@@ -508,32 +507,43 @@ Write a 2-3 line professional summary for a resume.
                 "education": f"""
 You are a resume writing assistant. The user has provided the following education details: '{user_input}'.
 Based on this, generate a professional education entry for a resume. Include degree, institution, and years (e.g., 2020-2024). If details are missing, make reasonable assumptions.
-Format the output as plain text, e.g., 'B.Tech in Computer Science, XYZ University, 2020-2024'.
+Format the output as plain text, e.g.:
+B.Tech in Computer Science, XYZ University, 2020-2024
 """,
                 "experience": f"""
 You are a resume writing assistant. The user has provided the following experience details: '{user_input}'.
 Based on this, generate a professional experience entry for a resume. Include job title, company, duration (e.g., June 2023 - August 2023), and a brief description of responsibilities (1-2 lines).
-Format the output as plain text, e.g., 'Software Intern, ABC Corp, June 2023 - August 2023, Developed web applications using React and Node.js'.
+Format the output as plain text, e.g.:
+Software Intern, ABC Corp, June 2023 - August 2023
+Developed web applications using React and Node.js
 """,
                 "skills": f"""
 You are a resume writing assistant. The user has provided the following skills: '{user_input}'.
 Based on this, generate a professional skills section for a resume. Expand the list by adding 2-3 relevant skills if possible, and format as a bullet list.
-Format the output as plain text with bullet points, e.g., '- Python\n- JavaScript\n- SQL'.
+Format the output as plain text with bullet points, e.g.:
+- Python
+- JavaScript
+- SQL
 """,
                 "certifications": f"""
 You are a resume writing assistant. The user has provided the following certifications: '{user_input}'.
 Based on this, generate a professional certifications section for a resume. Include the certification name, issuing organization, and year (e.g., 2023). If details are missing, make reasonable assumptions.
-Format the output as plain text, e.g., 'Certified Python Developer, XYZ Institute, 2023'.
+Format the output as plain text, e.g.:
+Certified Python Developer, XYZ Institute, 2023
 """,
                 "languages": f"""
 You are a resume writing assistant. The user has provided the following languages: '{user_input}'.
 Based on this, generate a professional languages section for a resume. Include proficiency levels (e.g., Fluent, Intermediate) and format as a list.
-Format the output as plain text, e.g., 'English (Fluent), Spanish (Intermediate)'.
+Format the output as plain text, e.g.:
+English (Fluent)
+Spanish (Intermediate)
 """,
                 "hobbies": f"""
 You are a resume writing assistant. The user has provided the following hobbies: '{user_input}'.
 Based on this, generate a professional hobbies section for a resume. Expand with 1-2 related hobbies if possible, and format as a bullet list.
-Format the output as plain text with bullet points, e.g., '- Reading\n- Hiking'.
+Format the output as plain text with bullet points, e.g.:
+- Reading
+- Hiking
 """
             }
             prompt = prompts.get(section_name, "")
