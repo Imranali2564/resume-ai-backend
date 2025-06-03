@@ -677,19 +677,24 @@ def generate_michelle_template_html(sections):
             elif len(line) < 50 and '@' not in line and not re.search(r'\d{5,}', line):
                 name = line
 
-    # Define the HTML template as a multi-line string
+    # Define sections with proper conditional logic
     education_section = (
         '<h3 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Education</h3>'
         f"{format_content(sections.get('education', ''), 'education')}"
-    ) if sections.get('summary'):
-    summary_text = sections['summary'].replace('\n', '<br>')
-    summary_section = (
-        '<h2 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Professional Summary</h2>'
-        f"<p style='font-size: 11pt; margin-bottom: 15pt;'>{summary_text}</p>"
-    )
-else:
-    summary_section = ''
+    ) if sections.get('education') else ''
 
+    hobbies_section = (
+        '<h3 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Hobbies</h3>'
+        f"{format_content(sections.get('hobbies', ''))}"
+    ) if sections.get('hobbies') else ''
+
+    summary_section = ''
+    if sections.get('summary'):
+        summary_text = sections['summary'].replace('\n', '<br>')
+        summary_section = (
+            '<h2 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Professional Summary</h2>'
+            f"<p style='font-size: 11pt; margin-bottom: 15pt;'>{summary_text}</p>"
+        )
 
     work_experience_section = (
         '<h2 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Work Experience</h2>'
