@@ -198,24 +198,20 @@ def analyze_resume_with_openai(resume_text, atsfix=False):
         if not isinstance(resume_text, str) or not resume_text.strip():
             return {"error": "No readable text provided."}
 
-        prompt = f"""
-You are a professional resume analyzer.
-Analyze the following resume and provide key suggestions to improve its impact, clarity, and formatting.
-Give up to 7 specific, actionable suggestions only. Avoid generic advice.
-
-Resume:
-{resume_text[:6000]}
-        """
+        prompt = (
+            "You are a professional resume analyzer.\n"
+            "Analyze the following resume and provide key suggestions to improve its impact, clarity, and formatting.\n"
+            "Give up to 7 specific, actionable suggestions only. Avoid generic advice.\n\n"
+            f"Resume:\n{resume_text[:6000]}"
+        )
 
         if atsfix:
-            prompt = f"""
-You are an expert in optimizing resumes for Applicant Tracking Systems (ATS).
-Analyze the following resume and provide specific suggestions to improve its ATS compatibility.
-Give up to 7 specific, actionable suggestions only. Focus on ATS-specific improvements like keywords, section headings, and formatting.
-
-Resume:
-{resume_text[:6000]}
-            """
+            prompt = (
+                "You are an expert in optimizing resumes for Applicant Tracking Systems (ATS).\n"
+                "Analyze the following resume and provide specific suggestions to improve its ATS compatibility.\n"
+                "Give up to 7 specific, actionable suggestions only. Focus on ATS-specific improvements like keywords, section headings, and formatting.\n\n"
+                f"Resume:\n{resume_text[:6000]}"
+            )
 
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -330,7 +326,6 @@ def check_ats_compatibility(file_path):
         logger.error(f"[ERROR in check_ats_compatibility]: {str(e)}")
         return {"error": f"Failed to generate ATS compatibility report: {str(e)}"}
 
-
 def fix_resume_formatting(file_path):
     ext = os.path.splitext(file_path)[1].lower()
     if ext == ".pdf":
@@ -343,40 +338,37 @@ def fix_resume_formatting(file_path):
     if not text.strip():
         return {"error": "No readable text found in resume"}
 
-    prompt = f"""
-You are a professional resume formatting expert.
-Clean and reformat the following resume into plain text with the following rules:
-- Organize the resume into clear sections (e.g., Education, Experience, Skills, etc.).
-- Use section headings in all caps (e.g., EDUCATION, EXPERIENCE, SKILLS).
-- Use a single dash and space ("- ") for all bullet points.
-- Ensure exactly one blank line between sections.
-- Remove extra spaces, normalize line breaks, and ensure consistent formatting.
-- Do not use HTML, markdown, or any other markup language—just plain text.
-- Order sections as follows: PERSONAL DETAILS, SUMMARY, OBJECTIVE, SKILLS, EXPERIENCE, EDUCATION, CERTIFICATIONS, LANGUAGES, HOBBIES, PROJECTS, VOLUNTEER EXPERIENCE, ACHIEVEMENTS, PUBLICATIONS, REFERENCES.
+    # Define the example output format separately to avoid backslashes in f-string
+    example_output = (
+        "NAME\n"
+        "John Doe\n\n"
+        "PERSONAL DETAILS\n"
+        "- Email: john.doe@email.com\n"
+        "- Phone: +1234567890\n\n"
+        "SUMMARY\n"
+        "- A dedicated Software Engineer with 3 years of experience.\n\n"
+        "EXPERIENCE\n"
+        "- Software Engineer Intern, ABC Corp, June 2023 - August 2023\n"
+        "- Developed web applications using React and Node.js\n\n"
+        "SKILLS\n"
+        "- Python\n"
+        "- JavaScript\n"
+        "- SQL"
+    )
 
-Example output:
-NAME
-John Doe
-
-PERSONAL DETAILS
-- Email: john.doe@email.com
-- Phone: +1234567890
-
-SUMMARY
-- A dedicated Software Engineer with 3 years of experience.
-
-EXPERIENCE
-- Software Engineer Intern, ABC Corp, June 2023 - August 2023
-- Developed web applications using React and Node.js
-
-SKILLS
-- Python
-- JavaScript
-- SQL
-
-Resume:
-{text}
-    """
+    prompt = (
+        "You are a professional resume formatting expert.\n"
+        "Clean and reformat the following resume into plain text with the following rules:\n"
+        "- Organize the resume into clear sections (e.g., Education, Experience, Skills, etc.).\n"
+        "- Use section headings in all caps (e.g., EDUCATION, EXPERIENCE, SKILLS).\n"
+        "- Use a single dash and space ('- ') for all bullet points.\n"
+        "- Ensure exactly one blank line between sections.\n"
+        "- Remove extra spaces, normalize line breaks, and ensure consistent formatting.\n"
+        "- Do not use HTML, markdown, or any other markup language—just plain text.\n"
+        "- Order sections as follows: PERSONAL DETAILS, SUMMARY, OBJECTIVE, SKILLS, EXPERIENCE, EDUCATION, CERTIFICATIONS, LANGUAGES, HOBBIES, PROJECTS, VOLUNTEER EXPERIENCE, ACHIEVEMENTS, PUBLICATIONS, REFERENCES.\n\n"
+        f"Example output:\n{example_output}\n\n"
+        f"Resume:\n{text}"
+    )
 
     if not client:
         return {"error": "Cannot format resume: OpenAI API key not set."}
@@ -423,34 +415,31 @@ def generate_section_content(suggestion, full_text):
         has_phone = bool(re.search(r'\+?\d[\d\s\-]{8,}', personal_details))
         has_location = "location" in personal_details or "city" in personal_details or "📍" in personal_details
 
-        prompt = f"""
-You are an AI resume improvement expert.
+        # Define the example JSON string separately to avoid backslash in f-string
+        example_json = '{"section": "skills", "fixedContent": "- Python\n- Communication\n- Teamwork"}'
 
-Given the suggestion and full resume text, return a JSON with:
-- 'section': which section to update (e.g. skills, summary, education)
-- 'fixedContent': fixed or new content based on the suggestion
-- Add grammar/spelling correction where needed
-- If the section is missing, generate it with relevant content
-- Use bullet points where applicable
-- Respond in this format:
-{{"section": "skills", "fixedContent": "- Python\\n- Communication\\n- Teamwork"}}
-
-Additional Instructions:
-- If the suggestion is about adding an email, phone, or location, and these already exist in the personal_details section, do not suggest adding them again. Instead, confirm they are present.
-- For the 'technical_skills' section:
-  - If there are more than 10 skills, reduce to the top 8 most relevant skills.
-  - If there are fewer than 5 skills, expand by adding 3-5 relevant skills based on the resume context.
-- Do not suggest adding personal details if they already exist:
-  - Email present: {has_email}
-  - Phone present: {has_phone}
-  - Location present: {has_location}
-
-Suggestion:
-{suggestion}
-
-Resume:
-{full_text[:6000]}
-        """
+        prompt = (
+            "You are an AI resume improvement expert.\n\n"
+            "Given the suggestion and full resume text, return a JSON with:\n"
+            "- 'section': which section to update (e.g. skills, summary, education)\n"
+            "- 'fixedContent': fixed or new content based on the suggestion\n"
+            "- Add grammar/spelling correction where needed\n"
+            "- If the section is missing, generate it with relevant content\n"
+            "- Use bullet points where applicable\n"
+            "- Respond in this format:\n"
+            f"{example_json}\n\n"
+            "Additional Instructions:\n"
+            "- If the suggestion is about adding an email, phone, or location, and these already exist in the personal_details section, do not suggest adding them again. Instead, confirm they are present.\n"
+            "- For the 'technical_skills' section:\n"
+            "  - If there are more than 10 skills, reduce to the top 8 most relevant skills.\n"
+            "  - If there are fewer than 5 skills, expand by adding 3-5 relevant skills based on the resume context.\n"
+            "- Do not suggest adding personal details if they already exist:\n"
+            f"  - Email present: {has_email}\n"
+            f"  - Phone present: {has_phone}\n"
+            f"  - Location present: {has_location}\n\n"
+            f"Suggestion:\n{suggestion}\n\n"
+            f"Resume:\n{full_text[:6000]}"
+        )
 
         try:
             response = client.chat.completions.create(
@@ -481,8 +470,6 @@ Resume:
     except Exception as e:
         logger.error(f"[ERROR in generate_section_content]: {str(e)}")
         return {"error": f"Failed to generate section content: {str(e)}"}
-
-import re
 
 def extract_resume_sections(text):
     lines = text.splitlines()
@@ -565,13 +552,11 @@ def extract_keywords_from_jd(jd_text):
         return "Cannot extract keywords: OpenAI API key not set."
 
     try:
-        prompt = f"""
-From the following job description, extract the most important keywords that should be reflected in a resume.
-Return the keywords as a comma-separated string.
-
-Job Description:
-{jd_text[:3000]}
-        """
+        prompt = (
+            "From the following job description, extract the most important keywords that should be reflected in a resume.\n"
+            "Return the keywords as a comma-separated string.\n\n"
+            f"Job Description:\n{jd_text[:3000]}"
+        )
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
@@ -587,17 +572,15 @@ def generate_resume_summary(name, role, experience, skills):
         return "OpenAI API key not set. Cannot generate summary."
 
     try:
-        prompt = f"""
-You are a professional resume expert.
-
-Write a concise 2–3 line professional summary for the following person:
-- Name: {name}
-- Role: {role}
-- Experience: {experience}
-- Skills: {skills}
-
-Make it ATS-friendly, use action words, and highlight strengths. Do not include heading or labels.
-        """
+        prompt = (
+            "You are a professional resume expert.\n\n"
+            f"Write a concise 2–3 line professional summary for the following person:\n"
+            f"- Name: {name}\n"
+            f"- Role: {role}\n"
+            f"- Experience: {experience}\n"
+            f"- Skills: {skills}\n\n"
+            "Make it ATS-friendly, use action words, and highlight strengths. Do not include heading or labels."
+        )
 
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -635,19 +618,15 @@ def analyze_job_description(jd_text):
         return "OpenAI API key not set. Cannot analyze job description."
 
     try:
-        prompt = f"""
-You are an expert resume reviewer.
-
-Analyze the following job description and extract the most relevant:
-1. Key Skills
-2. Required Qualifications
-3. Recommended Action Verbs
-
-Format the result clearly in 3 sections with headings.
-
-Job Description:
-{jd_text}
-        """
+        prompt = (
+            "You are an expert resume reviewer.\n\n"
+            "Analyze the following job description and extract the most relevant:\n"
+            "1. Key Skills\n"
+            "2. Required Qualifications\n"
+            "3. Recommended Action Verbs\n\n"
+            "Format the result clearly in 3 sections with headings.\n\n"
+            f"Job Description:\n{jd_text}"
+        )
 
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -698,71 +677,70 @@ def generate_michelle_template_html(sections):
             elif len(line) < 50 and '@' not in line and not re.search(r'\d{5,}', line):
                 name = line
 
-    return f"""
-    <div style="font-family: Arial, sans-serif; line-height: 1.5; width: 100%; max-width: 595px; margin: 0 auto;">
-        <!-- Container for two-column layout -->
-        <div style="display: flex; flex-direction: row;">
-            <!-- Sidebar (30% width) -->
-            <div style="width: 30%; background-color: #f0f4f8; padding: 15pt; color: #333;">
-                <!-- Contact Details -->
-                <h3 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-bottom: 10pt;">Contact Details</h3>
-                <p style="font-size: 10pt; margin-bottom: 5pt;">
-                    <strong>Email:</strong> {email}<br>
-                    <strong>Phone:</strong> {phone}<br>
-                    <strong>Location:</strong> {location}
-                </p>
+    # Define the HTML template as a multi-line string
+    education_section = (
+        '<h3 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Education</h3>'
+        f"{format_content(sections.get('education', ''), 'education')}"
+    ) if sections.get('education') else ''
 
-                <!-- Education -->
-                {f'''
-                <h3 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Education</h3>
-                {format_content(sections.get('education', ''), 'education')}
-                ''' if sections.get('education') else ''}
+    hobbies_section = (
+        '<h3 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Hobbies</h3>'
+        f"{format_content(sections.get('hobbies', ''))}"
+    ) if sections.get('hobbies') else ''
 
-                <!-- Hobbies -->
-                {f'''
-                <h3 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Hobbies</h3>
-                {format_content(sections.get('hobbies', ''))}
-                ''' if sections.get('hobbies') else ''}
-            </div>
+    summary_section = (
+        '<h2 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Professional Summary</h2>'
+        f"<p style='font-size: 11pt; margin-bottom: 15pt;'>{sections.get('summary', '').replace('\n', '<br>')}</p>"
+    ) if sections.get('summary') else ''
 
-            <!-- Main Content (70% width) -->
-            <div style="width: 70%; padding: 15pt;">
-                <!-- Name -->
-                <h1 style="font-size: 26pt; font-weight: bold; color: #1e40af; margin-bottom: 5pt; text-align: center;">{name}</h1>
+    work_experience_section = (
+        '<h2 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Work Experience</h2>'
+        f"{format_content(sections.get('work_experience', ''))}"
+    ) if sections.get('work_experience') else ''
 
-                <!-- Professional Summary -->
-                {f'''
-                <h2 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Professional Summary</h2>
-                <p style="font-size: 11pt; margin-bottom: 15pt;">{sections.get('summary', '').replace('\n', '<br>')}</p>
-                ''' if sections.get('summary') else ''}
+    projects_section = (
+        '<h2 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Projects</h2>'
+        f"{format_content(sections.get('projects', ''))}"
+    ) if sections.get('projects') else ''
 
-                <!-- Work Experience -->
-                {f'''
-                <h2 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Work Experience</h2>
-                {format_content(sections.get('work_experience', ''))}
-                ''' if sections.get('work_experience') else ''}
+    skills_section = (
+        '<h2 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Skills</h2>'
+        f"{format_content(sections.get('skills', ''))}"
+    ) if sections.get('skills') else ''
 
-                <!-- Projects -->
-                {f'''
-                <h2 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Projects</h2>
-                {format_content(sections.get('projects', ''))}
-                ''' if sections.get('projects') else ''}
+    certifications_section = (
+        '<h2 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Certifications</h2>'
+        f"{format_content(sections.get('certifications', ''))}"
+    ) if sections.get('certifications') else ''
 
-                <!-- Skills -->
-                {f'''
-                <h2 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Skills</h2>
-                {format_content(sections.get('skills', ''))}
-                ''' if sections.get('skills') else ''}
+    html_template = (
+        '<div style="font-family: Arial, sans-serif; line-height: 1.5; width: 100%; max-width: 595px; margin: 0 auto;">'
+        '    <!-- Container for two-column layout -->'
+        '    <div style="display: flex; flex-direction: row;">'
+        '        <!-- Sidebar (30% width) -->'
+        '        <div style="width: 30%; background-color: #f0f4f8; padding: 15pt; color: #333;">'
+        '            <!-- Contact Details -->'
+        '            <h3 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-bottom: 10pt;">Contact Details</h3>'
+        f'            <p style="font-size: 10pt; margin-bottom: 5pt;"><strong>Email:</strong> {email}<br>'
+        f'            <strong>Phone:</strong> {phone}<br>'
+        f'            <strong>Location:</strong> {location}</p>'
+        f'            {education_section}'
+        f'            {hobbies_section}'
+        '        </div>'
+        '        <!-- Main Content (70% width) -->'
+        '        <div style="width: 70%; padding: 15pt;">'
+        f'            <h1 style="font-size: 26pt; font-weight: bold; color: #1e40af; margin-bottom: 5pt; text-align: center;">{name}</h1>'
+        f'            {summary_section}'
+        f'            {work_experience_section}'
+        f'            {projects_section}'
+        f'            {skills_section}'
+        f'            {certifications_section}'
+        '        </div>'
+        '    </div>'
+        '</div>'
+    )
 
-                <!-- Certifications -->
-                {f'''
-                <h2 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Certifications</h2>
-                {format_content(sections.get('certifications', ''))}
-                ''' if sections.get('certifications') else ''}
-            </div>
-        </div>
-    </div>
-    """
+    return html_template
 
 def check_ats_compatibility_fast(text):
     score = 100
@@ -822,13 +800,11 @@ def check_ats_compatibility_deep(file_path):
             score -= 10
 
         # AI validation
-        prompt = f"""
-You are an ATS expert. Check the following resume and give up to 5 issues:
-Resume:
-{text[:6000]}
-Return in this format:
-["✅ Passed: ...", "❌ Issue: ..."]
-        """
+        prompt = (
+            "You are an ATS expert. Check the following resume and give up to 5 issues:\n"
+            f"Resume:\n{text[:6000]}\n"
+            'Return in this format:\n["✅ Passed: ...", "❌ Issue: ..."]'
+        )
 
         ai_resp = client.chat.completions.create(
             model="gpt-3.5-turbo",
