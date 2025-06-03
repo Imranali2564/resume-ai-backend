@@ -149,34 +149,46 @@ def upload_resume():
 
 @app.route('/ats-check', methods=['POST'])
 def check_ats():
-    file = request.files.get('file') or request.files.get('resume')
-    if not file or file.filename == '':
-        return jsonify({'error': 'No file selected for upload'}), 400
-    ext = os.path.splitext(file.filename)[1].lower()
-    allowed_extensions = {'.pdf', '.docx'}
-    if ext not in allowed_extensions:
-        return jsonify({'error': f'Unsupported file format: {ext}. Please upload a PDF or DOCX file.'}), 400
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     try:
+        file = request.files.get('file') or request.files.get('resume')
+        if not file or file.filename == '':
+            return jsonify({'error': 'No file uploaded'}), 400
+
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in {'.pdf', '.docx'}:
+            return jsonify({'error': f'Unsupported file format: {ext}. Please upload a PDF or DOCX.'}), 400
+
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
-        ats_result = check_ats_compatibility(filepath)
-        if not ats_result or not isinstance(ats_result, dict) or not ats_result.get("issues"):
-            resume_text = extract_text_from_pdf(filepath) if ext == ".pdf" else extract_text_from_docx(filepath)
-            ats_issues = []
-            if not re.search(r'[\w\.-]+@[\w-.-]+', resume_text):
-                ats_issues.append("Missing email address - ATS systems often require contact information.")
-            if len(resume_text.splitlines()) < 10:
-                ats_issues.append("Resume content too short - ATS systems may not parse it effectively.")
-            if not re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', resume_text):
-                ats_issues.append("Missing location - ATS systems often look for location details.")
-            ats_result = {"issues": ats_issues, "score": max(0, 100 - len(ats_issues) * 20)}
-        return jsonify(ats_result)
+
+        text = extract_text_from_pdf(filepath) if ext == ".pdf" else extract_text_from_docx(filepath)
+
+        prompt = (
+            "You are an ATS expert. Check the following resume and give up to 5 issues:\n"
+            "Resume:\n"
+            "{}\n"
+            "Return in this format:\n"
+            "[\"✅ Passed: ...\", \"❌ Issue: ...\"]"
+        ).format(text[:6000])
+
+        ai_resp = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0
+        )
+
+        feedback = ai_resp.choices[0].message.content.strip().splitlines()
+        score = 100 - (len([line for line in feedback if line.startswith("❌")]) * 20)
+        return jsonify({'issues': feedback, 'score': score})
+
     except Exception as e:
         logger.error(f"Error in /ats-check: {str(e)}")
         return jsonify({'error': 'Failed to check ATS compatibility'}), 500
+
     finally:
         cleanup_file(filepath)
+
 
 @app.route('/analyze', methods=['POST'])
 def analyze_resume():
