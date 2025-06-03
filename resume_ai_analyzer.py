@@ -661,117 +661,106 @@ Job Description:
         return "Failed to analyze job description."
 
 def generate_michelle_template_html(sections):
-    def list_items(text, section_type="other"):
+    # Utility function to format section content
+    def format_content(text, section_type="other"):
         if not text:
             return ""
         lines = text.strip().split("\n")
-        # For education, avoid bullet points for short entries unless they are clearly list items
-        if section_type == "education":
-            # Check if the content looks like a list (e.g., multiple degrees or details with specific patterns)
-            if len(lines) > 1 and any(line.startswith(("-", "•")) for line in lines):
-                return "".join(
-                    f"<li>{line.strip().lstrip('-• ').strip()}</li>"
-                    for line in lines
-                    if line.strip()
-                )
-            # For single-line or short education entries, use a paragraph instead
-            return f"<p>{text.strip()}</p>"
-        # For other sections, keep bullet points
+        if section_type == "education" and len(lines) == 1:
+            # For single-line education entries, use a paragraph
+            return f"<p style='font-size: 10pt;'>{lines[0].strip()}</p>"
+        # For other cases, use a list
         return "".join(
-            f"<li>{line.strip().lstrip('-• ').strip()}</li>"
+            f"<p style='font-size: 10pt; margin: 0;'>{line.strip().lstrip('-• ').strip()}</p>"
             for line in lines
             if line.strip()
         )
 
-    # Extract personal details more reliably
-    name = "Your Name"
-    phone = email = location = website = ""
-    personal_lines = sections.get("personal_details", "").split("\n")
+    # Extract personal details for sidebar
+    name = sections.get("name", "Your Name")
+    email = sections.get("email", "your.email@example.com")
+    phone = sections.get("phone", "Phone Number")
+    location = sections.get("location", "City, Country")
 
-    # Enhanced parsing for personal details
-    for line in personal_lines:
-        line = line.strip()
-        if not line:
-            continue
-        # First line without email, phone, or website is likely the name
-        if (
-            not name != "Your Name"
-            and "@" not in line
-            and not re.search(r"\d{5,}", line)
-            and not any(x in line.lower() for x in ["www", ".com", "city", "state"])
-            and len(line) < 50
-        ):
-            name = line
-        if "email" in line.lower() or "@" in line or "📧" in line:
-            email = line.replace("📧", "").strip()
-        elif "phone" in line.lower() or re.search(r"\+?\d[\d\s\-]{8,}", line) or "📞" in line:
-            phone = line.replace("📞", "").strip()
-        elif (
-            "location" in line.lower()
-            or "city" in line.lower()
-            or "state" in line.lower()
-            or "📍" in line
-        ):
-            location = line.replace("📍", "").strip()
-        elif "website" in line.lower() or "www" in line.lower() or "🌐" in line:
-            website = line.replace("🌐", "").strip()
-
-    # Fallback for name if not found
-    if name == "Your Name":
-        for section in sections.values():
-            if section:
-                lines = section.split("\n")
-                for line in lines:
-                    line = line.strip()
-                    if (
-                        line
-                        and len(line) < 50
-                        and "@" not in line
-                        and not re.search(r"\d{5,}", line)
-                        and not any(x in line.lower() for x in ["www", ".com", "city", "state"])
-                    ):
-                        name = line
-                        break
-                if name != "Your Name":
-                    break
-
-    title = sections.get("summary", "").split("\n")[0] if sections.get("summary") else "Your Role"
+    # If personal_details exists, parse it for email, phone, location
+    personal_details = sections.get("personal_details", "")
+    if personal_details:
+        for line in personal_details.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            if '@' in line or 'email' in line.lower():
+                email = line
+            elif re.search(r'\+?\d[\d\s\-]{8,}', line) or 'phone' in line.lower():
+                phone = line
+            elif re.search(r'\b(location|city|state|country)\b', line.lower()):
+                location = line
+            elif len(line) < 50 and '@' not in line and not re.search(r'\d{5,}', line):
+                name = line
 
     return f"""
-    <div class='resume-wrapper' style='max-width:850px;margin:auto;background:#fff;border:1px solid #ccc;box-shadow:0 0 10px rgba(0,0,0,0.1);'>
-      <div class='header' style='background:#d3d3d3;padding:30px;text-align:center;'>
-        <h1 style='font-size: 28px; font-weight: 700; margin: 0; text-transform: uppercase;'>{name}</h1>
-        <h2 style='font-size: 16px; font-weight: 400; margin: 8px 0 0; color: #666;'>{title}</h2>
-      </div>
-      <div class='content' style='display:flex;padding:30px;'>
-        <div class='left-panel' style='width:30%;background:#f5f5f5;padding-right:20px;border-right:1px solid #ccc;box-sizing:border-box;'>
-          <h3>Contact</h3>
-          <div class='contact-item'>📞 {phone if phone else 'Not Provided'}</div>
-          <div class='contact-item'>✉️ {email if email else 'Not Provided'}</div>
-          <div class='contact-item'>📍 {location if location else 'Not Provided'}</div>
-          <div class='contact-item'>🌐 {website if website else 'Not Provided'}</div>
-          <h3>Education</h3>
-          {list_items(sections.get('education', ''), 'education')}
-          <h3>Skills</h3>
-          <ul>{list_items(sections.get('technical_skills', ''))}</ul>
-          <h3>Hobbies</h3>
-          <ul>{list_items(sections.get('hobbies', ''))}</ul>
+    <div style="font-family: Arial, sans-serif; line-height: 1.5; width: 100%; max-width: 595px; margin: 0 auto;">
+        <!-- Container for two-column layout -->
+        <div style="display: flex; flex-direction: row;">
+            <!-- Sidebar (30% width) -->
+            <div style="width: 30%; background-color: #f0f4f8; padding: 15pt; color: #333;">
+                <!-- Contact Details -->
+                <h3 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-bottom: 10pt;">Contact Details</h3>
+                <p style="font-size: 10pt; margin-bottom: 5pt;">
+                    <strong>Email:</strong> {email}<br>
+                    <strong>Phone:</strong> {phone}<br>
+                    <strong>Location:</strong> {location}
+                </p>
+
+                <!-- Education -->
+                {f'''
+                <h3 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Education</h3>
+                {format_content(sections.get('education', ''), 'education')}
+                ''' if sections.get('education') else ''}
+
+                <!-- Hobbies -->
+                {f'''
+                <h3 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Hobbies</h3>
+                {format_content(sections.get('hobbies', ''))}
+                ''' if sections.get('hobbies') else ''}
+            </div>
+
+            <!-- Main Content (70% width) -->
+            <div style="width: 70%; padding: 15pt;">
+                <!-- Name -->
+                <h1 style="font-size: 26pt; font-weight: bold; color: #1e40af; margin-bottom: 5pt; text-align: center;">{name}</h1>
+
+                <!-- Professional Summary -->
+                {f'''
+                <h2 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Professional Summary</h2>
+                <p style="font-size: 11pt; margin-bottom: 15pt;">{sections.get('summary', '').replace('\n', '<br>')}</p>
+                ''' if sections.get('summary') else ''}
+
+                <!-- Work Experience -->
+                {f'''
+                <h2 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Work Experience</h2>
+                {format_content(sections.get('work_experience', ''))}
+                ''' if sections.get('work_experience') else ''}
+
+                <!-- Projects -->
+                {f'''
+                <h2 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Projects</h2>
+                {format_content(sections.get('projects', ''))}
+                ''' if sections.get('projects') else ''}
+
+                <!-- Skills -->
+                {f'''
+                <h2 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Skills</h2>
+                {format_content(sections.get('skills', ''))}
+                ''' if sections.get('skills') else ''}
+
+                <!-- Certifications -->
+                {f'''
+                <h2 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Certifications</h2>
+                {format_content(sections.get('certifications', ''))}
+                ''' if sections.get('certifications') else ''}
+            </div>
         </div>
-        <div class='right-panel' style='width:70%;padding-left:30px;box-sizing:border-box;'>
-          <h3>Objective</h3>
-          <p>{sections.get('summary', '')}</p>
-          <h3>Professional Experience</h3>
-          <ul>{list_items(sections.get('work_experience', ''))}</ul>
-          <h3>Projects</h3>
-          <ul>{list_items(sections.get('projects', ''))}</ul>
-          <h3>Certifications</h3>
-          <ul>{list_items(sections.get('certifications', ''))}</ul>
-          <h3>Languages</h3>
-          <ul>{list_items(sections.get('languages', ''))}</ul>
-          <h3>Achievements</h3>
-          <ul>{list_items(sections.get('achievements', ''))}</ul>
-        </div>
-      </div>
     </div>
     """
 
@@ -794,7 +783,7 @@ def check_ats_compatibility_fast(text):
     keywords = ["education", "experience", "skills", "certifications"]
     found = [k for k in keywords if k in text.lower()]
     if len(found) < 3:
-        issues.append(f"❌ Missing sections - Add {', '.join(set(keywords) - set(found))}.")
+        issues.append(f"❌ Missing sections - Add {', '.join(set(keywords) - set(found))}")
         score -= 20
     else:
         issues.append("✅ Key sections found.")
@@ -854,5 +843,3 @@ Return in this format:
 
     except Exception as e:
         return {"error": str(e)}
-
-

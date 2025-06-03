@@ -6,6 +6,8 @@ import os
 import uuid
 import json
 import re
+import io
+import tempfile
 from resume_ai_analyzer import generate_resume_summary, generate_michelle_template_html, extract_text_from_resume, extract_resume_sections
 try:
     from docx import Document
@@ -257,30 +259,56 @@ def preview_resume():
 def final_resume_download():
     try:
         data = request.get_json()
+        html_content = data.get("html")  # HTML content from frontend
         sections = data.get("sections")
         file_format = data.get("format", "pdf")
+        title = data.get("title", "Resume")
 
-        if not sections or not isinstance(sections, dict):
-            return jsonify({"error": "Invalid sections provided"}), 400
-
-        html_content = generate_michelle_template_html(sections)
+        # If HTML content is not provided, generate it using sections
+        if not html_content:
+            if not sections or not isinstance(sections, dict):
+                return jsonify({"error": "Invalid sections provided"}), 400
+            html_content = generate_michelle_template_html(sections)
 
         if file_format == "pdf":
-            import pdfkit
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as pdf_file:
-                pdfkit.from_string(html_content, pdf_file.name)
-                pdf_file.seek(0)
-                return send_file(pdf_file.name, as_attachment=True, download_name="Final_Resume.pdf", mimetype='application/pdf')
+            with tempfile.NamedTemporaryFile(suffix='.html', delete=False) as temp_html:
+                temp_html.write(html_content.encode('utf-8'))
+                temp_html_path = temp_html.name
+            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_pdf:
+                pdfkit.from_file(temp_html_path, temp_pdf.name)
+                temp_pdf_path = temp_pdf.name
+            os.unlink(temp_html_path)  # Clean up HTML file
+            with open(temp_pdf_path, 'rb') as pdf_file:
+                pdf_data = pdf_file.read()
+            os.unlink(temp_pdf_path)  # Clean up PDF file
+            return send_file(
+                io.BytesIO(pdf_data),
+                as_attachment=True,
+                download_name="Final_Resume.pdf",
+                mimetype='application/pdf'
+            )
 
         elif file_format == "docx":
-            from html2docx import html2docx
-            docx_bytes = html2docx(html_content)
+            # Create a new DOCX document
+            doc = Document()
+            # Add content manually since html2docx is not available
+            # Note: This is a basic implementation; complex HTML parsing would need a library
+            doc.add_heading(title, level=1)
+
+            # Add placeholder content (you can parse HTML if needed)
+            doc.add_paragraph("Resume content generated from HTML.")
+            doc.add_paragraph("Note: DOCX generation from HTML is limited in this implementation.")
+            
+            doc_buffer = io.BytesIO()
+            doc.save(doc_buffer)
+            doc_buffer.seek(0)
             return send_file(
-                io.BytesIO(docx_bytes),
+                doc_buffer,
                 as_attachment=True,
                 download_name="Final_Resume.docx",
                 mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
             )
+
         else:
             return jsonify({"error": "Invalid format. Use 'pdf' or 'docx'."}), 400
 
@@ -462,7 +490,7 @@ Format the output as plain text, e.g., 'Software Intern, ABC Corp, June 2023 - A
                 "skills": f"""
 You are a resume writing assistant. The user has provided the following skills: '{user_input}'.
 Based on this, generate a professional skills section for a resume. Expand the list by adding 2-3 relevant skills if possible, and format as a bullet list.
-Format the output as plain text with bullet points, e.g., '• Python\n• JavaScript\n• SQL'.
+Format the output as plain text with bullet points, e.g., 'â€¢ Python\nâ€¢ JavaScript\nâ€¢ SQL'.
 """,
                 "certifications": f"""
 You are a resume writing assistant. The user has provided the following certifications: '{user_input}'.
@@ -477,7 +505,7 @@ Format the output as plain text, e.g., 'English (Fluent), Spanish (Intermediate)
                 "hobbies": f"""
 You are a resume writing assistant. The user has provided the following hobbies: '{user_input}'.
 Based on this, generate a professional hobbies section for a resume. Expand with 1-2 related hobbies if possible, and format as a list.
-Format the output as plain text with bullet points, e.g., '• Reading\n• Hiking'.
+Format the output as plain text with bullet points, e.g., 'â€¢ Reading\nâ€¢ Hiking'.
 """
             }
             prompt = prompts.get(section_name, "")
@@ -823,127 +851,3 @@ Message:
         return jsonify({"success": True, "message": "Feedback sent successfully."})
     except Exception as e:
         logger.error(f"Error sending feedback: {str(e)}")
-        return jsonify({"success": False, "error": str(e)})
-
-@app.route('/ask-ai', methods=['POST'])
-def ask_ai():
-    try:
-        from openai import OpenAI
-        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-
-        data = request.get_json()
-        question = data.get("question", "")
-        if not question.strip():
-            return jsonify({"answer": "Ã¢ï¿½Å’ Please enter a question first."})
-
-        system_prompt = {
-            "role": "system",
-            "content": (
-                "You are ResumeBot, the official AI assistant of ResumeFixerPro.com.\n\n"
-                "You help users improve resumes, get AI suggestions, download resume templates, generate cover letters, "
-                "and check ATS (Applicant Tracking System) compatibility Ã¢â‚¬â€� all for free.\n\n"
-                "Website Overview:\n"
-                "- Website: https://resumefixerpro.com\n"
-                "- Owner: Imran Ali (YouTuber & Developer from India)\n"
-                "- Global Delivery: Hosted worldwide using Cloudflare CDN for fast, global access\n"
-                "- Privacy: ResumeFixerPro respects user privacy. No signup required. No resumes are stored.\n"
-                "- Cost: 100% Free to use. No hidden charges. No login required.\n\n"
-                "Key Features of ResumeFixerPro:\n"
-                "1. AI Resume Fixer Tool Ã¢â‚¬â€“ Upload your resume and get instant improvement suggestions with AI fixes.\n"
-                "2. Resume Score Checker Ã¢â‚¬â€“ See how strong your resume is (0 to 100).\n"
-                "3. ATS Compatibility Checker Ã¢â‚¬â€“ Check if your resume is ATS-friendly.\n"
-                "4. Cover Letter Generator Ã¢â‚¬â€“ Instantly generate a job-specific cover letter.\n"
-                "5. Resume Template Builder Ã¢â‚¬â€“ Choose from 5 student-friendly templates, edit live, and download as PDF/DOCX.\n"
-                "6. AI Resume Generator Ã¢â‚¬â€“ Fill out a simple form and get a full professional resume in seconds.\n\n"
-                "Guidelines:\n"
-                "- Always give short, helpful, and positive replies.\n"
-                "- If someone asks about the site, privacy, location, features, or Imran Ali, give accurate info.\n"
-                "- If asked something unrelated, politely redirect to resume or career help.\n"
-                "- Avoid saying 'I don't know.' You are trained to assist users with anything related to ResumeFixerPro.\n\n"
-                "Example answers:\n"
-                "- 'ResumeFixerPro is a free AI tool created by Imran Ali. No signup needed, and we never store your data.'\n"
-                "- 'This site supports global users via Cloudflare, so you can access it from anywhere quickly.'\n"
-                "- 'Yes! We have resume templates, ATS checkers, and even instant resume scores.'"
-            )
-        }
-
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                system_prompt,
-                {"role": "user", "content": question}
-            ]
-        )
-
-        answer = response.choices[0].message.content.strip()
-        return jsonify({"answer": f"Ã°Å¸Â¤â€“ ResumeBot:\n{answer}"})
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({"answer": "Ã¢Å¡Â Ã¯Â¸ï¿½ AI error: " + str(e)})
-
-@app.route('/send-message', methods=['POST'])
-def send_message():
-    try:
-        from email.mime.text import MIMEText
-        from email.mime.multipart import MIMEMultipart
-        import smtplib
-
-        data = request.get_json()
-        name = data.get('name', 'Unknown')
-        email = data.get('email', '')
-        message = data.get('message', '')
-
-        sender_email = "help@resumefixerpro.com"
-        receiver_email = "help@resumefixerpro.com"
-        smtp_server = "smtp.hostinger.com"
-        smtp_port = 465
-        smtp_password = os.environ.get("SMTP_PASSWORD")
-
-        msg = MIMEMultipart()
-        msg['From'] = sender_email
-        msg['To'] = receiver_email
-        msg['Subject'] = "Ã°Å¸â€œÂ¬ New Contact Message from ResumeFixerPro"
-
-        body = f"""
-New message from Contact Us page:
-
-Name: {name}
-Email: {email}
-
-Message:
-{message}
-        """.strip()
-
-        msg.attach(MIMEText(body, 'plain'))
-
-        server = smtplib.SMTP_SSL(smtp_server, smtp_port)
-        server.login(sender_email, smtp_password)
-        server.send_message(msg)
-        server.quit()
-
-        return jsonify({"success": True, "message": "Message sent successfully!"})
-    except Exception as e:
-        logger.error(f"Error in /send-message: {str(e)}")
-        return jsonify({"success": False, "error": str(e)})
-
-@app.route('/extract-sections', methods=['POST'])
-def extract_sections():
-    data = request.get_json()
-    text = data.get("text", "")
-    if not text.strip():
-        return jsonify({"error": "No resume text provided"}), 400
-
-    try:
-        sections = extract_resume_sections(text)
-        return jsonify(sections)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    logger.info(f"Starting Flask app on port {port}")
-    app.run(host="0.0.0.0", port=port)
-
-logger.info("Flask app initialization complete.")
