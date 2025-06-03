@@ -219,7 +219,7 @@ def fix_suggestion():
 
     except Exception as e:
         logger.error(f"Error in /fix-suggestion: {str(e)}")
-        return jsonify({"error": "Failed to process suggestion: {str(e)}"}), 500
+        return jsonify({"error": f"Failed to process suggestion: {str(e)}"}), 500
 
 @app.route('/preview-resume', methods=['POST'])
 def preview_resume():
@@ -878,14 +878,14 @@ def ask_ai():
         data = request.get_json()
         question = data.get("question", "")
         if not question.strip():
-            return jsonify({"answer": "ÃƒÂ¢Ã¯Â¿Â½Ã…â€™ Please enter a question first."})
+            return jsonify({"answer": "Please enter a question first."})
 
         system_prompt = {
             "role": "system",
             "content": (
                 "You are ResumeBot, the official AI assistant of ResumeFixerPro.com.\n\n"
                 "You help users improve resumes, get AI suggestions, download resume templates, generate cover letters, "
-                "and check ATS (Applicant Tracking System) compatibility ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬ï¿½ all for free.\n\n"
+                "and check ATS (Applicant Tracking System) compatibility — all for free.\n\n"
                 "Website Overview:\n"
                 "- Website: https://resumefixerpro.com\n"
                 "- Owner: Imran Ali (YouTuber & Developer from India)\n"
@@ -893,12 +893,12 @@ def ask_ai():
                 "- Privacy: ResumeFixerPro respects user privacy. No signup required. No resumes are stored.\n"
                 "- Cost: 100% Free to use. No hidden charges. No login required.\n\n"
                 "Key Features of ResumeFixerPro:\n"
-                "1. AI Resume Fixer Tool ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬â€œ Upload your resume and get instant improvement suggestions with AI fixes.\n"
-                "2. Resume Score Checker ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬â€œ See how strong your resume is (0 to 100).\n"
-                "3. ATS Compatibility Checker ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬â€œ Check if your resume is ATS-friendly.\n"
-                "4. Cover Letter Generator ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬â€œ Instantly generate a job-specific cover letter.\n"
-                "5. Resume Template Builder ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬â€œ Choose from 5 student-friendly templates, edit live, and download as PDF/DOCX.\n"
-                "6. AI Resume Generator ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬â€œ Fill out a simple form and get a full professional resume in seconds.\n\n"
+                "1. AI Resume Fixer Tool — Upload your resume and get instant improvement suggestions with AI fixes.\n"
+                "2. Resume Score Checker — See how strong your resume is (0 to 100).\n"
+                "3. ATS Compatibility Checker — Check if your resume is ATS-friendly.\n"
+                "4. Cover Letter Generator — Instantly generate a job-specific cover letter.\n"
+                "5. Resume Template Builder — Choose from 5 student-friendly templates, edit live, and download as PDF/DOCX.\n"
+                "6. AI Resume Generator — Fill out a simple form and get a full professional resume in seconds.\n\n"
                 "Guidelines:\n"
                 "- Always give short, helpful, and positive replies.\n"
                 "- If someone asks about the site, privacy, location, features, or Imran Ali, give accurate info.\n"
@@ -920,12 +920,12 @@ def ask_ai():
         )
 
         answer = response.choices[0].message.content.strip()
-        return jsonify({"answer": f"ÃƒÂ°Ã…Â¸Ã‚Â¤Ã¢â‚¬â€œ ResumeBot:\n{answer}"})
+        return jsonify({"answer": f"ResumeBot:\n{answer}"})
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({"answer": "ÃƒÂ¢Ã…Â¡Ã‚ ÃƒÂ¯Ã‚Â¸Ã¯Â¿Â½ AI error: " + str(e)})
+        return jsonify({"answer": "AI error: " + str(e)})
 
 @app.route('/send-message', methods=['POST'])
 def send_message():
@@ -948,7 +948,7 @@ def send_message():
         msg = MIMEMultipart()
         msg['From'] = sender_email
         msg['To'] = receiver_email
-        msg['Subject'] = "ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â¬ New Contact Message from ResumeFixerPro"
+        msg['Subject'] = "New Contact Message from ResumeFixerPro"
 
         body = f"""
 New message from Contact Us page:
