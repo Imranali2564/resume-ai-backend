@@ -164,7 +164,7 @@ def check_ats():
 
         text = extract_text_from_pdf(filepath) if ext == ".pdf" else extract_text_from_docx(filepath)
 
-        # Use normal triple-quoted string instead of f-string
+        # Use normal triple-quoted string
         prompt = """
 You are an ATS expert. Check the following resume and give up to 5 issues:
 Resume:
@@ -173,6 +173,8 @@ Return in this format:
 ["✅ Passed: ...", "❌ Issue: ..."]
 """.format(text[:6000])
 
+        from openai import OpenAI
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
         ai_resp = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
@@ -186,7 +188,6 @@ Return in this format:
     except Exception as e:
         logger.error(f"Error in /ats-check: {str(e)}")
         return jsonify({'error': 'Failed to check ATS compatibility'}), 500
-
     finally:
         cleanup_file(filepath)
 
@@ -199,10 +200,10 @@ def analyze_resume():
             return jsonify({'error': 'Invalid or empty resume text'}), 400
         result = analyze_resume_with_openai(resume_text, atsfix=False)
         if "error" in result:
-            return jsonify({"error": "Unable to generate suggestions. Please check if the API key is specified."})
+            return jsonify({"error": "Unable to generate suggestions. Please check if the API key is set."}), 500
         return jsonify(result)
     except Exception as e:
-        logger.error(f"Error in /analyze: {str(e)}"")
+        logger.error(f"Error in /analyze: {str(e)}")
         return jsonify({'error': 'Failed to analyze resume'}), 500
 
 @app.route('/fix-suggestion', methods=['POST'])
@@ -210,27 +211,27 @@ def fix_suggestion():
     try:
         data = request.get_json()
         suggestion = data.get("suggestion")
-        full_text = data.get("full_text")  # Adjusted to match frontend payload
+        full_text = data.get("full_text")
 
         if not suggestion or not full_text:
-            logger.error("No log message found for /fix-suggestion: suggestion or full_text missing")
-            return jsonify({"error": "Missing suggestion or text content"}), "400"
+            logger.error("Missing suggestion or full_text in /fix-suggestion request")
+            return jsonify({"error": "Missing suggestion or full text"}), 400
 
         result = generate_section_content(suggestion, full_text)
         if 'error' in result:
-            logger.error(f"Error generating suggestion: {result['error']}")
-            return jsonify({'error": result["error"]}), "400"
+            logger.error(f"Error in generate_section_content: {result['error']}")
+            return jsonify({"error": result["error"]}), 400
 
-        # Validate the response format
         if not isinstance(result, dict) or "section" not in result or "fixedContent" not in result:
-            logger.error(f"Invalid response format: {result}")
-            return jsonify({"error": "Invalid AI response format"}), "500"
+            logger.error(f"Invalid response format from generate_section_content: {result}")
+            return jsonify({'error': 'Invalid response format from AI'}), 500
 
         logger.info(f"Successfully generated content for section: {result['section']}")
         return jsonify(result)
+
     except Exception as e:
         logger.error(f"Error in /fix-suggestion: {str(e)}")
-        return jsonify({"error": f"Failed to process suggestion: {str(e)}"}), "500"
+        return jsonify({"error": f"Failed to process suggestion: {str(e)}"}), 500
 
 @app.route('/preview-resume', methods=['POST'])
 def preview_resume():
@@ -241,7 +242,7 @@ def preview_resume():
             logger.error("No sections provided in /preview-resume request")
             return jsonify({'error': 'No sections provided'}), 400
 
-        # Generate HTML content
+        # Generate HTML
         html_content = """
         <div style='width: 90%; margin: 0 auto; font-family: Arial, sans-serif;'>
         """
@@ -255,96 +256,87 @@ def preview_resume():
             """
         html_content += "</div>"
 
-        # Generate HTML plain text for preview
-        html_text = []
+        # Generate plain text
+        resume_text_lines = []
         for section, content in sections.items():
             section_title = section.replace('_', ' ').title()
-            formatted_resume.append(section_title.upper())
+            resume_text_lines.append(section_title.upper())
             lines = content.split('\n')
             for line in lines:
                 line = line.strip()
                 if line:
                     if not line.startswith('- '):
                         line = '- ' + line
-                    formatted_resume.append(line)
-            formatted_resume.append('')
-
-            html_content += f"""
-            </div>
-            """
+                    resume_text_lines.append(line)
+            resume_text_lines.append('')
 
         # Clean up excessive blank lines
         cleaned_resume = []
         last_was_empty = False
-        for line in formatted_resume:
+        for line in resume_text_lines:
             if line == '' and last_was_empty:
                 continue
             cleaned_resume.append(line)
             last_was_empty = (line == '')
         resume_text = '\n'.join(cleaned_resume).strip()
 
-        return jsonify({'preview_text': resume_text}, 'preview_html': html_content})
+        return jsonify({'preview_text': resume_text, 'preview_html': html_content})
+
     except Exception as e:
         logger.error(f"Error in /preview-resume: {str(e)}")
-        return jsonify({"error": f"Failed to generate preview: {str(e)}"}), 500
+        return jsonify({'error': f'Failed to generate preview: {str(e)}'}), 500
 
 @app.route('/final-resume', methods=['POST'])
 def final_resume_download():
     try:
         data = request.get_json()
-        html_content = data.get("html")  # Frontend sends HTML content
+        html_content = data.get("html")
         file_format = data.get("format", "pdf")
 
         if not html_content:
             logger.error("No HTML content provided in /final-resume request")
-            return jsonify({"error": "Invalid HTML content"}), 400})
+            return jsonify({"error": "Invalid HTML content provided"}), 400
 
-        # Wrap HTML content with CSS styling
-        wrapped_html = """
-        <div style='width: 90%; margin: 0; auto; font-family: Arial, sans-serif; padding: 20px;'>
-            {content}
+        wrapped_html = f"""
+        <div style='width: 90%; margin: 0 auto; font-family: Arial, sans-serif; padding: 20px;'>
+            {html_content}
         </div>
-        """.format(html_content)
+        """
 
         if file_format in ["pdf", "docx"]:
             if file_format == "pdf":
-                import pdfkit
-                with tempfile.NamedTemporaryFile(pdf_path, delete=False, suffix='.pdf") as pdf_file:
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as pdf_file:
                     pdfkit.from_string(wrapped_html, pdf_file.name)
-                    logger.info(f"Successfully generated PDF at: {pdf_file.name}")
+                    logger.info(f"Generated PDF at: {pdf_file.name}")
                     return send_file(
-                        '''
                         pdf_file.name,
                         as_attachment=True,
-                        '''
                         download_name="Final_Resume.pdf",
                         mimetype='application/pdf'
                     )
 
-            else:  # For DOCX conversion
+            else:
                 try:
-                    import html2docx
+                    from html2docx import html2docx
                 except ImportError as e:
-                    logger.error(f"html2docx import failed: {str(e)}")
-                    return jsonify({'error": 'Server error: html2docx not installed'}), 500
+                    logger.error(f"html2docx not installed: {str(e)}")
+                    return jsonify({'error': "Server error: html2docx not installed"}), 500
 
-                docx_content = html2docx(wrapped_html)
-                docx_bytes = docx_content
-                logger.info(f"Generated HTML to DOCX in memory")
+                docx_bytes = html2docx(wrapped_html)
+                logger.info("Generated DOCX in memory")
                 return send_file(
-                    send_file(
-                        io.BytesIO(docx_bytes),
-                        as_attachment=True,
-                        download_name="Final_Resume.docx",
-                        mimetype='application/vnd.openxml'
-                    )
+                    io.BytesIO(docx_bytes),
+                    as_attachment=True,
+                    download_name="Final_Resume.docx",
+                    mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                )
 
         else:
             logger.error(f"Invalid format requested: {file_format}")
-            return jsonify({'error": "Invalid file format." Use 'pdf' or 'docx'."}), 400
+            return jsonify({"error": "Invalid format. Use 'pdf' or 'docx'."}), 400
 
     except Exception as e:
-        logger.error(f"Error in /final_resume: {str(e)}")
+        logger.error(f"Error in /final-resume: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/generate-cover-letter', methods=['POST'])
@@ -354,24 +346,22 @@ def generate_cover_letter():
     company_name = request.form.get('company_name')
 
     if not file or not job_title or not company_name:
-        return jsonify({'error': 'Missing file, job title, or company name'}), 400
+        return jsonify({'error': 'File, job title, and company name are required'}), 400
 
     filename = secure_filename(file.filename)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     try:
         file.save(filepath)
-        resume_text = extract_text_from_resume(filepath)
+        resume_text = extract_text_from_resume(file)
         if not resume_text.strip():
-            return jsonify({'error": 'Could not extract text from resume'}), 400})
+            return jsonify({'error': 'Could not extract text from resume'}), 400
 
-        # Use plain triple-quoted string
         prompt = """
-You are a professional cover letter writer. Write a concise cover letter (300-400 words) for a resume
-            Job Title: {}
-            Company Name: {}
-            Resume:
-            {}
-Include a greeting, introduction, body highlighting skills, skills and closing statement.
+You are a professional cover letter writer. Write a concise cover letter (300-400 words) for the following details:
+Job Title: {}
+Company Name: {}
+Resume: {}
+Include a greeting, an introduction, a body highlighting relevant skills and experiences, and a closing statement.
         """.format(job_title, company_name, resume_text[:6000])
 
         try:
@@ -382,43 +372,41 @@ Include a greeting, introduction, body highlighting skills, skills and closing s
                 messages=[{"role": "user", "content": prompt}]
             )
             cover_letter = response.choices[0].message.content.strip()
-            return jsonify({'cover_letter": cover_letter})
+            return jsonify({"cover_letter": cover_letter})
         except Exception as e:
-            logger.error(f"OpenAI API error: {str(e)}")
-            return jsonify({"error": 'Failed to generate cover letter'}), 500
+            logger.error(f"Error in OpenAI API call for /generate-cover-letter: {str(e)}")
+            return jsonify({'error': 'Failed to generate cover letter'}), 500
     except Exception as e:
-        logger.error(f"Error in /cover-letter: {str(e)}")
-        return jsonify({"error": f'Failed to generate cover letter: {str(e)}"}), 500
+        logger.error(f"Error in /generate-cover-letter: {str(e)}")
+        return jsonify({'error': 'Failed to generate cover letter'}), 500
     finally:
         cleanup_file(filepath)
 
 @app.route('/download-cover-letter', methods=['POST'])
 def download_cover_letter():
-    """
     data = request.get_json()
-    data = json.get_data()
     cover_letter = data.get('cover_letter')
     if not cover_letter:
         return jsonify({'error': 'No cover letter provided'}), 400
 
+    output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"cover_letter_{uuid.uuid4()}.docx")
     try:
         doc = Document()
-        doc.add_heading('Cover Letter', level=1)
-        for line in cover_letter.split('\n'):
+        doc.add_heading("Cover Letter", level=1)
+        for line in cover_letter.splitlines():
             line = line.strip()
             if line:
                 doc.add_paragraph(line)
         doc.save(output_path)
-        
         return send_file(
             output_path,
             as_attachment=True,
             download_name="Cover_Letter.docx",
-            filename="cover_letter_{}.docx".format(uuid.uuid4())
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         )
     except Exception as e:
         logger.error(f"Error in /download-cover-letter: {str(e)}")
-        return jsonify({"error": f"Failed to download cover letter: {str(e)}"}), 500
+        return jsonify({'error': 'Failed to download cover letter'}), 500
     finally:
         cleanup_file(output_path)
 
@@ -439,7 +427,6 @@ def resume_score():
             return jsonify({'error': 'Unsupported file format'}), 400
         if not resume_text.strip():
             return jsonify({'error': 'No extractable text found in resume'}), 400
-        # Use plain triple-quoted string
         prompt = """
 You are a professional resume reviewer. Give a resume score between 0 and 100 based on:
 - Formatting and readability
@@ -496,7 +483,6 @@ def optimize_keywords():
 def generate_ai_resume():
     try:
         data = request.json
-
         name = data.get("name", "")
         email = data.get("email", "")
         phone = data.get("phone", "")
@@ -583,7 +569,6 @@ Format the output as plain text with bullet points, e.g.:
         if summary.strip():
             summary = generate_section_content("summary", summary)
         else:
-            # Use plain triple-quoted string
             prompt = """
 You are a resume writing assistant. Based on the following:
 Education: {}
@@ -655,6 +640,7 @@ def analyze_jd():
         result = analyze_job_description(jd_text)
         return jsonify(result)
     except Exception as e:
+        logger.error(f"Error in /analyze-jd: {str(e)}")
         return jsonify({'error': f'Failed to analyze job description: {str(e)}'}), 500
 
 @app.route('/convert-format', methods=['POST'])
@@ -962,8 +948,7 @@ def ask_ai():
         return jsonify({"answer": f"ResumeBot:\n{answer}"})
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in /ask-ai: {str(e)}")
         return jsonify({"answer": "AI error: " + str(e)})
 
 @app.route('/send-message', methods=['POST'])
@@ -1022,6 +1007,7 @@ def extract_sections():
         sections = extract_resume_sections(text)
         return jsonify(sections)
     except Exception as e:
+        logger.error(f"Error in /extract-sections: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
