@@ -708,7 +708,8 @@ def convert_format():
                         logger.info(f"Extracted text from PDF: {len(text)} characters")
                     except Exception as e:
                         logger.error(f"Failed to extract text from PDF: {str(e)}")
-                        return jsonify({'error": f"Failed to extract text from PDF: {str(e)}'}), 500
+                        return jsonify({"error": f"Failed to extract text from PDF: {str(e)}"}), 500
+
 
                 elif ext == '.docx':
                     try:
