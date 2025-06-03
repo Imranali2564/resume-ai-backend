@@ -164,7 +164,7 @@ def check_ats():
 
         text = extract_text_from_pdf(filepath) if ext == ".pdf" else extract_text_from_docx(filepath)
 
-        # Use normal triple-quoted string
+        # ATS analysis prompt
         prompt = """
 You are an ATS expert. Check the following resume and give up to 5 issues:
 Resume:
@@ -182,8 +182,25 @@ Return in this format:
         )
 
         feedback = ai_resp.choices[0].message.content.strip().splitlines()
-        score = 100 - (len([line for line in feedback if line.startswith("Issue:")]) * 20)
-        return jsonify({"issues": feedback, "score": score})
+
+        # ✅ Normalize feedback to include ✅ and ❌ with proper spacing
+        formatted_feedback = []
+        for line in feedback:
+            line = line.strip()
+            if not line:
+                continue
+            if line.lower().startswith("issue:"):
+                formatted_feedback.append("❌ " + line[len("issue:"):].strip())
+            elif line.lower().startswith("passed:"):
+                formatted_feedback.append("✅ " + line[len("passed:"):].strip())
+            else:
+                formatted_feedback.append(line)
+
+        # ✅ Adjust score based on number of ❌
+        score = 100 - (len([line for line in formatted_feedback if line.startswith("❌")]) * 20)
+        score = max(0, min(score, 100))
+
+        return jsonify({"issues": formatted_feedback, "score": score})
 
     except Exception as e:
         logger.error(f"Error in /ats-check: {str(e)}")
