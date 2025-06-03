@@ -4,7 +4,6 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import os
 import uuid
-import json
 import re
 from resume_ai_analyzer import generate_resume_summary, generate_michelle_template_html, extract_text_from_resume, extract_resume_sections
 try:
@@ -93,7 +92,7 @@ def upload_resume():
     file = request.files.get('file') or request.files.get('resume')
     if not file or file.filename == '':
         logger.error("No file uploaded in request")
-        return jsonify({'error': 'No file found'}), 400)
+        return jsonify({'error': 'No file found'}), 400
 
     # Validate file extension
     ext = os.path.splitext(file.filename)[1].lower()
@@ -230,9 +229,9 @@ def preview_resume():
             logger.error("No sections provided in /preview-resume request")
             return jsonify({'error': 'No sections provided'}), 400
         formatted_resume = []
-        format for section, content in sections.items():
-            section_title = section.replace('_', ' ').title.upper()
-            formatted_resume.append(section_title)
+        for section, content in sections.items():
+            section_title = section.replace('_', ' ').title()
+            formatted_resume.append(section_title.upper())
             lines = content.split('\n')
             for line in lines:
                 line = line.strip()
@@ -250,7 +249,7 @@ def preview_resume():
             cleaned_resume.append(line)
             last_was_empty = (line == '')
         resume_text = '\n'.join(cleaned_resume).strip()
-        return jsonify({'preview_text': resume_text}))
+        return jsonify({'preview_text': resume_text})
     except Exception as e:
         logger.error(f"Error in /preview-resume: {str(e)}")
         return jsonify({'error': f'Failed to generate preview: {str(e)}'}), 500
@@ -284,7 +283,7 @@ def final_resume_download():
                     from html2docx import html2docx
                 except ImportError as e:
                     logger.error(f"html2docx not installed: {str(e)}")
-                    return jsonify({'error": "Server error: html2docx not installed"}), 500
+                    return jsonify({'error': "Server error: html2docx not installed"}), 500
 
                 docx_bytes = html2docx(html_content)
                 logger.info(f"Generated DOCX in memory")
@@ -305,11 +304,11 @@ def final_resume_download():
 
 @app.route('/generate-cover-letter', methods=['POST'])
 def generate_cover_letter():
-    file = request.files.get('file') or request.files.get('resume'))
+    file = request.files.get('file') or request.files.get('resume')
     job_title = request.form.get('job_title')
     company_name = request.form.get('company_name')
 
-    if not file or not for job_title or not company_name:
+    if not file or not job_title or not company_name:
         return jsonify({'error': 'File, job title, and company name are required'}), 400
 
     filename = secure_filename(file.filename)
@@ -341,16 +340,13 @@ Include a greeting, an introduction, a body highlighting relevant skills and exp
         except Exception as e:
             logger.error(f"Error in OpenAI API call for /generate-cover-letter: {str(e)}")
             return jsonify({'error': 'Failed to generate cover letter'}), 500
-    finally:
-        cleanup_file(filepath)
-
     except Exception as e:
         logger.error(f"Error in /generate-cover-letter: {str(e)}")
         return jsonify({'error': 'Failed to generate cover letter'}), 500
     finally:
         cleanup_file(filepath)
 
-@app.route('/download-cover-letter', methods=['POST']
+@app.route('/download-cover-letter', methods=['POST'])
 def download_cover_letter():
     data = request.get_json()
     cover_letter = data.get('cover_letter')
@@ -389,6 +385,7 @@ def resume_score():
             return jsonify({'error': 'Unsupported file format'}), 400
         if not resume_text.strip():
             return jsonify({'error': 'No extractable text found in resume'}), 400
+
         prompt = f"""
 You are a professional resume reviewer. Give a resume score between 0 and 100 based on:
 - Formatting and readability
@@ -401,7 +398,7 @@ Resume:
 {resume_text}
 
 Just return a number between 0 and 100, nothing else.
-    """
+        """
         try:
             from openai import OpenAI
             client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
@@ -417,10 +414,10 @@ Just return a number between 0 and 100, nothing else.
             return jsonify({"score": max(0, min(score, 100))})
         except Exception as e:
             logger.error(f"Error in OpenAI API call for /resume-score: {str(e)}")
-            return jsonify({"score": 70})
+            return jsonify({"error": "Unable to generate score. Please check if the API key is set."}), 500
     except Exception as e:
         logger.error(f"Error in /resume-score: {str(e)}")
-        return jsonify({"score": 70})
+        return jsonify({"error": "Failed to process resume score"}), 500
     finally:
         cleanup_file(filepath)
 
@@ -429,12 +426,12 @@ def optimize_keywords():
     resume_file = request.files.get('resume')
     job_description = request.form.get('job_description', '')
 
-    if not resume_file or not job_description:
+    if not resume_file or not job_description.strip():
         return jsonify({'error': 'Missing resume or job description'}), 400
 
     resume_text = extract_text_from_resume(resume_file)
     if not resume_text.strip():
-        return jsonify({'error': 'No extractable text found in resume'}), 400
+        return jsonify({'error': 'No extractable text from resume'}), 400
 
     jd_keywords = extract_keywords_from_jd(job_description)
     if not jd_keywords:
@@ -446,7 +443,7 @@ def optimize_keywords():
 @app.route('/generate-ai-resume', methods=['POST'])
 def generate_ai_resume():
     try:
-        data = request.json
+        data = request.get_json()
 
         name = data.get("name", "")
         email = data.get("email", "")
@@ -470,37 +467,37 @@ Education: {education}
 Experience: {experience}
 Skills: {skills}
 Write a 2-3 line professional summary for a resume.
-""",
+                """,
                 "education": f"""
 You are a resume writing assistant. The user has provided the following education details: '{user_input}'.
 Based on this, generate a professional education entry for a resume. Include degree, institution, and years (e.g., 2020-2024). If details are missing, make reasonable assumptions.
 Format the output as plain text, e.g., 'B.Tech in Computer Science, XYZ University, 2020-2024'.
-""",
+                """,
                 "experience": f"""
 You are a resume writing assistant. The user has provided the following experience details: '{user_input}'.
 Based on this, generate a professional experience entry for a resume. Include job title, company, duration (e.g., June 2023 - August 2023), and a brief description of responsibilities (1-2 lines).
 Format the output as plain text, e.g., 'Software Intern, ABC Corp, June 2023 - August 2023, Developed web applications using React and Node.js'.
-""",
+                """,
                 "skills": f"""
 You are a resume writing assistant. The user has provided the following skills: '{user_input}'.
 Based on this, generate a professional skills section for a resume. Expand the list by adding 2-3 relevant skills if possible, and format as a bullet list.
 Format the output as plain text with bullet points, e.g., '• Python\n• JavaScript\n• SQL'.
-""",
+                """,
                 "certifications": f"""
 You are a resume writing assistant. The user has provided the following certifications: '{user_input}'.
 Based on this, generate a professional certifications section for a resume. Include the certification name, issuing organization, and year (e.g., 2023). If details are missing, make reasonable assumptions.
 Format the output as plain text, e.g., 'Certified Python Developer, XYZ Institute, 2023'.
-""",
+                """,
                 "languages": f"""
 You are a resume writing assistant. The user has provided the following languages: '{user_input}'.
 Based on this, generate a professional languages section for a resume. Include proficiency levels (e.g., Fluent, Intermediate) and format as a list.
 Format the output as plain text, e.g., 'English (Fluent), Spanish (Intermediate)'.
-""",
+                """,
                 "hobbies": f"""
 You are a resume writing assistant. The user has provided the following hobbies: '{user_input}'.
 Based on this, generate a professional hobbies section for a resume. Expand with 1-2 related hobbies if possible, and format as a list.
 Format the output as plain text with bullet points, e.g., '• Reading\n• Hiking'.
-"""
+                """
             }
             prompt = prompts.get(section_name, "")
             if not prompt:
@@ -529,7 +526,7 @@ Education: {education}
 Experience: {experience}
 Skills: {skills}
 Write a 2-3 line professional summary for a resume.
-"""
+            """
             try:
                 from openai import OpenAI
                 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
@@ -582,7 +579,7 @@ Write a 2-3 line professional summary for a resume.
 
     except Exception as e:
         logger.error(f"Error in /generate-ai-resume: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/analyze-jd', methods=['POST'])
 def analyze_jd():
@@ -856,14 +853,14 @@ def ask_ai():
         data = request.get_json()
         question = data.get("question", "")
         if not question.strip():
-            return jsonify({"answer": "ÃƒÂ¢Ã¯Â¿Â½Ã…â€™ Please enter a question first."})
+            return jsonify({"answer": "Please enter a question first."})
 
         system_prompt = {
             "role": "system",
             "content": (
                 "You are ResumeBot, the official AI assistant of ResumeFixerPro.com.\n\n"
                 "You help users improve resumes, get AI suggestions, download resume templates, generate cover letters, "
-                "and check ATS (Applicant Tracking System) compatibility ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬ï¿½ all for free.\n\n"
+                "and check ATS (Applicant Tracking System) compatibility — all for free.\n\n"
                 "Website Overview:\n"
                 "- Website: https://resumefixerpro.com\n"
                 "- Owner: Imran Ali (YouTuber & Developer from India)\n"
@@ -871,12 +868,12 @@ def ask_ai():
                 "- Privacy: ResumeFixerPro respects user privacy. No signup required. No resumes are stored.\n"
                 "- Cost: 100% Free to use. No hidden charges. No login required.\n\n"
                 "Key Features of ResumeFixerPro:\n"
-                "1. AI Resume Fixer Tool ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬â€œ Upload your resume and get instant improvement suggestions with AI fixes.\n"
-                "2. Resume Score Checker ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬â€œ See how strong your resume is (0 to 100).\n"
-                "3. ATS Compatibility Checker ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬â€œ Check if your resume is ATS-friendly.\n"
-                "4. Cover Letter Generator ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬â€œ Instantly generate a job-specific cover letter.\n"
-                "5. Resume Template Builder ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬â€œ Choose from 5 student-friendly templates, edit live, and download as PDF/DOCX.\n"
-                "6. AI Resume Generator ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬â€œ Fill out a simple form and get a full professional resume in seconds.\n\n"
+                "1. AI Resume Fixer Tool – Upload your resume and get instant improvement suggestions with AI fixes.\n"
+                "2. Resume Score Checker – See how strong your resume is (0 to 100).\n"
+                "3. ATS Compatibility Checker – Check if your resume is ATS-friendly.\n"
+                "4. Cover Letter Generator – Instantly generate a job-specific cover letter.\n"
+                "5. Resume Template Builder – Choose from 5 student-friendly templates, edit live, and download as PDF/DOCX.\n"
+                "6. AI Resume Generator – Fill out a simple form and get a full professional resume in seconds.\n\n"
                 "Guidelines:\n"
                 "- Always give short, helpful, and positive replies.\n"
                 "- If someone asks about the site, privacy, location, features, or Imran Ali, give accurate info.\n"
@@ -898,12 +895,12 @@ def ask_ai():
         )
 
         answer = response.choices[0].message.content.strip()
-        return jsonify({"answer": f"ÃƒÂ°Ã…Â¸Ã‚Â¤Ã¢â‚¬â€œ ResumeBot:\n{answer}"})
+        return jsonify({"answer": f"ResumeBot:\n{answer}"})
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({"answer": "ÃƒÂ¢Ã…Â¡Ã‚ ÃƒÂ¯Ã‚Â¸Ã¯Â¿Â½ AI error: " + str(e)})
+        return jsonify({"answer": "AI error: " + str(e)})
 
 @app.route('/send-message', methods=['POST'])
 def send_message():
@@ -926,7 +923,7 @@ def send_message():
         msg = MIMEMultipart()
         msg['From'] = sender_email
         msg['To'] = receiver_email
-        msg['Subject'] = "ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â¬ New Contact Message from ResumeFixerPro"
+        msg['Subject'] = "New Contact Message from ResumeFixerPro"
 
         body = f"""
 New message from Contact Us page:
