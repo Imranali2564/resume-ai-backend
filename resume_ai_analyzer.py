@@ -330,7 +330,6 @@ def check_ats_compatibility(file_path):
         logger.error(f"[ERROR in check_ats_compatibility]: {str(e)}")
         return {"error": f"Failed to generate ATS compatibility report: {str(e)}"}
 
-
 def fix_resume_formatting(file_path):
     ext = os.path.splitext(file_path)[1].lower()
     if ext == ".pdf":
@@ -482,8 +481,6 @@ Resume:
         logger.error(f"[ERROR in generate_section_content]: {str(e)}")
         return {"error": f"Failed to generate section content: {str(e)}"}
 
-import re
-
 def extract_resume_sections(text):
     lines = text.splitlines()
     sections = {
@@ -522,6 +519,38 @@ def extract_resume_sections(text):
                 sections[section] += content + "\n"
             buffer.clear()
 
+    # First pass: Extract personal details (name, email, phone, location, etc.)
+    personal_lines = []
+    name_detected = False
+    name_pattern = r'^[A-Z][a-z]+ [A-Z][a-z]+(?: [A-Z][a-z]+)?$'
+    for i, line in enumerate(lines):
+        line = line.strip()
+        if not line:
+            continue
+
+        # Detect name (first line, assuming it's a proper name)
+        if i == 0 and re.match(name_pattern, line) and not name_detected:
+            personal_lines.append(line)
+            name_detected = True
+            continue
+
+        # Detect contact details (email, phone, location, links)
+        if '@' in line and 'email' in line.lower():
+            personal_lines.append(line.strip())
+        elif re.search(r'\+?\d[\d\s\-]{6,}', line):
+            personal_lines.append(line.strip())
+        elif re.search(r'\b(location|address|city|state|country)\b', line.lower()):
+            personal_lines.append(line.strip())
+        elif re.search(r'(linkedin|github|portfolio|www\.|http)', line.lower()):
+            personal_lines.append(line.strip())
+
+        # Stop personal details detection after first few lines to avoid mixing with other sections
+        if i > 5:
+            break
+
+    sections["personal_details"] = "\n".join(personal_lines[:5]).strip()
+
+    # Second pass: Detect other sections
     for line in lines:
         line_clean = line.strip().lower()
 
@@ -542,21 +571,12 @@ def extract_resume_sections(text):
 
     save_buffer_to_section(current_section)
 
-    # ✨ Auto-detect personal details
-    personal_lines = []
-    for line in lines:
-        if '@' in line and 'email' in line.lower():
-            personal_lines.append(line.strip())
-        elif re.search(r'\+?\d[\d\s\-]{6,}', line):
-            personal_lines.append(line.strip())
-        elif re.search(r'\b(location|address|city|state|country)\b', line.lower()):
-            personal_lines.append(line.strip())
-        elif re.search(r'(linkedin|github|portfolio|www\.|http)', line.lower()):
-            personal_lines.append(line.strip())
-        elif len(line.strip()) <= 40 and not any(x in line.lower() for x in ['objective', 'summary', 'experience']):
-            personal_lines.insert(0, line.strip())
-
-    sections["personal_details"] = "\n".join(personal_lines[:5])
+    # Clean up sections to avoid overlap
+    if sections["personal_details"]:
+        for section in sections:
+            if section != "personal_details":
+                for line in sections["personal_details"].splitlines():
+                    sections[section] = sections[section].replace(line, "").strip()
 
     return sections
 
@@ -695,7 +715,7 @@ def generate_michelle_template_html(sections):
             continue
         # First line without email, phone, or website is likely the name
         if (
-            not name != "Your Name"
+            name == "Your Name"
             and "@" not in line
             and not re.search(r"\d{5,}", line)
             and not any(x in line.lower() for x in ["www", ".com", "city", "state"])
@@ -737,14 +757,15 @@ def generate_michelle_template_html(sections):
 
     title = sections.get("summary", "").split("\n")[0] if sections.get("summary") else "Your Role"
 
+    # Adjust width and padding to reduce left-right space
     return f"""
-    <div class='resume-wrapper' style='max-width:850px;margin:auto;background:#fff;border:1px solid #ccc;box-shadow:0 0 10px rgba(0,0,0,0.1);'>
-      <div class='header' style='background:#d3d3d3;padding:30px;text-align:center;'>
+    <div class='resume-wrapper' style='max-width:95%;margin:0 auto;background:#fff;border:1px solid #ccc;box-shadow:0 0 10px rgba(0,0,0,0.1);'>
+      <div class='header' style='background:#d3d3d3;padding:20px;text-align:center;'>
         <h1 style='font-size: 28px; font-weight: 700; margin: 0; text-transform: uppercase;'>{name}</h1>
         <h2 style='font-size: 16px; font-weight: 400; margin: 8px 0 0; color: #666;'>{title}</h2>
       </div>
-      <div class='content' style='display:flex;padding:30px;'>
-        <div class='left-panel' style='width:30%;background:#f5f5f5;padding-right:20px;border-right:1px solid #ccc;box-sizing:border-box;'>
+      <div class='content' style='display:flex;padding:15px;'>
+        <div class='left-panel' style='width:25%;background:#f5f5f5;padding-right:15px;border-right:1px solid #ccc;box-sizing:border-box;'>
           <h3>Contact</h3>
           <div class='contact-item'>📞 {phone if phone else 'Not Provided'}</div>
           <div class='contact-item'>✉️ {email if email else 'Not Provided'}</div>
@@ -753,11 +774,11 @@ def generate_michelle_template_html(sections):
           <h3>Education</h3>
           {list_items(sections.get('education', ''), 'education')}
           <h3>Skills</h3>
-          <ul>{list_items(sections.get('technical_skills', ''))}</ul>
+          <ul>{list_items(sections.get('skills', ''))}</ul>
           <h3>Hobbies</h3>
           <ul>{list_items(sections.get('hobbies', ''))}</ul>
         </div>
-        <div class='right-panel' style='width:70%;padding-left:30px;box-sizing:border-box;'>
+        <div class='right-panel' style='width:75%;padding-left:15px;box-sizing:border-box;'>
           <h3>Objective</h3>
           <p>{sections.get('summary', '')}</p>
           <h3>Professional Experience</h3>
@@ -794,7 +815,7 @@ def check_ats_compatibility_fast(text):
     keywords = ["education", "experience", "skills", "certifications"]
     found = [k for k in keywords if k in text.lower()]
     if len(found) < 3:
-        issues.append(f"❌ Missing sections - Add {', '.join(set(keywords) - set(found))}.")
+        issues.append(f"❌ Missing sections - Add {', '.join(set(keywords) - set(found))}")
         score -= 20
     else:
         issues.append("✅ Key sections found.")
