@@ -15,3 +15,16 @@ PyPDF2
 pytesseract
 Pillow
 html2docx
+Flask==2.2.5
+Flask-Cors==4.0.1
+Werkzeug==2.2.3
+gunicorn==21.2.0
+python-docx==1.1.2
+reportlab==4.2.2
+PyMuPDF==1.24.9
+PyPDF2==3.0.1
+pdfkit==1.0.0
+openai==1.35.1
+Pillow==10.4.0
+pytesseract==0.3.10
+html2docx==0.2.0

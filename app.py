@@ -1,14 +1,27 @@
 import logging
+import io
+import os
+import uuid
+import re
+import tempfile
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
-import os
-import uuid
-import json
-import re
-import io
-import tempfile
-from resume_ai_analyzer import generate_resume_summary, generate_michelle_template_html, extract_text_from_resume, extract_resume_sections
+from resume_ai_analyzer import (
+    generate_resume_summary,
+    generate_michelle_template_html,
+    extract_text_from_resume,
+    extract_resume_sections,
+    analyze_resume_with_openai,
+    extract_text_from_pdf,
+    extract_text_from_docx,
+    check_ats_compatibility,
+    extract_keywords_from_jd,
+    compare_resume_with_keywords,
+    analyze_job_description,
+    fix_resume_formatting,
+    generate_section_content
+)
 
 try:
     from docx import Document
@@ -32,30 +45,18 @@ except ImportError as e:
     raise
 
 try:
-    from resume_ai_analyzer import (
-        analyze_resume_with_openai,
-        extract_text_from_pdf,
-        extract_text_from_docx,        
-        check_ats_compatibility,
-        extract_keywords_from_jd,
-        compare_resume_with_keywords,
-        analyze_job_description,
-        fix_resume_formatting,
-        generate_section_content,
-        generate_resume_summary,
-        extract_resume_sections,
-        generate_michelle_template_html,
-    )
-except ImportError as e:
-    logging.error(f"Failed to import resume_ai_analyzer: {str(e)}")
-    raise
-
-try:
     import fitz  # PyMuPDF for PDF text extraction
     import PyPDF2  # For PDF validation (encryption check)
     import pdfkit  # For DOCX to PDF conversion
 except ImportError as e:
     logging.error(f"Failed to import required dependencies: {str(e)}")
+    raise
+
+# Add html2docx import for /final-resume endpoint
+try:
+    from html2docx import html2docx
+except ImportError as e:
+    logging.error(f"Failed to import html2docx: {str(e)}")
     raise
 
 logging_level = logging.INFO if os.environ.get("FLASK_ENV") != "development" else logging.DEBUG
@@ -113,14 +114,12 @@ def upload_resume():
         logger.error("No file uploaded in request")
         return jsonify({'error': 'No file uploaded'}), 400
 
-    # Validate file extension
     ext = os.path.splitext(file.filename)[1].lower()
     allowed_extensions = {'.pdf', '.docx'}
     if ext not in allowed_extensions:
         logger.error(f"Unsupported file format: {ext}")
         return jsonify({'error': f'Unsupported file format: {ext}. Please upload a PDF or DOCX file.'}), 400
 
-    # Validate file size
     file.seek(0, os.SEEK_END)
     file_size = file.tell() / 1024  # Size in KB
     file.seek(0)  # Reset file pointer
@@ -132,7 +131,6 @@ def upload_resume():
         return jsonify({'error': f'File is too large: {file_size:.2f} KB. Maximum allowed size is 10MB.'}), 400
     logger.debug(f"File size: {file_size:.2f} KB")
 
-    # Save the file
     filename = secure_filename(file.filename)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     try:
@@ -141,16 +139,13 @@ def upload_resume():
             logger.error(f"Failed to save file to {filepath}")
             return jsonify({'error': 'Failed to save file on server'}), 500
 
-        # Set file permissions for Render compatibility
         os.chmod(filepath, 0o644)
 
-        # Verify saved file size
         saved_size = os.path.getsize(filepath) / 1024
         if saved_size == 0:
             logger.error(f"Saved file {filepath} is empty")
             return jsonify({'error': 'Saved file is empty'}), 500
 
-        # Extract text from the resume
         resume_text = extract_text_from_resume(file)
         if not resume_text:
             logger.error(f"Failed to extract text from {filepath}")
@@ -216,7 +211,7 @@ def fix_suggestion():
     try:
         data = request.get_json()
         suggestion = data.get("suggestion")
-        full_text = data.get("full_text")  # Adjusted to match frontend payload
+        full_text = data.get("full_text")
 
         if not suggestion or not full_text:
             logger.error("Missing suggestion or full_text in /fix-suggestion request")
@@ -227,7 +222,6 @@ def fix_suggestion():
             logger.error(f"Error in generate_section_content: {result['error']}")
             return jsonify({'error': result['error']}), 500
 
-        # Validate the response
         if not isinstance(result, dict) or "section" not in result or "fixedContent" not in result:
             logger.error(f"Invalid response format from generate_section_content: {result}")
             return jsonify({'error': 'Invalid response format from AI'}), 500
@@ -259,7 +253,6 @@ def preview_resume():
                         line = '- ' + line
                     formatted_resume.append(line)
             formatted_resume.append('')
-        # Clean up excessive blank lines
         cleaned_resume = []
         last_was_blank = False
         for line in formatted_resume:
@@ -277,16 +270,14 @@ def preview_resume():
 def final_resume_download():
     try:
         data = request.get_json()
-        html_content = data.get("html")  # HTML content from frontend
         sections = data.get("sections")
         file_format = data.get("format", "pdf")
         title = data.get("title", "Resume")
 
-        # If HTML content is not provided, generate it using sections
-        if not html_content:
-            if not sections or not isinstance(sections, dict):
-                return jsonify({"error": "Invalid sections provided"}), 400
-            html_content = generate_michelle_template_html(sections)
+        if not sections or not isinstance(sections, dict):
+            return jsonify({"error": "Invalid sections provided"}), 400
+
+        html_content = data.get("html") or generate_michelle_template_html(sections)
 
         if file_format == "pdf":
             with tempfile.NamedTemporaryFile(suffix='.html', delete=False) as temp_html:
@@ -295,10 +286,10 @@ def final_resume_download():
             with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_pdf:
                 pdfkit.from_file(temp_html_path, temp_pdf.name)
                 temp_pdf_path = temp_pdf.name
-            os.unlink(temp_html_path)  # Clean up HTML file
+            os.unlink(temp_html_path)
             with open(temp_pdf_path, 'rb') as pdf_file:
                 pdf_data = pdf_file.read()
-            os.unlink(temp_pdf_path)  # Clean up PDF file
+            os.unlink(temp_pdf_path)
             return send_file(
                 io.BytesIO(pdf_data),
                 as_attachment=True,
@@ -307,21 +298,9 @@ def final_resume_download():
             )
 
         elif file_format == "docx":
-            # Create a new DOCX document
-            doc = Document()
-            # Add content manually since html2docx is not available
-            # Note: This is a basic implementation; complex HTML parsing would need a library
-            doc.add_heading(title, level=1)
-
-            # Add placeholder content (you can parse HTML if needed)
-            doc.add_paragraph("Resume content generated from HTML.")
-            doc.add_paragraph("Note: DOCX generation from HTML is limited in this implementation.")
-            
-            doc_buffer = io.BytesIO()
-            doc.save(doc_buffer)
-            doc_buffer.seek(0)
+            docx_bytes = html2docx(html_content, title=title)
             return send_file(
-                doc_buffer,
+                io.BytesIO(docx_bytes),
                 as_attachment=True,
                 download_name="Final_Resume.docx",
                 mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -425,7 +404,7 @@ Resume:
 {resume_text}
 
 Just return a number between 0 and 100, nothing else.
-    """
+        """
         try:
             from openai import OpenAI
             client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
@@ -618,6 +597,7 @@ def analyze_jd():
         result = analyze_job_description(jd_text)
         return jsonify(result)
     except Exception as e:
+        logger.error(f"Error in /analyze-jd: {str(e)}")
         return jsonify({'error': f'Failed to analyze job description: {str(e)}'}), 500
 
 @app.route('/convert-format', methods=['POST'])
@@ -651,7 +631,7 @@ def convert_format():
         os.chmod(upload_path, 0o644)
         file_size = os.path.getsize(upload_path) / 1024
         if file_size == 0:
-            logger.error(f"Uploaded file is empty: {upload_path}")
+            logger.error(f"Uploaded file {upload_path} is empty")
             return jsonify({'error': 'Uploaded file is empty'}), 400
 
         logger.debug(f"File size: {file_size:.2f} KB")
@@ -835,24 +815,23 @@ def send_feedback():
 
         if not smtp_password:
             logger.error("SMTP_PASSWORD environment variable not set")
-            raise RuntimeError("SMTP_PASSWORD environment variable not set")
+            raise RuntimeError("SMTP_PASSWORD environment variable not set
 
         msg = MIMEMultipart()
         msg['From'] = sender_email
-        msg['To'] = receiver_email
-        msg['Subject'] = "New Feedback Submission from ResumeFixerPro"
+        msg['To'] = "New Feedback Submission from ResumeFixerPro"
 
         body = f"""
-Name: {name}
-Email: {email}
-Message:
-{message}
+        Name: {name}
+        Email: {email}
+        Message:
+        {message}
         """
         msg.attach(MIMEText(body, 'plain'))
 
         if file:
             filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename))
             file.save(filepath)
 
             part = MIMEBase('application', 'octet-stream')
@@ -868,11 +847,141 @@ Message:
         server.quit()
 
         if file:
-            os.remove(filepath)
+            cleanup_file(filepath)
 
         return jsonify({"success": True, "message": "Feedback sent successfully"})
     except Exception as e:
         logger.error(f"Error sending feedback: {str(e)}")
         return jsonify({"error": "Failed to send feedback"})
 
+# Restored /ask-ai endpoint from old app.py
+@app.route('/ask-ai', methods=['POST']
+def ask_ai():
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
+        data = request.get_json()
+        question = data.get("question", "")
+        if not question.strip():
+            return jsonify({"answer": "Please enter a valid question first."})
+
+        system_prompt = {
+            "role": "system",
+            "content": (
+                "You are ResumeBot, the official AI assistant of ResumeFixerPro.com.\n\n"
+                "You help users improve resumes, get AI suggestions, download resume templates, generate cover letters, "
+                "and check ATS (Applicant Tracking System) compatibility — all for free.\n\n"
+                "Website Overview:\n"
+                "- Website: https://resumefixerpro.com\n"
+                "- Owner: Imran Ali (YouTuber & Developer from India)\n"
+                "- Global Delivery: Hosted worldwide using Cloudflare CDN for fast global access\n"
+                "- Privacy: ResumeFixerPro respects user privacy. No signup required. No resumes are stored.\n"
+                "- Cost: 100% Free to use. No hidden charges. No login required.\n\n"
+                "Key Features of ResumeFixerPro:\n"
+                "1. AI Resume Fixer Tool — Upload your resume and get instant improvement suggestions with AI fixes.\n"
+                "2. Resume Score Checker — See how strong your resume is (0 to 100).\n"
+                "3. ATS Compatibility Checker — Check if your resume is ATS-friendly.\n"
+                "4. Cover Letter Generator — Instantly generate a job-specific cover letter.\n"
+                "5. Resume Template Builder — Choose from 5 student-friendly templates, edit live, and download as PDF/DOCX.\n"
+                "6. AI Resume Generator — Fill out a simple form and get a full professional resume in seconds.\n"
+                "Guidelines:\n"
+                "- Always give short, helpful, and positive replies.\n"
+                "- If someone asks about the site, privacy, location, features, or Imran Ali, give accurate info.\n"
+                "- If asked something unrelated, politely redirect to resume or career help.\n"
+                "- Avoid saying 'I don't know.' You are trained to assist users with anything related to ResumeFixerPro.\n\n"
+                "Example answers:\n"
+                "- 'ResumeFixerPro is a free AI tool created by Imran Ali. No signup needed, and we never store your data.'\n"
+                "- 'This site supports global users via Cloudflare, globally, so you can access it from anywhere quickly.'\n"
+                "- 'Yes! We have resume templates, ATS checkers, and even instant resume scores.'"
+            )
+        }
+
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                system_prompt,
+                {"role": "user", "content": question}
+            ]
+        )
+
+        answer = response.choices[0].message.content.strip()
+        return jsonify({"answer": f"ResumeBot:\n{answer}"})
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"answer": "AI error: " + str(e)})
+
+# Restored /send-message endpoint from old app.py
+@app.route('/send-message', methods=['POST'])
+def send_message():
+    try:
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        import smtplib
+
+        data = request.get_json()
+        name = data.get('name', 'Unknown')
+        email = data.get('email', '')
+        message = data.get('message', '')
+
+        sender_email = "help@resumefixerpro.com"
+        receiver_email = "help@resumefixerpro.com"
+        smtp_server = "smtp.hostinger.com"
+        smtp_port = 465
+        smtp_password = os.environ.get("SMTP_PASSWORD")
+
+        msg = MIMEMultipart()
+        msg['From'] = sender_email
+        msg['To'] = receiver_email
+        msg['Subject'] = "New Contact Message from ResumeFixerPro"
+
+        body = f"""
+New message from Contact Us page:
+
+Name: {name}
+Email: {email}
+
+Message:
+{message}
+        """.strip()
+
+        msg.attach(MIMEText(body, 'plain'))
+
+        server = smtplib.SMTP_SSL(smtp_server, smtp_port)
+        server.login(sender_email, smtp_password)
+        server.send_message(msg)
+        server.quit()
+
+        return jsonify({"success": True, "message": "Message sent successfully!"})
+    except Exception as e:
+        logger.error(f"Error in /send-message: {str(e)}")
+        return jsonify({"success": False, "error": str(e)})
+
+# Restored /extract-sections endpoint from old app.py
+@app.route('/extract-sections', methods=['POST'])
+def extract_sections():
+    data = request.get_json()
+    text = data.get("text", "")
+    if not text.strip():
+        return jsonify({"error": "No resume text provided"}), 400
+
+    try:
+        sections = extract_resume_sections(text)
+        return jsonify(sections)
+    except Exception as e:
+        logger.error(f"Error in /extract-sections: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 logger.info("Flask app initialization completed successfully.")
+
+def log_startup():
+    logger.info("Flask app has been fully initialized and is ready to run.")
+
+log_startup()
+
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 10000))
+    logger.info(f"Starting Flask app on port {port} for local development")
+    app.run(host="0.0.0.0", port=port, debug=False)
