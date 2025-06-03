@@ -690,9 +690,6 @@ def generate_michelle_template_html(sections):
 else:
     summary_section = ''
 
-        '<h2 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Professional Summary</h2>'
-        f"<p style='font-size: 11pt; margin-bottom: 15pt;'>{sections.get('summary', '').replace('\n', '<br>')}</p>"
-    ) if sections.get('summary') else ''
 
     work_experience_section = (
         '<h2 style="font-size: 14pt; color: #1e40af; border-bottom: 1pt solid #1e40af; margin-top: 15pt; margin-bottom: 10pt;">Work Experience</h2>'
