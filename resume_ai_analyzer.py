@@ -500,7 +500,46 @@ Resume:
         logger.error(f"[ERROR in generate_section_content]: {str(e)}")
         return {"error": f"Failed to generate section content: {str(e)}"}
 
-    # First pass: Extract personal details (name, email, phone, location, etc.)
+   def extract_resume_sections(text):
+    cleaned_text = remove_unnecessary_personal_info(text)
+    lines = cleaned_text.splitlines()
+
+    sections = {
+        "personal_details": "",
+        "summary": "",
+        "education": "",
+        "skills": "",
+        "work_experience": "",
+        "projects": "",
+        "certifications": "",
+        "languages": "",
+        "achievements": "",
+        "hobbies": ""
+    }
+
+    current_section = None
+    buffer = []
+
+    section_keywords = {
+        "summary": ["summary", "objective", "career summary", "profile"],
+        "education": ["education", "academics", "qualifications"],
+        "skills": ["skills", "technical skills", "tools", "technologies"],
+        "work_experience": ["experience", "employment", "professional experience", "work"],
+        "projects": ["projects", "project work", "academic projects"],
+        "certifications": ["certifications", "certificates", "courses"],
+        "languages": ["languages", "language proficiency"],
+        "achievements": ["achievements", "accomplishments", "awards"],
+        "hobbies": ["hobbies", "interests", "extracurricular"]
+    }
+
+    def save_buffer_to_section(section):
+        if section and buffer:
+            content = "\n".join(buffer).strip()
+            if content:
+                sections[section] += content + "\n"
+            buffer.clear()
+
+    # First pass: Extract personal details
     personal_lines = []
     personal_info = {
         "name": "",
@@ -539,11 +578,29 @@ Resume:
             break
 
     sections["personal_details"] = "\n".join(personal_lines[:5]).strip()
-
-    # Inject extracted fields directly
     for key in personal_info:
         if personal_info[key]:
             sections[key] = personal_info[key]
+
+    # Second pass: Extract section-wise content
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+
+        found_section = False
+        for section, keywords in section_keywords.items():
+            if any(kw in line.lower() for kw in keywords) and len(line) < 50:
+                save_buffer_to_section(current_section)
+                current_section = section
+                found_section = True
+                break
+
+        if not found_section:
+            buffer.append(line)
+
+    save_buffer_to_section(current_section)
+    return sections
 
 def extract_keywords_from_jd(jd_text):
     if not client:
