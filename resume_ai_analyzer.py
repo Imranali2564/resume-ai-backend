@@ -439,10 +439,14 @@ Additional Instructions:
 - For the 'technical_skills' section:
   - If there are more than 10 skills, reduce to the top 8 most relevant skills.
   - If there are fewer than 5 skills, expand by adding 3-5 relevant skills based on the resume context.
-- Do not suggest adding personal details if they already exist:
-  - Email present: {has_email}
-  - Phone present: {has_phone}
-  - Location present: {has_location}
+- For the 'education' section:
+  - Format each line as: Degree, School Name, Year or Score (if available)
+  - Use plain text, no HTML or markdown
+  - Each item on a new line
+
+Email present: {has_email}
+Phone present: {has_phone}
+Location present: {has_location}
 
 Suggestion:
 {suggestion}
@@ -474,8 +478,23 @@ Resume:
             return {"error": f"Failed to contact OpenAI: {str(e)}"}
 
         # Clean and normalize
-        result["section"] = result["section"].lower().replace(" ", "_")
-        return result
+        section = result.get("section", "").lower().replace(" ", "_")
+        content = result.get("fixedContent", "").strip()
+
+        # Optional cleanup for education formatting
+        if section == "education":
+            lines = content.splitlines()
+            cleaned = []
+            for line in lines:
+                line = line.strip("-•* \t")
+                if line:
+                    cleaned.append(line)
+            content = "\n".join(cleaned).strip()
+
+        return {
+            "section": section,
+            "fixedContent": content
+        }
 
     except Exception as e:
         logger.error(f"[ERROR in generate_section_content]: {str(e)}")
@@ -521,65 +540,50 @@ def extract_resume_sections(text):
             buffer.clear()
 
     # First pass: Extract personal details (name, email, phone, location, etc.)
-    personal_lines = []
-    name_detected = False
-    name_pattern = r'^[A-Z][a-z]+ [A-Z][a-z]+(?: [A-Z][a-z]+)?$'
-    for i, line in enumerate(lines):
-        line = line.strip()
-        if not line:
-            continue
+personal_lines = []
+personal_info = {
+    "name": "",
+    "email": "",
+    "phone": "",
+    "location": ""
+}
+name_pattern = r'^[A-Z][a-z]+ [A-Z][a-z]+(?: [A-Z][a-z]+)?$'
 
-        # Detect name (first line, assuming it's a proper name)
-        if i == 0 and re.match(name_pattern, line) and not name_detected:
-            personal_lines.append(line)
-            name_detected = True
-            continue
+for i, line in enumerate(lines):
+    line = line.strip()
+    if not line:
+        continue
 
-        # Detect contact details (email, phone, location, links)
-        if '@' in line and 'email' in line.lower():
-            personal_lines.append(line.strip())
-        elif re.search(r'\+?\d[\d\s\-]{6,}', line):
-            personal_lines.append(line.strip())
-        elif re.search(r'\b(location|address|city|state|country)\b', line.lower()):
-            personal_lines.append(line.strip())
-        elif re.search(r'(linkedin|github|portfolio|www\.|http)', line.lower()):
-            personal_lines.append(line.strip())
+    # Name (assume first line is name if formatted properly)
+    if i == 0 and re.match(name_pattern, line):
+        personal_info["name"] = line
+        personal_lines.append(line)
+        continue
 
-        # Stop personal details detection after first few lines to avoid mixing with other sections
-        if i > 5:
-            break
+    if not personal_info["email"] and re.search(r'[\w\.-]+@[\w\.-]+', line):
+        personal_info["email"] = line.strip()
+        personal_lines.append(line)
 
-    sections["personal_details"] = "\n".join(personal_lines[:5]).strip()
+    elif not personal_info["phone"] and re.search(r'\+?\d[\d\s\-]{6,}', line):
+        personal_info["phone"] = line.strip()
+        personal_lines.append(line)
 
-    # Second pass: Detect other sections
-    for line in lines:
-        line_clean = line.strip().lower()
+    elif not personal_info["location"] and re.search(r'\b(location|address|city|state|country)\b', line.lower()):
+        personal_info["location"] = line.strip()
+        personal_lines.append(line)
 
-        matched_section = None
-        for key, keywords in section_keywords.items():
-            for keyword in keywords:
-                if line_clean.startswith(keyword):
-                    matched_section = key
-                    break
-            if matched_section:
-                break
+    elif re.search(r'(linkedin|github|portfolio|www\.|http)', line.lower()):
+        personal_lines.append(line.strip())
 
-        if matched_section:
-            save_buffer_to_section(current_section)
-            current_section = matched_section
-        else:
-            buffer.append(line)
+    if i > 5:
+        break
 
-    save_buffer_to_section(current_section)
+sections["personal_details"] = "\n".join(personal_lines[:5]).strip()
 
-    # Clean up sections to avoid overlap
-    if sections["personal_details"]:
-        for section in sections:
-            if section != "personal_details":
-                for line in sections["personal_details"].splitlines():
-                    sections[section] = sections[section].replace(line, "").strip()
-
-    return sections
+# Inject extracted fields directly
+for key in personal_info:
+    if personal_info[key]:
+        sections[key] = personal_info[key]
 
 def extract_keywords_from_jd(jd_text):
     if not client:
@@ -888,17 +892,21 @@ def remove_unnecessary_personal_info(text):
     # Remove Date of Birth
     text = re.sub(r"(Date of Birth|DOB)[:\-]?\s*\d{1,2}[\/\-\.]?\d{1,2}[\/\-\.]?\d{2,4}", "", text, flags=re.IGNORECASE)
     text = re.sub(r"(Date of Birth|DOB)[:\-]?\s*[A-Za-z]+\s+\d{1,2},?\s+\d{4}", "", text, flags=re.IGNORECASE)
-    
+
     # Remove Gender
     text = re.sub(r"Gender[:\-]?\s*(Male|Female|Other|Prefer not to say)", "", text, flags=re.IGNORECASE)
-    
+
     # Remove Marital Status
     text = re.sub(r"Marital Status[:\-]?\s*(Single|Married|Divorced|Widowed)", "", text, flags=re.IGNORECASE)
-    
+
     # Remove Nationality
     text = re.sub(r"Nationality[:\-]?\s*\w+", "", text, flags=re.IGNORECASE)
 
     # Remove Religion
     text = re.sub(r"Religion[:\-]?\s*\w+", "", text, flags=re.IGNORECASE)
-    
+
+    # Remove long address formats, retain only city and country
+    # e.g. "T-602, Street No 12, Gautampuri, New Delhi 110053, India" → "New Delhi, India"
+    text = re.sub(r'((Address|Location)[:\-]?)?\s*[\w\s\-\,\.\/]*?(\b[A-Z][a-z]+\b)[,\s]+(\b[A-Z][a-z]+\b)(?:\s*\d{5,6})?(,\s*India)?', r'\3, \4', text)
+
     return text
