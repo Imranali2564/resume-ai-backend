@@ -233,8 +233,13 @@ Only include meaningful points.
     except Exception as e:
         logger.error(f"Error in /ats-check: {str(e)}")
         return jsonify({"error": f"Failed to check ATS compatibility: {str(e)}"}), 500
+
     finally:
-        cleanup_file(filepath)
+        try:
+            if 'filepath' in locals() and os.path.exists(filepath):
+                cleanup_file(filepath)
+        except Exception as cleanup_err:
+            logger.warning(f"Cleanup failed: {cleanup_err}")
 
 @app.route('/analyze', methods=['POST'])
 def analyze_resume():
