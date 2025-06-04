@@ -481,7 +481,7 @@ Resume:
         section = result.get("section", "").lower().replace(" ", "_")
         content = result.get("fixedContent", "").strip()
 
-        # Optional cleanup for education formatting
+                # Optional cleanup for education formatting
         if section == "education":
             lines = content.splitlines()
             cleaned = []
@@ -500,7 +500,8 @@ Resume:
         logger.error(f"[ERROR in generate_section_content]: {str(e)}")
         return {"error": f"Failed to generate section content: {str(e)}"}
 
-   def extract_resume_sections(text):
+# FIXED: remove extra space before def
+def extract_resume_sections(text):
     cleaned_text = remove_unnecessary_personal_info(text)
     lines = cleaned_text.splitlines()
 
