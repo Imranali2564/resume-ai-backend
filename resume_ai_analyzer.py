@@ -515,7 +515,8 @@ def extract_resume_sections(text):
         "certifications": "",
         "languages": "",
         "achievements": "",
-        "hobbies": ""
+        "hobbies": "",
+        "additional_courses": ""
     }
 
     current_section = None
@@ -527,10 +528,11 @@ def extract_resume_sections(text):
         "skills": ["skills", "technical skills", "tools", "technologies"],
         "work_experience": ["experience", "employment", "professional experience", "work"],
         "projects": ["projects", "project work", "academic projects"],
-        "certifications": ["certifications", "certificates", "courses"],
+        "certifications": ["certifications", "certificates", "courses", "training"],
         "languages": ["languages", "language proficiency"],
         "achievements": ["achievements", "accomplishments", "awards"],
-        "hobbies": ["hobbies", "interests", "extracurricular"]
+        "hobbies": ["hobbies", "interests", "extracurricular"],
+        "additional_courses": ["additional courses", "trainings", "short term", "certification training"]
     }
 
     def save_buffer_to_section(section):
@@ -579,9 +581,6 @@ def extract_resume_sections(text):
             break
 
     sections["personal_details"] = "\n".join(personal_lines[:5]).strip()
-    for key in personal_info:
-        if personal_info[key]:
-            sections[key] = personal_info[key]
 
     # Second pass: Extract section-wise content
     for line in lines:
