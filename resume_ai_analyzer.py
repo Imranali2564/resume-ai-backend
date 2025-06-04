@@ -500,90 +500,50 @@ Resume:
         logger.error(f"[ERROR in generate_section_content]: {str(e)}")
         return {"error": f"Failed to generate section content: {str(e)}"}
 
-def extract_resume_sections(text):
-    cleaned_text = remove_unnecessary_personal_info(text)
-    lines = cleaned_text.splitlines()
-
-    sections = {
-        "personal_details": "",
-        "summary": "",
-        "education": "",
-        "skills": "",
-        "work_experience": "",
-        "projects": "",
-        "certifications": "",
-        "languages": "",
-        "achievements": "",
-        "hobbies": ""
-    }
-
-    current_section = None
-    buffer = []
-
-    # Define possible section headings
-    section_keywords = {
-        "summary": ["summary", "objective", "career summary", "profile"],
-        "education": ["education", "academics", "qualifications"],
-        "skills": ["skills", "technical skills", "tools", "technologies"],
-        "work_experience": ["experience", "employment", "professional experience", "work"],
-        "projects": ["projects", "project work", "academic projects"],
-        "certifications": ["certifications", "certificates", "courses"],
-        "languages": ["languages", "language proficiency"],
-        "achievements": ["achievements", "accomplishments", "awards"],
-        "hobbies": ["hobbies", "interests", "extracurricular"]
-    }
-    def save_buffer_to_section(section):
-        if section and buffer:
-            content = "\n".join(buffer).strip()
-            if content:
-                sections[section] += content + "\n"
-            buffer.clear()
-
     # First pass: Extract personal details (name, email, phone, location, etc.)
-personal_lines = []
-personal_info = {
-    "name": "",
-    "email": "",
-    "phone": "",
-    "location": ""
-}
-name_pattern = r'^[A-Z][a-z]+ [A-Z][a-z]+(?: [A-Z][a-z]+)?$'
+    personal_lines = []
+    personal_info = {
+        "name": "",
+        "email": "",
+        "phone": "",
+        "location": ""
+    }
+    name_pattern = r'^[A-Z][a-z]+ [A-Z][a-z]+(?: [A-Z][a-z]+)?$'
 
-for i, line in enumerate(lines):
-    line = line.strip()
-    if not line:
-        continue
+    for i, line in enumerate(lines):
+        line = line.strip()
+        if not line:
+            continue
 
-    # Name (assume first line is name if formatted properly)
-    if i == 0 and re.match(name_pattern, line):
-        personal_info["name"] = line
-        personal_lines.append(line)
-        continue
+        if i == 0 and re.match(name_pattern, line):
+            personal_info["name"] = line
+            personal_lines.append(line)
+            continue
 
-    if not personal_info["email"] and re.search(r'[\w\.-]+@[\w\.-]+', line):
-        personal_info["email"] = line.strip()
-        personal_lines.append(line)
+        if not personal_info["email"] and re.search(r'[\w\.-]+@[\w\.-]+', line):
+            personal_info["email"] = line.strip()
+            personal_lines.append(line)
 
-    elif not personal_info["phone"] and re.search(r'\+?\d[\d\s\-]{6,}', line):
-        personal_info["phone"] = line.strip()
-        personal_lines.append(line)
+        elif not personal_info["phone"] and re.search(r'\+?\d[\d\s\-]{6,}', line):
+            personal_info["phone"] = line.strip()
+            personal_lines.append(line)
 
-    elif not personal_info["location"] and re.search(r'\b(location|address|city|state|country)\b', line.lower()):
-        personal_info["location"] = line.strip()
-        personal_lines.append(line)
+        elif not personal_info["location"] and re.search(r'\b(location|address|city|state|country)\b', line.lower()):
+            personal_info["location"] = line.strip()
+            personal_lines.append(line)
 
-    elif re.search(r'(linkedin|github|portfolio|www\.|http)', line.lower()):
-        personal_lines.append(line.strip())
+        elif re.search(r'(linkedin|github|portfolio|www\.|http)', line.lower()):
+            personal_lines.append(line.strip())
 
-    if i > 5:
-        break
+        if i > 5:
+            break
 
-sections["personal_details"] = "\n".join(personal_lines[:5]).strip()
+    sections["personal_details"] = "\n".join(personal_lines[:5]).strip()
 
-# Inject extracted fields directly
-for key in personal_info:
-    if personal_info[key]:
-        sections[key] = personal_info[key]
+    # Inject extracted fields directly
+    for key in personal_info:
+        if personal_info[key]:
+            sections[key] = personal_info[key]
 
 def extract_keywords_from_jd(jd_text):
     if not client:
