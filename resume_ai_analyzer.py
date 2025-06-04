@@ -483,7 +483,6 @@ Resume:
 
 def extract_resume_sections(text):
     lines = text.splitlines()
-    # Define the standard sections for the template
     sections = {
         "personal_details": "",
         "summary": "",
@@ -496,77 +495,62 @@ def extract_resume_sections(text):
         "achievements": "",
         "hobbies": ""
     }
-    # Dictionary to store extra sections not in the standard template
-    extra_sections = {}
 
     current_section = None
     buffer = []
 
-    # Define possible section headings with variations
+    # Define possible section headings
     section_keywords = {
-        "personal_details": ["contact", "contact details", "personal info", "personal information"],
-        "summary": ["summary", "objective", "career summary", "profile", "professional summary"],
-        "education": ["education", "academics", "academic background", "qualifications"],
-        "skills": ["skills", "technical skills", "tools", "technologies", "core competencies"],
-        "work_experience": ["experience", "employment", "professional experience", "work history"],
-        "projects": ["projects", "project work", "academic projects", "personal projects"],
-        "certifications": ["certifications", "certificates", "courses", "credentials"],
-        "languages": ["languages", "language proficiency", "linguistic skills"],
-        "achievements": ["achievements", "accomplishments", "awards", "honors"],
-        "hobbies": ["hobbies", "interests", "extracurricular activities", "personal interests"]
+        "summary": ["summary", "objective", "career summary", "profile"],
+        "education": ["education", "academics", "qualifications"],
+        "skills": ["skills", "technical skills", "tools", "technologies"],
+        "work_experience": ["experience", "employment", "professional experience", "work"],
+        "projects": ["projects", "project work", "academic projects"],
+        "certifications": ["certifications", "certificates", "courses"],
+        "languages": ["languages", "language proficiency"],
+        "achievements": ["achievements", "accomplishments", "awards"],
+        "hobbies": ["hobbies", "interests", "extracurricular"]
     }
 
-    def save_buffer_to_section(section_name):
-        if section_name and buffer:
-            content = "\n".join(line.strip() for line in buffer if line.strip())
+    def save_buffer_to_section(section):
+        if section and buffer:
+            content = "\n".join(buffer).strip()
             if content:
-                if section_name in sections:
-                    sections[section_name] += (("\n" if sections[section_name] else "") + content)
-                else:
-                    # Store extra sections
-                    if section_name in extra_sections:
-                        extra_sections[section_name] += "\n" + content
-                    else:
-                        extra_sections[section_name] = content
+                sections[section] += content + "\n"
             buffer.clear()
 
-    # First pass: Extract personal details (name, email, phone, location, social links)
+    # First pass: Extract personal details (name, email, phone, location, etc.)
     personal_lines = []
     name_detected = False
     name_pattern = r'^[A-Z][a-z]+ [A-Z][a-z]+(?: [A-Z][a-z]+)?$'
-    social_patterns = {
-        "linkedin": r'linkedin\.com/in/[\w-]+',
-        "github": r'github\.com/[\w-]+',
-        "portfolio": r'(portfolio|website):?\s*http[s]?://[^\s]+'
-    }
-
-    for i, line in enumerate(lines[:10]):  # Limit to first 10 lines for personal details
+    for i, line in enumerate(lines):
         line = line.strip()
         if not line:
             continue
 
-        # Detect name
+        # Detect name (first line, assuming it's a proper name)
         if i == 0 and re.match(name_pattern, line) and not name_detected:
-            personal_lines.append(f"Name: {line}")
+            personal_lines.append(line)
             name_detected = True
             continue
 
-        # Detect contact details
-        if '@' in line or "email" in line.lower():
-            personal_lines.append(f"Email: {line.strip()}")
+        # Detect contact details (email, phone, location, links)
+        if '@' in line and 'email' in line.lower():
+            personal_lines.append(line.strip())
         elif re.search(r'\+?\d[\d\s\-]{6,}', line):
-            personal_lines.append(f"Phone: {line.strip()}")
-        elif re.search(r'\b(location|address|city|state|country)\b', line.lower()) or re.search(r'[A-Z][a-z]+,\s*[A-Z]{2}', line):
-            personal_lines.append(f"Location: {line.strip()}")
-        # Detect social links
-        for key, pattern in social_patterns.items():
-            match = re.search(pattern, line, re.IGNORECASE)
-            if match:
-                personal_lines.append(f"{key.capitalize()}: {match.group()}")
+            personal_lines.append(line.strip())
+        elif re.search(r'\b(location|address|city|state|country)\b', line.lower()):
+            personal_lines.append(line.strip())
+        elif re.search(r'(linkedin|github|portfolio|www\.|http)', line.lower()):
+            personal_lines.append(line.strip())
 
-    sections["personal_details"] = "\n".join(personal_lines).strip()
+        # Stop personal details detection after first few lines to avoid mixing with other sections
+        if i > 5:
+            break
 
-    # Second pass: Detect standard and extra sections
+    sections["personal_details"] = "\n".join(personal_lines[:5]).strip()
+
+    # Second pass: Detect other sections
     for line in lines:
         line_clean = line.strip().lower()
 
@@ -579,14 +563,6 @@ def extract_resume_sections(text):
             if matched_section:
                 break
 
-        # If no standard section matches, consider it as a potential extra section
-        if not matched_section:
-            # Heuristic to detect a section heading: all caps, or title case, short length, no bullet points
-            if (line.isupper() or line.istitle()) and len(line.split()) <= 5 and not line.startswith(('-', '*', '•')):
-                # Normalize the section name
-                section_name = line_clean.replace(" ", "_")
-                matched_section = section_name
-
         if matched_section:
             save_buffer_to_section(current_section)
             current_section = matched_section
@@ -595,27 +571,12 @@ def extract_resume_sections(text):
 
     save_buffer_to_section(current_section)
 
-    # Clean up sections to avoid overlap with personal details
+    # Clean up sections to avoid overlap
     if sections["personal_details"]:
-        personal_lines = sections["personal_details"].splitlines()
         for section in sections:
             if section != "personal_details":
-                for line in personal_lines:
+                for line in sections["personal_details"].splitlines():
                     sections[section] = sections[section].replace(line, "").strip()
-        for section in extra_sections:
-            for line in personal_lines:
-                extra_sections[section] = extra_sections[section].replace(line, "").strip()
-
-    # Merge extra sections into sections dictionary
-    sections.update(extra_sections)
-
-    # Detect missing standard sections (excluding personal_details as it's handled separately)
-    standard_sections = set(section_keywords.keys()) - {"personal_details"}
-    present_sections = set(sections.keys()) & standard_sections
-    missing_sections = standard_sections - present_sections
-
-    # Add missing sections as suggestions
-    sections["missing_sections_suggestions"] = list(missing_sections)
 
     return sections
 
@@ -745,7 +706,6 @@ def generate_michelle_template_html(sections):
     # Extract personal details more reliably
     name = "Your Name"
     phone = email = location = website = ""
-    social_links = {}
     personal_lines = sections.get("personal_details", "").split("\n")
 
     # Enhanced parsing for personal details
@@ -756,35 +716,25 @@ def generate_michelle_template_html(sections):
         # First line without email, phone, or website is likely the name
         if (
             name == "Your Name"
-            and "email" not in line.lower()
+            and "@" not in line
             and not re.search(r"\d{5,}", line)
-            and not any(x in line.lower() for x in ["www", ".com", "city", "state", "linkedin", "github", "portfolio"])
+            and not any(x in line.lower() for x in ["www", ".com", "city", "state"])
             and len(line) < 50
         ):
-            if line.startswith("Name:"):
-                name = line.replace("Name:", "").strip()
-            else:
-                name = line
+            name = line
         if "email" in line.lower() or "@" in line or "📧" in line:
-            email = line.replace("📧", "").replace("Email:", "").strip()
+            email = line.replace("📧", "").strip()
         elif "phone" in line.lower() or re.search(r"\+?\d[\d\s\-]{8,}", line) or "📞" in line:
-            phone = line.replace("📞", "").replace("Phone:", "").strip()
+            phone = line.replace("📞", "").strip()
         elif (
             "location" in line.lower()
             or "city" in line.lower()
             or "state" in line.lower()
             or "📍" in line
         ):
-            location = line.replace("📍", "").replace("Location:", "").strip()
+            location = line.replace("📍", "").strip()
         elif "website" in line.lower() or "www" in line.lower() or "🌐" in line:
-            website = line.replace("🌐", "").replace("Website:", "").strip()
-        # Extract social links
-        if "linkedin" in line.lower():
-            social_links["linkedin"] = line.replace("Linkedin:", "").strip()
-        elif "github" in line.lower():
-            social_links["github"] = line.replace("Github:", "").strip()
-        elif "portfolio" in line.lower():
-            social_links["portfolio"] = line.replace("Portfolio:", "").strip()
+            website = line.replace("🌐", "").strip()
 
     # Fallback for name if not found
     if name == "Your Name":
@@ -807,73 +757,6 @@ def generate_michelle_template_html(sections):
 
     title = sections.get("summary", "").split("\n")[0] if sections.get("summary") else "Your Role"
 
-    # Build social links HTML
-    social_html = ""
-    for platform, link in social_links.items():
-        social_html += f"<div class='contact-item'>{platform.capitalize()}: {link}</div>"
-
-    # Define standard sections to include in the template
-    standard_sections = [
-        "education", "skills", "hobbies", "summary", "work_experience",
-        "projects", "certifications", "languages", "achievements"
-    ]
-
-    # Build left panel (Contact, Education, Skills, Hobbies)
-    left_panel = f"""
-      <div class='left-panel' style='width:25%;background:#f5f5f5;padding-right:15px;border-right:1px solid #ccc;box-sizing:border-box;'>
-        <h3>Contact</h3>
-        <div class='contact-item'>📞 {phone if phone else 'Not Provided'}</div>
-        <div class='contact-item'>✉️ {email if email else 'Not Provided'}</div>
-        <div class='contact-item'>📍 {location if location else 'Not Provided'}</div>
-        <div class='contact-item'>🌐 {website if website else 'Not Provided'}</div>
-        {social_html}
-        <h3>Education</h3>
-        {list_items(sections.get('education', ''), 'education')}
-        <h3>Skills</h3>
-        <ul>{list_items(sections.get('skills', ''))}</ul>
-        <h3>Hobbies</h3>
-        <ul>{list_items(sections.get('hobbies', ''))}</ul>
-    """
-
-    # Build right panel (Objective/Summary, Experience, Projects, etc.)
-    right_panel = f"""
-      <div class='right-panel' style='width:75%;padding-left:15px;box-sizing:border-box;'>
-        <h3>Objective</h3>
-        <p>{sections.get('summary', '')}</p>
-        <h3>Professional Experience</h3>
-        <ul>{list_items(sections.get('work_experience', ''))}</ul>
-        <h3>Projects</h3>
-        <ul>{list_items(sections.get('projects', ''))}</ul>
-        <h3>Certifications</h3>
-        <ul>{list_items(sections.get('certifications', ''))}</ul>
-        <h3>Languages</h3>
-        <ul>{list_items(sections.get('languages', ''))}</ul>
-        <h3>Achievements</h3>
-        <ul>{list_items(sections.get('achievements', ''))}</ul>
-    """
-
-    # Add extra sections dynamically to the appropriate panel
-    for section_name in sections:
-        if section_name not in standard_sections and section_name not in ["personal_details", "missing_sections_suggestions"]:
-            # Decide which panel to add the extra section to based on content type
-            content = sections[section_name].lower()
-            # If the section seems related to personal attributes, add to left panel
-            if any(keyword in content for keyword in ["skill", "hobby", "interest", "language", "education", "certificate"]):
-                left_panel += f"""
-          <h3>{section_name.replace('_', ' ').title()}</h3>
-          <ul>{list_items(sections[section_name])}</ul>
-        """
-            else:
-                # Otherwise, add to right panel (e.g., professional or experience-related)
-                right_panel += f"""
-          <h3>{section_name.replace('_', ' ').title()}</h3>
-          <ul>{list_items(sections[section_name])}</ul>
-        """
-
-    # Close the panels
-    left_panel += "</div>"
-    right_panel += "</div>"
-
     # Adjust width and padding to reduce left-right space
     return f"""
     <div class='resume-wrapper' style='max-width:95%;margin:0 auto;background:#fff;border:1px solid #ccc;box-shadow:0 0 10px rgba(0,0,0,0.1);'>
@@ -882,8 +765,33 @@ def generate_michelle_template_html(sections):
         <h2 style='font-size: 16px; font-weight: 400; margin: 8px 0 0; color: #666;'>{title}</h2>
       </div>
       <div class='content' style='display:flex;padding:15px;'>
-        {left_panel}
-        {right_panel}
+        <div class='left-panel' style='width:25%;background:#f5f5f5;padding-right:15px;border-right:1px solid #ccc;box-sizing:border-box;'>
+          <h3>Contact</h3>
+          <div class='contact-item'>📞 {phone if phone else 'Not Provided'}</div>
+          <div class='contact-item'>✉️ {email if email else 'Not Provided'}</div>
+          <div class='contact-item'>📍 {location if location else 'Not Provided'}</div>
+          <div class='contact-item'>🌐 {website if website else 'Not Provided'}</div>
+          <h3>Education</h3>
+          {list_items(sections.get('education', ''), 'education')}
+          <h3>Skills</h3>
+          <ul>{list_items(sections.get('skills', ''))}</ul>
+          <h3>Hobbies</h3>
+          <ul>{list_items(sections.get('hobbies', ''))}</ul>
+        </div>
+        <div class='right-panel' style='width:75%;padding-left:15px;box-sizing:border-box;'>
+          <h3>Objective</h3>
+          <p>{sections.get('summary', '')}</p>
+          <h3>Professional Experience</h3>
+          <ul>{list_items(sections.get('work_experience', ''))}</ul>
+          <h3>Projects</h3>
+          <ul>{list_items(sections.get('projects', ''))}</ul>
+          <h3>Certifications</h3>
+          <ul>{list_items(sections.get('certifications', ''))}</ul>
+          <h3>Languages</h3>
+          <ul>{list_items(sections.get('languages', ''))}</ul>
+          <h3>Achievements</h3>
+          <ul>{list_items(sections.get('achievements', ''))}</ul>
+        </div>
       </div>
     </div>
     """
