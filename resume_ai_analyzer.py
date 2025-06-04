@@ -482,7 +482,9 @@ Resume:
         return {"error": f"Failed to generate section content: {str(e)}"}
 
 def extract_resume_sections(text):
-    lines = text.splitlines()
+    cleaned_text = remove_unnecessary_personal_info(text)
+    lines = cleaned_text.splitlines()
+
     sections = {
         "personal_details": "",
         "summary": "",
@@ -511,7 +513,6 @@ def extract_resume_sections(text):
         "achievements": ["achievements", "accomplishments", "awards"],
         "hobbies": ["hobbies", "interests", "extracurricular"]
     }
-
     def save_buffer_to_section(section):
         if section and buffer:
             content = "\n".join(buffer).strip()
@@ -607,6 +608,10 @@ def generate_resume_summary(name, role, experience, skills):
         return "OpenAI API key not set. Cannot generate summary."
 
     try:
+        # 🧼 Clean personal info from inputs
+        experience = remove_unnecessary_personal_info(experience or "")
+        skills = remove_unnecessary_personal_info(skills or "")
+
         prompt = f"""
 You are a professional resume expert.
 
@@ -877,3 +882,23 @@ Return in this format:
 
     except Exception as e:
         return {"error": str(e)}
+import re
+
+def remove_unnecessary_personal_info(text):
+    # Remove Date of Birth
+    text = re.sub(r"(Date of Birth|DOB)[:\-]?\s*\d{1,2}[\/\-\.]?\d{1,2}[\/\-\.]?\d{2,4}", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"(Date of Birth|DOB)[:\-]?\s*[A-Za-z]+\s+\d{1,2},?\s+\d{4}", "", text, flags=re.IGNORECASE)
+    
+    # Remove Gender
+    text = re.sub(r"Gender[:\-]?\s*(Male|Female|Other|Prefer not to say)", "", text, flags=re.IGNORECASE)
+    
+    # Remove Marital Status
+    text = re.sub(r"Marital Status[:\-]?\s*(Single|Married|Divorced|Widowed)", "", text, flags=re.IGNORECASE)
+    
+    # Remove Nationality
+    text = re.sub(r"Nationality[:\-]?\s*\w+", "", text, flags=re.IGNORECASE)
+
+    # Remove Religion
+    text = re.sub(r"Religion[:\-]?\s*\w+", "", text, flags=re.IGNORECASE)
+    
+    return text

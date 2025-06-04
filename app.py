@@ -144,7 +144,9 @@ def upload_resume():
             return jsonify({"error": "Saved file is empty"}), 500
 
         # Extract text from the resume
-        resume_text = extract_text_from_resume(file)
+        raw_text = extract_text_from_resume(file)
+        resume_text = remove_unnecessary_personal_info(raw_text)
+
         if not resume_text:
             logger.error(f"Failed to extract text from {filepath}")
             return jsonify({"error": "Failed to extract text from resume. The file might be unreadable or contain only images."}), 500
@@ -174,15 +176,28 @@ def check_ats():
         file.save(filepath)
 
         text = extract_text_from_pdf(filepath) if ext == ".pdf" else extract_text_from_docx(filepath)
+        cleaned_text = remove_unnecessary_personal_info(text)
 
-        # ATS analysis prompt
-        prompt = """
-You are an ATS expert. Check the following resume and give up to 5 issues:
+        # Enhanced ATS prompt with personal info warning
+        prompt = f"""
+You are an ATS expert. Review the following resume and identify up to 5 ATS-related issues.
+
+⚠️ Also flag any unnecessary personal information such as:
+- Marital Status
+- Date of Birth
+- Gender
+- Nationality
+- Religion
+
+These are not required in a professional resume and should be removed for better ATS compatibility.
+
 Resume:
-{}
-Return in this format:
-["Passed: ...", "Issue: ..."]
-""".format(text[:6000])
+{cleaned_text[:6000]}
+
+Return your output as a list like this:
+["✅ Passed: ...", "❌ Issue: ..."]
+Only include meaningful points.
+"""
 
         from openai import OpenAI
         client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
@@ -194,7 +209,7 @@ Return in this format:
 
         feedback = ai_resp.choices[0].message.content.strip().splitlines()
 
-        # ✅ Normalize feedback to include ✅ and ❌ with proper spacing
+        # Normalize feedback
         formatted_feedback = []
         for line in feedback:
             line = line.strip()
@@ -204,10 +219,12 @@ Return in this format:
                 formatted_feedback.append("❌ " + line[len("issue:"):].strip())
             elif line.lower().startswith("passed:"):
                 formatted_feedback.append("✅ " + line[len("passed:"):].strip())
-            else:
+            elif line.startswith("❌") or line.startswith("✅"):
                 formatted_feedback.append(line)
+            else:
+                formatted_feedback.append("❌ " + line)
 
-        # ✅ Adjust score based on number of ❌
+        # Score calculation
         score = 100 - (len([line for line in formatted_feedback if line.startswith("❌")]) * 20)
         score = max(0, min(score, 100))
 
