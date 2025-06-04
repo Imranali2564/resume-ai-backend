@@ -159,20 +159,65 @@ def upload_resume():
 
 @app.route('/ats-check', methods=['POST'])
 def check_ats():
+    filepath = None  # Initialize filepath for cleanup
     try:
         file = request.files.get('file') or request.files.get('resume')
         if not file or file.filename == '':
+            logger.error("No file uploaded in /ats-check request")
             return jsonify({"error": "No file uploaded"}), 400
 
+        # Validate file extension
         ext = os.path.splitext(file.filename)[1].lower()
-        if ext not in {'.pdf', '.docx'}:
-            return jsonify({"error": f"Unsupported file format: {ext}. Please upload a PDF or DOCX."}), 400
+        allowed_extensions = {'.pdf', '.docx', '.txt'}  # Add .txt to allowed extensions
+        if ext not in allowed_extensions:
+            logger.error(f"Unsupported file format: {ext}")
+            return jsonify({"error": f"Unsupported file format: {ext}. Please upload a PDF, DOCX, or TXT file."}), 400
 
+        # Validate file size
+        file.seek(0, os.SEEK_END)
+        file_size = file.tell() / 1024  # Size in KB
+        file.seek(0)  # Reset file pointer
+        if file_size == 0:
+            logger.error(f"Uploaded file {file.filename} is empty")
+            return jsonify({"error": "Uploaded file is empty"}), 400
+        if file_size > 10240:  # 10MB limit
+            logger.error(f"File {file.filename} is too large: {file_size:.2f} KB")
+            return jsonify({"error": f"File is too large: {file_size:.2f} KB. Maximum allowed size is 10MB."}), 400
+        logger.debug(f"File size: {file_size:.2f} KB")
+
+        # Save the file
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
+        if not os.path.exists(filepath):
+            logger.error(f"Failed to save file to {filepath}")
+            return jsonify({"error": "Failed to save file on server"}), 500
 
-        text = extract_text_from_pdf(filepath) if ext == ".pdf" else extract_text_from_docx(filepath)
+        # Set file permissions for Render compatibility
+        os.chmod(filepath, 0o644)
+
+        # Verify saved file size
+        saved_size = os.path.getsize(filepath) / 1024
+        if saved_size == 0:
+            logger.error(f"Saved file {filepath} is empty")
+            return jsonify({"error": "Saved file is empty"}), 500
+
+        # Extract text based on file type
+        if ext == ".pdf":
+            text = extract_text_from_pdf(filepath)
+        elif ext == ".docx":
+            text = extract_text_from_docx(filepath)
+        elif ext == ".txt":
+            with open(filepath, 'r', encoding='utf-8') as f:
+                text = f.read().strip()
+        else:
+            logger.error(f"Unexpected file extension: {ext}")
+            return jsonify({"error": f"Unexpected file extension: {ext}"}), 500
+
+        # Validate extracted text
+        if not text:
+            logger.error("No text extracted from the file")
+            return jsonify({"error": "No readable text found in the file. It might be empty or unreadable."}), 400
 
         # ATS analysis prompt
         prompt = """
@@ -180,20 +225,30 @@ You are an ATS expert. Check the following resume and give up to 5 issues:
 Resume:
 {}
 Return in this format:
-["Passed: ...", "Issue: ..."]
+["✅ Passed: ...", "❌ Issue: ..."]
 """.format(text[:6000])
 
+        # Check if OpenAI API key is set
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            logger.error("OPENAI_API_KEY environment variable not set")
+            return jsonify({"error": "Server configuration error: OpenAI API key not set."}), 500
+
         from openai import OpenAI
-        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-        ai_resp = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0
-        )
+        client = OpenAI(api_key=api_key)
+        try:
+            ai_resp = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0
+            )
+        except Exception as e:
+            logger.error(f"OpenAI API call failed: {str(e)}")
+            return jsonify({"error": f"Failed to analyze resume with AI: {str(e)}"}), 500
 
         feedback = ai_resp.choices[0].message.content.strip().splitlines()
 
-        # ✅ Normalize feedback to include ✅ and ❌ with proper spacing
+        # Normalize feedback to include ✅ and ❌ with proper spacing
         formatted_feedback = []
         for line in feedback:
             line = line.strip()
@@ -204,19 +259,25 @@ Return in this format:
             elif line.lower().startswith("passed:"):
                 formatted_feedback.append("✅ " + line[len("passed:"):].strip())
             else:
-                formatted_feedback.append(line)
+                # If the line doesn't start with "Issue:" or "Passed:", assume it's an issue if it contains negative words
+                if any(word in line.lower() for word in ["missing", "lacking", "not found", "error"]):
+                    formatted_feedback.append("❌ " + line)
+                else:
+                    formatted_feedback.append("✅ " + line)
 
-        # ✅ Adjust score based on number of ❌
+        # Adjust score based on number of ❌ issues
         score = 100 - (len([line for line in formatted_feedback if line.startswith("❌")]) * 20)
         score = max(0, min(score, 100))
 
+        logger.info(f"ATS check completed successfully for file {filename}. Score: {score}")
         return jsonify({"issues": formatted_feedback, "score": score})
 
     except Exception as e:
         logger.error(f"Error in /ats-check: {str(e)}")
         return jsonify({"error": f"Failed to check ATS compatibility: {str(e)}"}), 500
     finally:
-        cleanup_file(filepath)
+        if filepath:
+            cleanup_file(filepath)
 
 @app.route('/analyze', methods=['POST'])
 def analyze_resume():
