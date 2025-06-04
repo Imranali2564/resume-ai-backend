@@ -858,6 +858,8 @@ def check_ats_compatibility_deep(file_path):
 You are an ATS expert. Check the following resume and give up to 5 issues:
 Resume:
 {text[:6000]}
+
+Also flag unnecessary personal information like Marital Status, Date of Birth, Gender, Nationality, or Religion as issues with a reason to remove them.
 Return in this format:
 ["✅ Passed: ...", "❌ Issue: ..."]
         """

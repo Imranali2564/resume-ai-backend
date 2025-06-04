@@ -7,6 +7,21 @@ import uuid
 import json
 import re
 from resume_ai_analyzer import generate_resume_summary, generate_michelle_template_html, extract_text_from_resume, extract_resume_sections
+
+def remove_unnecessary_personal_info(text):
+    import re
+    patterns = [
+        r'Marital Status\s*[:\-]?\s*\w+',
+        r'Date of Birth\s*[:\-]?\s*\d{1,2}/\d{1,2}/\d{2,4}',
+        r'DOB\s*[:\-]?\s*\d{1,2}/\d{1,2}/\d{2,4}',
+        r'Gender\s*[:\-]?\s*\w+',
+        r'Nationality\s*[:\-]?\s*\w+',
+        r'Religion\s*[:\-]?\s*\w+'
+    ]
+    for pattern in patterns:
+        text = re.sub(pattern, '', text, flags=re.IGNORECASE)
+    return re.sub(r'\n{2,}', '\n', text.strip())
+
 try:
     from docx import Document
     from docx.shared import Pt, Inches, RGBColor
@@ -28,6 +43,21 @@ except ImportError as e:
     raise
 try:
     from resume_ai_analyzer import (
+
+def remove_unnecessary_personal_info(text):
+    import re
+    patterns = [
+        r'Marital Status\s*[:\-]?\s*\w+',
+        r'Date of Birth\s*[:\-]?\s*\d{1,2}/\d{1,2}/\d{2,4}',
+        r'DOB\s*[:\-]?\s*\d{1,2}/\d{1,2}/\d{2,4}',
+        r'Gender\s*[:\-]?\s*\w+',
+        r'Nationality\s*[:\-]?\s*\w+',
+        r'Religion\s*[:\-]?\s*\w+'
+    ]
+    for pattern in patterns:
+        text = re.sub(pattern, '', text, flags=re.IGNORECASE)
+    return re.sub(r'\n{2,}', '\n', text.strip())
+
         analyze_resume_with_openai,
         extract_text_from_pdf,
         extract_text_from_docx,        
@@ -429,31 +459,22 @@ def download_cover_letter():
 
 @app.route('/resume-score', methods=['POST'])
 def resume_score():
-    resume_text = ""
-    filepath = None  # For cleanup later
-
+    file = request.files.get('file')
+    if not file:
+        return jsonify({"error": "No file uploaded"}), 400
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
     try:
-        if request.is_json:
-            data = request.get_json()
-            resume_text = data.get("resume_text", "")
+        file.save(filepath)
+        ext = os.path.splitext(filepath)[1].lower()
+        if ext == ".pdf":
+            resume_text = extract_text_from_pdf(filepath)
+        elif ext == ".docx":
+            resume_text = extract_text_from_docx(filepath)
         else:
-            file = request.files.get('file')
-            if not file:
-                return jsonify({"error": "No file uploaded"}), 400
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
-            file.save(filepath)
-            ext = os.path.splitext(filepath)[1].lower()
-            if ext == ".pdf":
-                resume_text = extract_text_from_pdf(filepath)
-            elif ext == ".docx":
-                resume_text = extract_text_from_docx(filepath)
-            else:
-                return jsonify({"error": "Unsupported file format"}), 400
-
+            return jsonify({"error": "Unsupported file format"}), 400
         if not resume_text.strip():
             return jsonify({"error": "No extractable text found in resume"}), 400
-
-        prompt = f"""
+        prompt = """
 You are a professional resume reviewer. Give a resume score between 0 and 100 based on:
 - Formatting and readability
 - Grammar and professionalism
@@ -461,29 +482,30 @@ You are a professional resume reviewer. Give a resume score between 0 and 100 ba
 - Keyword optimization for ATS
 - Overall impression and completeness
 Resume:
-{resume_text[:6000]}
+{}
 Just return a number between 0 and 100, nothing else.
-        """
-
-        from openai import OpenAI
-        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a strict but fair resume scoring assistant."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        score_raw = response.choices[0].message.content.strip()
-        score = int(''.join(filter(str.isdigit, score_raw)))
-        return jsonify({"score": max(0, min(score, 100))})
-
+        """.format(resume_text[:6000])
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are a strict but fair resume scoring assistant."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            score_raw = response.choices[0].message.content.strip()
+            score = int(''.join(filter(str.isdigit, score_raw)))
+            return jsonify({"score": max(0, min(score, 100))})
+        except Exception as e:
+            logger.error(f"Error in OpenAI API call for /resume-score: {str(e)}")
+            return jsonify({"score": 70})
     except Exception as e:
         logger.error(f"Error in /resume-score: {str(e)}")
         return jsonify({"score": 70})
     finally:
-        if filepath:
-            cleanup_file(filepath)
+        cleanup_file(filepath)
 
 @app.route('/optimize-keywords', methods=['POST'])
 def optimize_keywords():
