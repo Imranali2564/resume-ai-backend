@@ -86,7 +86,6 @@ def remove_unnecessary_personal_info(text):
             filtered_lines.append(line)
     return '\n'.join(filtered_lines)
 
-
 def cleanup_file(filepath):
     try:
         if os.path.exists(filepath):
@@ -270,33 +269,25 @@ def preview_resume():
             logger.error("No sections provided in /preview-resume request")
             return jsonify({"error": "No sections provided"}), 400
 
-        # Generate HTML
-        html_content = """
-        <div style='width: 90%; margin: 0 auto; font-family: Arial, sans-serif;'>
-        """
-        for section, content in sections.items():
-            section_title = section.replace('_', ' ').title()
-            html_content += """
-            <div class='section' style='margin-bottom: 1.2rem;'>
-              <h3 style='font-size: 0.95rem; line-height: 1.3; color: #222; margin-bottom: 4px; border-bottom: 1px solid #ccc;'>{}</h3>
-              <div style='line-height: 1.5;'>{}</div>
-            </div>
-            """.format(section_title.upper(), content.replace('\n', '<br>'))
-        html_content += "</div>"
+        # Generate HTML using the Michelle template
+        html_content = generate_michelle_template_html(sections)
 
         # Generate plain text
         resume_text_lines = []
         for section, content in sections.items():
+            if section == "missing_sections_suggestions":
+                continue  # Skip this section for plain text generation
             section_title = section.replace('_', ' ').title()
             resume_text_lines.append(section_title.upper())
-            lines = content.split('\n')
-            for line in lines:
-                line = line.strip()
-                if line:
-                    if not line.startswith('- '):
-                        line = '- ' + line
-                    resume_text_lines.append(line)
-            resume_text_lines.append('')
+            if content:
+                lines = content.split('\n')
+                for line in lines:
+                    line = line.strip()
+                    if line:
+                        if not line.startswith('- '):
+                            line = '- ' + line
+                        resume_text_lines.append(line)
+                resume_text_lines.append('')
 
         # Clean up excessive blank lines
         cleaned_resume = []
@@ -801,217 +792,147 @@ def convert_format():
                 doc = fitz.open(upload_path)
                 if doc.page_count == 0:
                     logger.error("PDF has no pages")
-                    return jsonify({"error": "PDF has no content to convert"}), 400
+                    return jsonify({"error": "PDF has no content to extract"}), 400
                 text = "\n".join([page.get_text().strip() for page in doc])
                 doc.close()
-
-                if not text.strip():
-                    logger.warning("No text extracted from PDF")
-                    return jsonify({"error": "No text could be extracted from the PDF."}), 400
-
-                word_doc = Document()
-                word_doc.add_paragraph(text)
-                word_doc.save(output_path)
-                logger.info(f"Converted PDF to DOCX: {output_path}")
-                return send_file(
-                    output_path,
-                    as_attachment=True,
-                    download_name="converted.docx",
-                    mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-                )
-
+                logger.info(f"Extracted text from PDF: {len(text)} characters")
             except Exception as e:
-                logger.error(f"Failed to convert PDF to DOCX: {str(e)}")
-                return jsonify({"error": f"Failed to convert PDF to DOCX: {str(e)}"}), 500
+                logger.error(f"Failed to extract text from PDF: {str(e)}")
+                return jsonify({"error": f"Failed to extract text from PDF: {str(e)}"}), 500
 
-        else:
-            logger.error(f"Unsupported conversion request: {ext} to {target_format}")
-            return jsonify({"error": "Unsupported conversion request. Only PDF to DOCX, DOCX to PDF, or text extraction are supported."}), 400
+            docx = Document()
+            for paragraph in text.split('\n'):
+                if paragraph.strip():
+                    docx.add_paragraph(paragraph.strip())
+            docx.save(output_path)
+
+            return send_file(
+                output_path,
+                as_attachment=True,
+                download_name="converted.docx",
+                mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            )
 
     except Exception as e:
         logger.error(f"Error in /convert-format: {str(e)}")
-        return jsonify({"error": f"Failed to process file: {str(e)}"}), 500
+        return jsonify({"error": f"Failed to convert file: {str(e)}"}), 500
     finally:
-        cleanup_file(upload_path)
-        cleanup_file(output_path)
-        cleanup_file(html_temp_path)
-
-@app.route('/fix-formatting', methods=['POST'])
-def fix_formatting():
-    file = request.files.get('file') or request.files.get('resume')
-    if not file:
-        return jsonify({"error": "No file uploaded"}), 400
-
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-
-    try:
-        file.save(filepath)
-        result = fix_resume_formatting(filepath)
-        logger.info(f"Formatted resume at: {filepath}")
-        return jsonify(result)
-    except Exception as e:
-        logger.error(f"Error in /fix-formatting: {str(e)}")
-        return jsonify({"error": f"Failed to process resume formatting: {str(e)}"}), 500
-    finally:
-        cleanup_file(filepath)
-
-@app.route('/generate-resume-summary', methods=['POST'])
-def generate_resume_summary_api():
-    try:
-        data = request.get_json()
-        name = data.get('name', '')
-        role = data.get('role', '')
-        experience = data.get('experience', '')
-        skills = data.get('skills', '')
-
-        if not name or not role or not experience or not skills:
-            return jsonify({"error": "Missing required fields"}), 400
-
-        summary = generate_resume_summary(name, role, experience, skills)
-        return jsonify({"summary": summary})
-
-    except Exception as e:
-        logger.error(f"Error in /generate-resume-summary: {str(e)}")
-        return jsonify({"error": f"Failed to generate resume summary: {str(e)}"}), 500
-
-@app.route('/send-feedback', methods=['POST'])
-def send_feedback():
-    try:
-        data = request.form
-        name = data.get('name', 'Unknown')
-        email = data.get('email', '')
-        message = data.get('message', '')
-        file = request.files.get('screenshot')
-
-        from email.mime.multipart import MIMEMultipart
-        from email.mime.text import MIMEText
-        from email.mime.base import MIMEBase
-        from email import encoders
-        import smtplib
-
-        sender_email = "help@resumefixerpro.com"
-        receiver_email = "help@resumefixerpro.com"
-        smtp_server = "smtp.hostinger.com"
-        smtp_port = 587
-        smtp_password = os.environ.get("SMTP_PASSWORD")
-
-        msg = MIMEMultipart()
-        msg['From'] = sender_email
-        msg['To'] = receiver_email
-        msg['Subject'] = 'Feedback Submission from ResumeFixerPro'
-
-        body = """
-Name: {}
-Email: {}
-Message:
-{}
-""".format(name, email, message)
-        msg.attach(MIMEText(body, 'plain'))
-
-        if file:
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(filepath)
-
-            with open(filepath, 'rb') as attachment:
-                part = MIMEBase('application', 'octet-stream')
-                part.set_payload(attachment.read())
-
-            encoders.encode_base64(part)
-            part.add_header('Content-Disposition', f'attachment; filename={filename}')
-            msg.attach(part)
-
-            cleanup_file(filepath)
-
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
-        server.login(sender_email, smtp_password)
-        server.sendmail(sender_email, receiver_email, msg.as_string())
-        server.quit()
-
-        return jsonify({"success": True, "message": "Feedback sent successfully!"})
-
-    except Exception as e:
-        logger.error(f"Error sending feedback: {str(e)}")
-        return jsonify({"error": f"Failed to send feedback: {str(e)}"}), 500
-
-@app.route('/send-message', methods=['POST'])
-def send_message():
-    try:
-        data = request.get_json()
-        name = data.get('name', 'Unknown')
-        email = data.get('email', '')
-        message = data.get('message', '')
-
-        from email.mime.text import MIMEText
-        from email.mime.multipart import MIMEMultipart
-        import smtplib
-
-        sender_email = "help@resumefixerpro.com"
-        receiver_email = "help@resumefixerpro.com"
-        smtp_server = "smtp.gmail.com"
-        smtp_port = 587
-        smtp_password = os.environ.get("SMTP_PASSWORD")
-
-        msg = MIMEMultipart()
-        msg['From'] = sender_email
-        msg['To'] = receiver_email
-        msg['Subject'] = 'Contact Message from ResumeFixerPro'
-
-        body = """
-New Contact Message:
-Name: {}
-Email: {}
-Message:
-{}
-""".format(name, email, message)
-        msg.attach(MIMEText(body, 'plain'))
-
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
-        server.login(sender_email, smtp_password)
-        server.send_message(msg)
-        server.quit()
-
-        return jsonify({"success": True, "message": "Message sent successfully!"})
-
-    except Exception as e:
-        logger.error(f"Error sending message: {str(e)}")
-        return jsonify({"error": f"Failed to send message: {str(e)}"}), 500
+        for path in [upload_path, output_path, html_temp_path]:
+            if path and os.path.exists(path):
+                cleanup_file(path)
 
 @app.route('/extract-sections', methods=['POST'])
 def extract_sections():
     try:
         data = request.get_json()
-        text = data.get('text', '')
-        if not text.strip():
-            logger.warning("No resume text provided in /extract-sections request")
-            return jsonify({"error": "No resume text provided"}), 400
+        resume_text = data.get('resume_text')
+        if not resume_text or not isinstance(resume_text, str) or not resume_text.strip():
+            logger.error("Invalid or empty resume text in /extract-sections request")
+            return jsonify({"error": "Invalid or empty resume text"}), 400
 
-        sections = extract_resume_sections(text)
+        sections = extract_resume_sections(resume_text)
+        if not sections:
+            logger.error("Failed to extract sections from resume text")
+            return jsonify({"error": "Failed to extract sections from resume text"}), 500
 
-        # Validate sections output
-        if not sections or not isinstance(sections, dict):
-            logger.warning(f"Invalid sections extracted: {sections}")
-            return jsonify({"error": "Failed to extract sections: Resume format may be unsupported or text is too unstructured."}), 400
+        # Prepare response with sections, including missing section suggestions
+        response = {
+            "sections": {
+                key: sections[key] for key in sections if key != "missing_sections_suggestions"
+            },
+            "missing_sections": sections.get("missing_sections_suggestions", [])
+        }
 
-        # Ensure sections have content
-        if not any(sections.values()):
-            logger.warning("No sections could be extracted from the resume text")
-            return jsonify({"error": "Failed to extract sections: No recognizable sections found in the resume."}), 400
-
-        logger.info(f"Successfully extracted sections: {list(sections.keys())}")
-        return jsonify(sections)  # ✅ Return the sections directly, not inside {"sections": ...}
+        logger.info("Successfully extracted sections from resume text")
+        return jsonify(response)
 
     except Exception as e:
-        logger.error(f"Error extracting sections: {str(e)} | Resume text: {text[:500]}")
+        logger.error(f"Error in /extract-sections: {str(e)}")
         return jsonify({"error": f"Failed to extract sections: {str(e)}"}), 500
 
+@app.route('/apply-fix', methods=['POST'])
+def apply_fix():
+    try:
+        data = request.get_json()
+        section = data.get('section')
+        fixed_content = data.get('fixedContent')
+        sections = data.get('sections')
 
-if __name__ == "__main__":
+        if not section or not fixed_content or not sections:
+            logger.error("Missing section, fixedContent, or sections in /apply-fix request")
+            return jsonify({"error": "Missing required fields"}), 400
+
+        # Update the specified section with the fixed content
+        sections[section] = fixed_content
+
+        # Re-generate the preview after applying the fix
+        html_content = generate_michelle_template_html(sections)
+
+        # Re-run ATS check to update the score
+        resume_text = "\n".join([content for content in sections.values() if content])
+        ats_result = check_ats_compatibility_fast(resume_text)
+
+        return jsonify({
+            "updated_sections": sections,
+            "preview_html": html_content,
+            "ats_result": ats_result
+        })
+
+    except Exception as e:
+        logger.error(f"Error in /apply-fix: {str(e)}")
+        return jsonify({"error": f"Failed to apply fix: {str(e)}"}), 500
+
+@app.route('/add-missing-section', methods=['POST'])
+def add_missing_section():
+    try:
+        data = request.get_json()
+        section_name = data.get('section_name')
+        sections = data.get('sections')
+
+        if not section_name or not sections:
+            logger.error("Missing section_name or sections in /add-missing-section request")
+            return jsonify({"error": "Missing required fields"}), 400
+
+        # Generate placeholder content for the missing section using OpenAI
+        full_text = "\n".join([content for content in sections.values() if content])
+        prompt = f"""
+You are a resume writing assistant. The resume is missing a '{section_name.replace('_', ' ').title()}' section.
+Based on the following resume content, generate a professional '{section_name}' section.
+Format the output as plain text with bullet points where applicable.
+
+Resume:
+{full_text[:6000]}
+        """
+
+        from openai import OpenAI
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        new_content = response.choices[0].message.content.strip()
+
+        # Add the new section to sections
+        sections[section_name] = new_content
+
+        # Update missing sections list
+        missing_sections = sections.get("missing_sections_suggestions", [])
+        if section_name in missing_sections:
+            missing_sections.remove(section_name)
+        sections["missing_sections_suggestions"] = missing_sections
+
+        # Generate updated preview
+        html_content = generate_michelle_template_html(sections)
+
+        return jsonify({
+            "updated_sections": sections,
+            "preview_html": html_content
+        })
+
+    except Exception as e:
+        logger.error(f"Error in /add-missing-section: {str(e)}")
+        return jsonify({"error": f"Failed to add missing section: {str(e)}"}), 500
+
+if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    logger.info(f"Starting Flask app on port {port}")
-    app.run(host="0.0.0.0", port=port)
-
-logger.info("Flask app initialization complete.")
+    app.run(host='0.0.0.0', port=port, debug=False)
