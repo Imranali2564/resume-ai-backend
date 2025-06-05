@@ -28,19 +28,20 @@ except ImportError as e:
     raise
 try:
     from resume_ai_analyzer import (
-        analyze_resume_with_openai,
-        extract_text_from_pdf,
-        extract_text_from_docx,        
-        check_ats_compatibility,
-        extract_keywords_from_jd,
-        compare_resume_with_keywords,
-        analyze_job_description,
-        fix_resume_formatting,
-        generate_section_content,
-        generate_resume_summary,
-        extract_resume_sections,
-        generate_michelle_template_html,
-    )
+    analyze_resume_with_openai,
+    extract_text_from_pdf,
+    extract_text_from_docx,        
+    check_ats_compatibility,
+    extract_keywords_from_jd,
+    compare_resume_with_keywords,
+    analyze_job_description,
+    fix_resume_formatting,
+    generate_section_content,
+    generate_resume_summary,
+    extract_resume_sections,
+    generate_michelle_template_html,
+    generate_ats_report  # ✅ ADD THIS LINE
+)
 except ImportError as e:
     logging.error(f"Failed to import resume_ai_analyzer: {str(e)}")
     raise

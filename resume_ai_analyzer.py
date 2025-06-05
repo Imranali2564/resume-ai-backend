@@ -867,3 +867,7 @@ def remove_unnecessary_personal_info(text):
     text = re.sub(r'((Address|Location)[:\-]?)?\s*[\w\s\-\,\.\/]*?(\b[A-Z][a-z]+\b)[,\s]+(\b[A-Z][a-z]+\b)(?:\s*\d{5,6})?(,\s*India)?', r'\3, \4', text)
 
     return text
+
+def generate_ats_report(text):
+    # Wrapper for backward compatibility
+    return check_ats_compatibility_fast(text)
