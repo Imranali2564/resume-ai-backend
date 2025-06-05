@@ -99,66 +99,46 @@ def cleanup_file(filepath):
 def health_check():
     return jsonify({"status": "healthy", "message": "OK"}), 200
 
-@app.route('/upload', methods=['POST'])
+@app.route("/upload", methods=["POST"])
 def upload_resume():
-    file = request.files.get('file') or request.files.get('resume')
-    if not file or file.filename == '':
-        logger.error("No file uploaded in request")
-        return jsonify({"error": "No file found"}), 400
-
-    # Validate file extension
-    ext = os.path.splitext(file.filename)[1].lower()
-    allowed_extensions = {'.pdf', '.docx'}
-    if ext not in allowed_extensions:
-        logger.error(f"Unsupported file format: {ext}")
-        return jsonify({"error": f"Unsupported file format: {ext}. Please upload a PDF or DOCX file."}), 400
-
-    # Validate file size
-    file.seek(0, os.SEEK_END)
-    file_size = file.tell() / 1024  # Size in KB
-    file.seek(0)  # Reset file pointer
-    if file_size == 0:
-        logger.error(f"Uploaded file {file.filename} is empty")
-        return jsonify({"error": "Uploaded file is empty"}), 400
-    if file_size > 10240:  # 10MB limit
-        logger.error(f"File {file.filename} is too large: {file_size:.2f} KB")
-        return jsonify({"error": f"File is too large: {file_size:.2f} KB. Maximum allowed size is 10MB."}), 400
-    logger.debug(f"File size: {file_size:.2f} KB")
-
-    # Save the file
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     try:
+        file = request.files.get("file")
+        job_title = request.form.get("job_title", "")
+        company_name = request.form.get("company_name", "")
+
+        if not file:
+            return jsonify({"error": "No file uploaded"}), 400
+
+        filename = secure_filename(file.filename)
+        filepath = os.path.join("uploads", f"{uuid.uuid4()}_{filename}")
         file.save(filepath)
-        if not os.path.exists(filepath):
-            logger.error(f"Failed to save file to {filepath}")
-            return jsonify({"error": "Failed to save file on server"}), 500
 
-        # Set file permissions for Render compatibility
-        os.chmod(filepath, 0o644)
+        # ✅ Extract resume text
+        text = extract_text_from_resume(filepath)
 
-        # Verify saved file size
-        saved_size = os.path.getsize(filepath) / 1024
-        if saved_size == 0:
-            logger.error(f"Saved file {filepath} is empty")
-            return jsonify({"error": "Saved file is empty"}), 500
+        # ✅ Cleaned + structured sections (dict)
+        parsed_sections = extract_resume_sections(text)
 
-        # Extract text from the resume
-        raw_text = extract_text_from_resume(file)
-        resume_text = remove_unnecessary_personal_info(raw_text)
+        # ✅ AI Suggestions
+        suggestions = generate_resume_summary(text, job_title=job_title, company_name=company_name)
 
-        if not resume_text:
-            logger.error(f"Failed to extract text from {filepath}")
-            return jsonify({"error": "Failed to extract text from resume. The file might be unreadable or contain only images."}), 500
+        # ✅ ATS Report
+        ats_issues = generate_ats_report(text)
 
-        logger.info(f"Successfully processed file {filename}: {len(resume_text)} characters extracted")
-        return jsonify({"resume_text": resume_text})
+        # ✅ Resume Score
+        score = calculate_resume_score(suggestions, ats_issues)
+
+        # ✅ Final response
+        return jsonify({
+            "resume_text": text,
+            "parsedResumeContent": parsed_sections,
+            "suggestions": suggestions,
+            "ats_report": ats_issues,
+            "score": score
+        })
 
     except Exception as e:
-        logger.error(f"Error in /upload: {str(e)}")
-        return jsonify({"error": f"Failed to process file: {str(e)}"}), 500
-    finally:
-        cleanup_file(filepath)
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/ats-check', methods=['POST'])
 def check_ats():

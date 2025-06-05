@@ -500,107 +500,47 @@ Resume:
         logger.error(f"[ERROR in generate_section_content]: {str(e)}")
         return {"error": f"Failed to generate section content: {str(e)}"}
 
-# FIXED: remove extra space before def
+# ✅ Updated extract_resume_sections function inside resume_ai_analyzer.py
+
 def extract_resume_sections(text):
-    cleaned_text = remove_unnecessary_personal_info(text)
-    lines = cleaned_text.splitlines()
+    import re
+    from collections import OrderedDict
 
-    sections = {
-        "personal_details": "",
-        "summary": "",
-        "education": "",
-        "skills": "",
-        "work_experience": "",
-        "projects": "",
-        "certifications": "",
-        "languages": "",
-        "achievements": "",
-        "hobbies": "",
-        "additional_courses": ""
-    }
+    # Define common resume section headings
+    section_headings = [
+        "Objective", "Summary", "Profile", "Career Objective",
+        "Education", "Academic Background", "Educational Qualifications",
+        "Experience", "Work Experience", "Professional Experience",
+        "Internship", "Internships",
+        "Projects", "Personal Projects", "Technical Projects",
+        "Skills", "Technical Skills", "Key Skills",
+        "Certifications", "Courses", "Licenses",
+        "Awards", "Achievements", "Honors",
+        "Languages", "Languages Known",
+        "Hobbies", "Interests",
+        "Publications", "Research Work",
+        "Extracurricular Activities", "Volunteer Work",
+        "References"
+    ]
 
-    current_section = None
-    buffer = []
+    # Build pattern to match section titles
+    section_pattern = re.compile(rf"^({'|'.join(section_headings)})(:?\s*)$", re.IGNORECASE | re.MULTILINE)
 
-    section_keywords = {
-        "summary": ["summary", "objective", "career summary", "profile"],
-        "education": ["education", "academics", "qualifications"],
-        "skills": ["skills", "technical skills", "tools", "technologies"],
-        "work_experience": ["experience", "employment", "professional experience", "work"],
-        "projects": ["projects", "project work", "academic projects"],
-        "certifications": ["certifications", "certificates", "courses", "training"],
-        "languages": ["languages", "language proficiency"],
-        "achievements": ["achievements", "accomplishments", "awards"],
-        "hobbies": ["hobbies", "interests", "extracurricular"],
-        "additional_courses": ["additional courses", "trainings", "short term", "certification training"]
-    }
+    matches = list(section_pattern.finditer(text))
+    parsed_sections = OrderedDict()
 
-    def save_buffer_to_section(section):
-        if section and buffer:
-            content = "\n".join(buffer).strip()
-            if content:
-                sections[section] += content + "\n"
-            buffer.clear()
+    for i, match in enumerate(matches):
+        start = match.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        section_title = match.group(1).strip().title()
+        section_body = text[start:end].strip()
 
-    # First pass: Extract personal details
-    personal_lines = []
-    personal_info = {
-        "name": "",
-        "email": "",
-        "phone": "",
-        "location": ""
-    }
-    name_pattern = r'^[A-Z][a-z]+ [A-Z][a-z]+(?: [A-Z][a-z]+)?$'
+        if section_title in parsed_sections:
+            section_title += f"_{i}"  # avoid duplicates
 
-    for i, line in enumerate(lines):
-        line = line.strip()
-        if not line:
-            continue
+        parsed_sections[section_title] = section_body
 
-        if i == 0 and re.match(name_pattern, line):
-            personal_info["name"] = line
-            personal_lines.append(line)
-            continue
-
-        if not personal_info["email"] and re.search(r'[\w\.-]+@[\w\.-]+', line):
-            personal_info["email"] = line.strip()
-            personal_lines.append(line)
-
-        elif not personal_info["phone"] and re.search(r'\+?\d[\d\s\-]{6,}', line):
-            personal_info["phone"] = line.strip()
-            personal_lines.append(line)
-
-        elif not personal_info["location"] and re.search(r'\b(location|address|city|state|country)\b', line.lower()):
-            personal_info["location"] = line.strip()
-            personal_lines.append(line)
-
-        elif re.search(r'(linkedin|github|portfolio|www\.|http)', line.lower()):
-            personal_lines.append(line.strip())
-
-        if i > 5:
-            break
-
-    sections["personal_details"] = "\n".join(personal_lines[:5]).strip()
-
-    # Second pass: Extract section-wise content
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-
-        found_section = False
-        for section, keywords in section_keywords.items():
-            if any(kw in line.lower() for kw in keywords) and len(line) < 50:
-                save_buffer_to_section(current_section)
-                current_section = section
-                found_section = True
-                break
-
-        if not found_section:
-            buffer.append(line)
-
-    save_buffer_to_section(current_section)
-    return sections
+    return dict(parsed_sections)
 
 def extract_keywords_from_jd(jd_text):
     if not client:
