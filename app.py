@@ -40,7 +40,8 @@ try:
     generate_resume_summary,
     extract_resume_sections,
     generate_michelle_template_html,
-    generate_ats_report  # ✅ ADD THIS LINE
+    generate_ats_report,  # ✅ Already added
+    calculate_resume_score  # ✅ 👈 Add this now
 )
 except ImportError as e:
     logging.error(f"Failed to import resume_ai_analyzer: {str(e)}")

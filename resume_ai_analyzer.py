@@ -871,3 +871,11 @@ def remove_unnecessary_personal_info(text):
 def generate_ats_report(text):
     # Wrapper for backward compatibility
     return check_ats_compatibility_fast(text)
+def calculate_resume_score(summary, ats_issues):
+    score = 70
+    if summary:
+        score += 10
+    if ats_issues:
+        issue_penalty = sum(10 for issue in ats_issues if issue.startswith("❌"))
+        score -= issue_penalty
+    return max(0, min(score, 100))
