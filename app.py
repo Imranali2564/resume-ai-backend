@@ -103,9 +103,6 @@ def health_check():
 def upload_resume():
     try:
         file = request.files.get("file")
-        job_title = request.form.get("job_title", "")
-        company_name = request.form.get("company_name", "")
-
         if not file:
             return jsonify({"error": "No file uploaded"}), 400
 
@@ -119,20 +116,27 @@ def upload_resume():
         # ✅ Cleaned + structured sections (dict)
         parsed_sections = extract_resume_sections(text)
 
-        # ✅ AI Suggestions
-        suggestions = generate_resume_summary(text, job_title=job_title, company_name=company_name)
+        # ✅ Extract fields for summary
+        name = parsed_sections.get("name", "")
+        role = parsed_sections.get("job_title", "")
+        experience = parsed_sections.get("work_experience", "")
+        skills = parsed_sections.get("skills", "")
+
+        # ✅ Generate professional summary (AI)
+        summary = generate_resume_summary(name, role, experience, skills)
+        parsed_sections["summary"] = summary  # Inject into parsed data for frontend
 
         # ✅ ATS Report
         ats_issues = generate_ats_report(text)
 
         # ✅ Resume Score
-        score = calculate_resume_score(suggestions, ats_issues)
+        score = calculate_resume_score(summary, ats_issues)
 
         # ✅ Final response
         return jsonify({
             "resume_text": text,
             "parsedResumeContent": parsed_sections,
-            "suggestions": suggestions,
+            "suggestions": [],  # use [] or proper suggestion logic if needed
             "ats_report": ats_issues,
             "score": score
         })
