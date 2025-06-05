@@ -16,11 +16,11 @@ import io
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize OpenAI client with error handling for missing API key
+# Initialize OpenAI client
 api_key = os.environ.get("OPENAI_API_KEY")
 if not api_key:
     logger.error("OPENAI_API_KEY environment variable not set.")
-    client = None  # Set client to None if API key is missing
+    client = None
 else:
     try:
         client = OpenAI(api_key=api_key)
@@ -30,34 +30,24 @@ else:
 
 def extract_text_from_pdf(file_path):
     try:
-        # First, try to extract text directly using PyMuPDF
         doc = fitz.open(file_path)
         text = "\n".join(page.get_text() for page in doc).strip()
         doc.close()
-
-        # If no text is extracted, try OCR
         if not text:
-            logger.warning(f"No text extracted from {file_path} using PyMuPDF, attempting OCR...")
-            try:
-                text = extract_text_with_ocr(file_path)
-            except Exception as ocr_error:
-                logger.error(f"OCR failed for {file_path}: {str(ocr_error)}")
-                return ""  # Return empty string if OCR fails
-
+            logger.warning(f"No text extracted from {file_path}, attempting OCR...")
+            text = extract_text_with_ocr(file_path)
         return text if text.strip() else ""
-
     except Exception as e:
         logger.error(f"[ERROR in extract_text_from_pdf]: {str(e)}")
         return ""
 
 def extract_text_with_ocr(file_path):
     try:
-        # Check if Tesseract is installed and accessible
         tesseract_version = pytesseract.get_tesseract_version()
         logger.info(f"Tesseract version: {tesseract_version}")
     except Exception as e:
-        logger.error(f"Tesseract OCR engine not found: {str(e)}. Falling back to empty text.")
-        return ""  # Fallback to empty text instead of raising error
+        logger.error(f"Tesseract OCR engine not found: {str(e)}")
+        return ""
 
     try:
         doc = fitz.open(file_path)
@@ -65,52 +55,35 @@ def extract_text_with_ocr(file_path):
             logger.error(f"PDF {file_path} has no pages")
             doc.close()
             return ""
-
         text_parts = []
         for page_index in range(len(doc)):
             page = doc[page_index]
-            # Try to get text first
             text = page.get_text().strip()
             if text:
-                logger.debug(f"Text extracted from page {page_index + 1} without OCR")
                 text_parts.append(text)
                 continue
-
-            # If no text, extract images and run OCR
             images = page.get_images(full=True)
             if not images:
-                logger.warning(f"No images found on page {page_index + 1} for OCR")
                 continue
-
             for img_index, img in enumerate(images):
                 try:
                     xref = img[0]
                     base_image = doc.extract_image(xref)
                     if not base_image:
-                        logger.warning(f"Failed to extract image {img_index + 1} from page {page_index + 1}")
                         continue
-
                     image_bytes = base_image["image"]
                     image = Image.open(io.BytesIO(image_bytes)).convert("L")
                     custom_config = r'--oem 3 --psm 6 -l eng'
                     text = pytesseract.image_to_string(image, config=custom_config)
                     if text.strip():
-                        logger.debug(f"OCR extracted text from image {img_index + 1} on page {page_index + 1}: {text[:100]}...")
                         text_parts.append(text.strip())
-                    else:
-                        logger.warning(f"No text extracted via OCR from image {img_index + 1} on page {page_index + 1}")
                 except Exception as img_error:
                     logger.error(f"Error processing image {img_index + 1} on page {page_index + 1}: {str(img_error)}")
-                    continue
-
         doc.close()
-        combined_text = "\n".join(text_parts).strip()
-        if not combined_text:
-            logger.warning(f"No text extracted via OCR from {file_path}")
-        return combined_text
+        return "\n".join(text_parts).strip() or ""
     except Exception as e:
         logger.error(f"[ERROR in extract_text_with_ocr]: {str(e)}")
-        return ""  # Fallback to empty text
+        return ""
 
 def extract_text_from_docx(file_path):
     try:
@@ -122,108 +95,76 @@ def extract_text_from_docx(file_path):
 
 def extract_text_from_resume(resume_file):
     try:
-        # Validate input
         if not resume_file or resume_file.filename == '':
             logger.error("No resume file provided")
             return ""
-        
         ext = os.path.splitext(resume_file.filename)[1].lower()
         if ext not in {'.pdf', '.docx'}:
             logger.error(f"Unsupported file format: {ext}")
             return ""
-
-        # Save the file temporarily
         filename = secure_filename(resume_file.filename)
-        temp_path = os.path.join('/tmp/Uploads', filename)  # Use /tmp for Render compatibility
+        temp_path = os.path.join('/tmp/Uploads', filename)
         os.makedirs('/tmp/Uploads', exist_ok=True)
-        logger.debug(f"Saving file to {temp_path}")
-
-        # Check file size before saving
         resume_file.seek(0, os.SEEK_END)
-        file_size = resume_file.tell() / 1024  # Size in KB
-        resume_file.seek(0)  # Reset file pointer
+        file_size = resume_file.tell() / 1024
+        resume_file.seek(0)
         if file_size == 0:
             logger.error(f"File {filename} is empty")
             return ""
-        if file_size > 10240:  # 10MB limit
+        if file_size > 10240:
             logger.error(f"File {filename} is too large: {file_size:.2f} KB")
             return ""
-        logger.debug(f"File size: {file_size:.2f} KB")
-
-        # Save the file
         resume_file.save(temp_path)
         if not os.path.exists(temp_path):
             logger.error(f"Failed to save file to {temp_path}")
             return ""
-
-        # Ensure file permissions are correct for Render
         os.chmod(temp_path, 0o644)
-
-        # Verify file size after saving
         saved_size = os.path.getsize(temp_path) / 1024
         if saved_size == 0:
             logger.error(f"Saved file {temp_path} is empty")
             return ""
-
-        # Extract text based on file type
-        if ext == '.pdf':
-            text = extract_text_from_pdf(temp_path)
-        elif ext == '.docx':
-            text = extract_text_from_docx(temp_path)
-
+        text = extract_text_from_pdf(temp_path) if ext == '.pdf' else extract_text_from_docx(temp_path)
         if not text.strip():
             logger.warning(f"No text extracted from {temp_path}")
             return ""
-
         logger.info(f"Successfully extracted text from {filename}: {len(text)} characters")
         return text.strip()
-
     except Exception as e:
         logger.error(f"[ERROR in extract_text_from_resume]: {str(e)}")
         return ""
     finally:
-        # Clean up the temporary file
-        try:
-            if 'temp_path' in locals() and os.path.exists(temp_path):
+        if 'temp_path' in locals() and os.path.exists(temp_path):
+            try:
                 os.remove(temp_path)
                 logger.debug(f"Cleaned up temporary file: {temp_path}")
-        except Exception as e:
-            logger.error(f"Error cleaning up temporary file {temp_path}: {str(e)}")
+            except Exception as e:
+                logger.error(f"Error cleaning up temporary file {temp_path}: {str(e)}")
 
 def analyze_resume_with_openai(resume_text, atsfix=False):
     if not client:
-        return {"error": "OpenAI API key not set. Please configure the OPENAI_API_KEY environment variable."}
-
+        return {"error": "OpenAI API key not set."}
     try:
         if not isinstance(resume_text, str) or not resume_text.strip():
             return {"error": "No readable text provided."}
-
         prompt = f"""
 You are a professional resume analyzer.
-Analyze the following resume and provide key suggestions to improve its impact, clarity, and formatting.
-Give up to 7 specific, actionable suggestions only. Avoid generic advice.
-
+Analyze the following resume and provide up to 7 specific, actionable suggestions to improve impact, clarity, and formatting.
 Resume:
 {resume_text[:6000]}
-        """
-
+"""
         if atsfix:
             prompt = f"""
-You are an expert in optimizing resumes for Applicant Tracking Systems (ATS).
-Analyze the following resume and provide specific suggestions to improve its ATS compatibility.
-Give up to 7 specific, actionable suggestions only. Focus on ATS-specific improvements like keywords, section headings, and formatting.
-
+You are an ATS expert.
+Analyze the following resume and provide up to 7 specific suggestions to improve ATS compatibility.
 Resume:
 {resume_text[:6000]}
-            """
-
+"""
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
         suggestions = response.choices[0].message.content.strip()
         return {"text": resume_text, "suggestions": suggestions}
-
     except Exception as e:
         logger.error(f"[ERROR in analyze_resume_with_openai]: {str(e)}")
         return {"error": f"Failed to analyze resume: {str(e)}"}
@@ -231,40 +172,26 @@ Resume:
 def check_ats_compatibility(file_path):
     try:
         ext = os.path.splitext(file_path)[1].lower()
-        if ext == ".pdf":
-            text = extract_text_from_pdf(file_path)
-        elif ext == ".docx":
-            text = extract_text_from_docx(file_path)
-        else:
-            return {"error": "Unsupported file type."}
-
+        text = extract_text_from_pdf(file_path) if ext == ".pdf" else extract_text_from_docx(file_path)
         if not text.strip():
             return {"error": "No readable text found in resume."}
-
-        # Initialize issues and score
         issues = []
         score = 100
-
-        # Check 1: Contact Information (Email, Phone, Location)
         if not re.search(r'[\w\.-]+@[\w\.-]+', text, re.IGNORECASE):
             issues.append("❌ Missing email - Add your email address.")
             score -= 15
         else:
             issues.append("✅ Email found.")
-
         if not re.search(r'\+?\d[\d\s\-]{8,}', text):
             issues.append("❌ Missing phone - Add your phone number.")
             score -= 10
         else:
             issues.append("✅ Phone number found.")
-
         if not re.search(r'\b(?:[A-Z][a-z]+(?:,\s*)?)+\b', text):
             issues.append("❌ Missing location - Add your city and state.")
             score -= 10
         else:
             issues.append("✅ Location found.")
-
-        # Check 2: Required Sections
         section_headings = ['education', 'experience', 'skills', 'certifications', 'projects']
         found_headings = [heading for heading in section_headings if heading in text.lower()]
         if len(found_headings) < 3:
@@ -273,8 +200,6 @@ def check_ats_compatibility(file_path):
             score -= 20
         else:
             issues.append("✅ Key sections found.")
-
-        # Check 3: Keyword Density (Common ATS Keywords)
         common_keywords = [
             'communication', 'leadership', 'teamwork', 'project management', 'problem-solving',
             'python', 'javascript', 'sql', 'java', 'excel', 'data analysis', 'marketing',
@@ -282,334 +207,292 @@ def check_ats_compatibility(file_path):
         ]
         found_keywords = [kw for kw in common_keywords if kw in text.lower()]
         keyword_density = len(found_keywords) / len(common_keywords)
-        if keyword_density < 0.2:  # Less than 20% of common keywords found
-            issues.append("❌ Low keyword density - Add more keywords like 'communication', 'leadership', or 'teamwork'.")
+        if keyword_density < 0.2:
+            issues.append("❌ Low keyword density - Add keywords like 'communication', 'leadership'.")
             score -= 15
         else:
             issues.append("✅ Sufficient keywords found.")
-
-        # Check 4: Content Length (Too Short or Too Long)
         word_count = len(text.split())
         if word_count < 150:
-            issues.append("❌ Resume too short - Add more details to your experience or skills.")
+            issues.append("❌ Resume too short - Add more details.")
             score -= 10
         elif word_count > 1000:
-            issues.append("❌ Resume too long - Shorten your resume to 1-2 pages.")
+            issues.append("❌ Resume too long - Shorten to 1-2 pages.")
             score -= 10
         else:
             issues.append("✅ Appropriate content length.")
-
-        # Check 5: Formatting Issues (e.g., Use of Headers, Fonts, Special Characters)
-        if re.search(r'[^\x00-\x7F]', text):  # Non-ASCII characters
-            issues.append("❌ Special characters detected - Use standard ASCII characters to ensure ATS compatibility.")
+        if re.search(r'[^\x00-\x7F]', text):
+            issues.append("❌ Special characters detected - Use standard ASCII characters.")
             score -= 10
         else:
             issues.append("✅ No special characters detected.")
-
-        # Check 6: Quantifiable Achievements
         if not re.search(r'\d+\%|\d+\s*(hours|projects|clients|sales)', text, re.IGNORECASE):
-            issues.append("❌ Missing quantifiable achievements - Add metrics like 'increased sales by 20%' or 'managed 5 projects'.")
+            issues.append("❌ Missing quantifiable achievements - Add metrics like 'increased sales by 20%'.")
             score -= 10
         else:
             issues.append("✅ Quantifiable achievements found.")
-
-        # Check 7: Action Verbs
-        action_verbs = ['led', 'developed', 'managed', 'improved', 'designed', 'implemented', 'analyzed', 'increased']
+        action_verbs = ['led', 'developed', 'managed', 'improved', 'designed', 'implemented', 'analyzed']
         found_verbs = [verb for verb in action_verbs if verb in text.lower()]
         if len(found_verbs) < 2:
-            issues.append("❌ Limited use of action verbs - Start bullet points with verbs like 'led', 'developed', or 'improved'.")
+            issues.append("❌ Limited action verbs - Use verbs like 'led', 'developed'.")
             score -= 10
         else:
             issues.append("✅ Action verbs used effectively.")
-
-        # Limit score to 0-100 range
         score = max(0, min(100, score))
         return {"issues": issues, "score": score}
-
     except Exception as e:
         logger.error(f"[ERROR in check_ats_compatibility]: {str(e)}")
-        return {"error": f"Failed to generate ATS compatibility report: {str(e)}"}
+        return {"error": f"Failed to generate ATS report: {str(e)}"}
 
 def fix_resume_formatting(file_path):
     ext = os.path.splitext(file_path)[1].lower()
-    if ext == ".pdf":
-        text = extract_text_from_pdf(file_path)
-    elif ext == ".docx":
-        text = extract_text_from_docx(file_path)
-    else:
-        return {"error": "Unsupported file type"}
-
+    text = extract_text_from_pdf(file_path) if ext == ".pdf" else extract_text_from_docx(file_path)
     if not text.strip():
         return {"error": "No readable text found in resume"}
-
     prompt = f"""
-You are a professional resume formatting expert.
-Clean and reformat the following resume into plain text with the following rules:
-- Organize the resume into clear sections (e.g., Education, Experience, Skills, etc.).
-- Use section headings in all caps (e.g., EDUCATION, EXPERIENCE, SKILLS).
-- Use a single dash and space ("- ") for all bullet points.
-- Ensure exactly one blank line between sections.
-- Remove extra spaces, normalize line breaks, and ensure consistent formatting.
-- Do not use HTML, markdown, or any other markup language—just plain text.
-- Order sections as follows: PERSONAL DETAILS, SUMMARY, OBJECTIVE, SKILLS, EXPERIENCE, EDUCATION, CERTIFICATIONS, LANGUAGES, HOBBIES, PROJECTS, VOLUNTEER EXPERIENCE, ACHIEVEMENTS, PUBLICATIONS, REFERENCES.
-
-Example output:
-NAME
-John Doe
-
-PERSONAL DETAILS
-- Email: john.doe@email.com
-- Phone: +1234567890
-
-SUMMARY
-- A dedicated Software Engineer with 3 years of experience.
-
-EXPERIENCE
-- Software Engineer Intern, ABC Corp, June 2023 - August 2023
-- Developed web applications using React and Node.js
-
-SKILLS
-- Python
-- JavaScript
-- SQL
-
+You are a resume formatting expert.
+Clean and reformat the resume into plain text with:
+- Clear sections (e.g., Education, Experience).
+- Headings in all caps (e.g., EDUCATION).
+- Single dash bullet points ("- ").
+- One blank line between sections.
+- Order: PERSONAL DETAILS, SUMMARY, SKILLS, EXPERIENCE, EDUCATION, CERTIFICATIONS, LANGUAGES, HOBBIES, PROJECTS.
 Resume:
 {text}
-    """
-
+"""
     if not client:
-        return {"error": "Cannot format resume: OpenAI API key not set."}
-
+        return {"error": "OpenAI API key not set."}
     try:
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are an expert in resume formatting."},
-                {"role": "user", "content": prompt}
-            ]
+            messages=[{"role": "system", "content": "Expert in resume formatting."}, {"role": "user", "content": prompt}]
         )
         formatted_text = response.choices[0].message.content.strip()
-        # Additional cleanup to ensure consistent formatting
         lines = formatted_text.split('\n')
         cleaned_lines = []
         for i, line in enumerate(lines):
             line = line.strip()
             if line:
-                # Ensure bullet points start with "- "
                 if line.startswith(('-', '*', '•')):
                     line = '- ' + line.lstrip('-*•').strip()
                 cleaned_lines.append(line)
             elif i < len(lines) - 1 and lines[i + 1].strip():
-                # Ensure exactly one blank line between sections
-                if cleaned_lines and cleaned_lines[-1]:
-                    cleaned_lines.append('')
+                cleaned_lines.append('')
         return {"formatted_text": '\n'.join(cleaned_lines).strip()}
     except Exception as e:
         logger.error(f"[ERROR in fix_resume_formatting]: {str(e)}")
-        return {"error": "Failed to fix resume formatting due to an API error"}
+        return {"error": "Failed to fix resume formatting"}
 
 def generate_section_content(suggestion, full_text):
     if not client:
-        return {"error": "Cannot generate section content: OpenAI API key not set."}
-
+        return {"error": "OpenAI API key not set."}
     try:
         sections = extract_resume_sections(full_text)
-        existing_sections = list(sections.keys())
-
-        # Check for personal details to avoid incorrect suggestions
-        personal_details = sections.get("personal_details", "").lower()
-        has_email = bool(re.search(r'[\w\.-]+@[\w\.-]+', personal_details))
-        has_phone = bool(re.search(r'\+?\d[\d\s\-]{8,}', personal_details))
-        has_location = "location" in personal_details or "city" in personal_details or "📍" in personal_details
-
+        has_email = bool(re.search(r'[\w\.-]+@[\w\.-]+', sections.get("personal_details", "").lower()))
+        has_phone = bool(re.search(r'\+?\d[\d\s\-]{8,}', sections.get("personal_details", "").lower()))
+        has_location = "location" in sections.get("personal_details", "").lower() or "city" in sections.get("personal_details", "").lower()
         prompt = f"""
-You are an AI resume improvement expert.
-
-Given the suggestion and full resume text, return a JSON with:
-- 'section': which section to update (e.g. skills, summary, education)
-- 'fixedContent': fixed or new content based on the suggestion
-- Add grammar/spelling correction where needed
-- If the section is missing, generate it with relevant content
+You are a resume improvement expert.
+Given the suggestion and resume text, return JSON with:
+- 'section': section to update (e.g., skills, summary)
+- 'fixedContent': fixed or new content
+- Add grammar/spelling correction
 - Use bullet points where applicable
-- Respond in this format:
-{{"section": "skills", "fixedContent": "- Python\\n- Communication\\n- Teamwork"}}
-
-Additional Instructions:
-- If the suggestion is about adding an email, phone, or location, and these already exist in the personal_details section, do not suggest adding them again. Instead, confirm they are present.
-- For the 'technical_skills' section:
-  - If there are more than 10 skills, reduce to the top 8 most relevant skills.
-  - If there are fewer than 5 skills, expand by adding 3-5 relevant skills based on the resume context.
-- For the 'education' section:
-  - Format each line as: Degree, School Name, Year or Score (if available)
-  - Use plain text, no HTML or markdown
-  - Each item on a new line
-
+Format:
+{{"section": "skills", "fixedContent": "- Python\\n- Communication"}}
 Email present: {has_email}
 Phone present: {has_phone}
 Location present: {has_location}
-
 Suggestion:
 {suggestion}
-
 Resume:
 {full_text[:6000]}
-        """
-
+"""
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7
+        )
+        raw_response = response.choices[0].message.content.strip()
         try:
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.7
-            )
-            raw_response = response.choices[0].message.content.strip()
-
+            result = json.loads(raw_response)
+        except json.JSONDecodeError:
+            import ast
             try:
-                result = json.loads(raw_response)
-            except json.JSONDecodeError:
-                import ast
-                try:
-                    result = ast.literal_eval(raw_response)
-                except Exception as e:
-                    logger.error(f"[ERROR in generate_section_content]: {str(e)}")
-                    return {"error": f"Failed to generate section content: {str(e)}"}
-
-        except Exception as e:
-            logger.error(f"[ERROR in OpenAI response]: {str(e)}")
-            return {"error": f"Failed to contact OpenAI: {str(e)}"}
-
-        # Clean and normalize
+                result = ast.literal_eval(raw_response)
+            except Exception as e:
+                logger.error(f"[ERROR in generate_section_content]: {str(e)}")
+                return {"error": str(e)}
         section = result.get("section", "").lower().replace(" ", "_")
         content = result.get("fixedContent", "").strip()
-
-                # Optional cleanup for education formatting
         if section == "education":
             lines = content.splitlines()
-            cleaned = []
-            for line in lines:
-                line = line.strip("-•* \t")
-                if line:
-                    cleaned.append(line)
+            cleaned = [line.strip("-* ").strip() for line in lines if line.strip()]
             content = "\n".join(cleaned).strip()
-
-        return {
-            "section": section,
-            "fixedContent": content
-        }
-
+        return {"section": section, "fixedContent": content}
     except Exception as e:
         logger.error(f"[ERROR in generate_section_content]: {str(e)}")
         return {"error": f"Failed to generate section content: {str(e)}"}
 
-# ✅ Updated extract_resume_sections function inside resume_ai_analyzer.py
-
 def extract_resume_sections(text):
-    import re
-    from collections import OrderedDict
+    try:
+        # Define section headings and their normalized names
+        section_mappings = {
+            r'\b(Objective|Career Objective|Professional Summary|Summary|Profile)\b': 'summary',
+            r'\b(Education|Academic Background|Educational Qualifications)\b': 'education',
+            r'\b(Experience|Work Experience|Professional Experience|Employment History)\b': 'work_experience',
+            r'\b(Internship|Internships)\b': 'internships',
+            r'\b(Projects|Personal Projects|Technical Projects)\b': 'projects',
+            r'\b(Skills|Technical Skills|Key Skills|Core Competencies)\b': 'skills',
+            r'\b(Certifications|Courses|Licenses)\b': 'certifications',
+            r'\b(Awards|Achievements|Honors)\b': 'achievements',
+            r'\b(Languages|Languages Known)\b': 'languages',
+            r'\b(Hobbies|Interests)\b': 'hobbies',
+            r'\b(Publications|Research Work)\b': 'publications',
+            r'\b(Extracurricular Activities|Volunteer Work|Community Involvement)\b': 'volunteer_experience',
+            r'\b(References|Referees)\b': 'references'
+        }
 
-    # Define common resume section headings
-    section_headings = [
-        "Objective", "Summary", "Profile", "Career Objective",
-        "Education", "Academic Background", "Educational Qualifications",
-        "Experience", "Work Experience", "Professional Experience",
-        "Internship", "Internships",
-        "Projects", "Personal Projects", "Technical Projects",
-        "Skills", "Technical Skills", "Key Skills",
-        "Certifications", "Courses", "Licenses",
-        "Awards", "Achievements", "Honors",
-        "Languages", "Languages Known",
-        "Hobbies", "Interests",
-        "Publications", "Research Work",
-        "Extracurricular Activities", "Volunteer Work",
-        "References"
-    ]
+        # Initialize output
+        parsed_sections = {
+            'name': '',
+            'job_title': '',
+            'phone': '',
+            'email': '',
+            'location': '',
+            'website': '',
+            'summary': '',
+            'education': '',
+            'work_experience': '',
+            'internships': '',
+            'projects': '',
+            'skills': '',
+            'certifications': '',
+            'achievements': '',
+            'languages': '',
+            'hobbies': '',
+            'publications': '',
+            'volunteer_experience': '',
+            'references': ''
+        }
 
-    # Build pattern to match section titles
-    section_pattern = re.compile(rf"^({'|'.join(section_headings)})(:?\s*)$", re.IGNORECASE | re.MULTILINE)
+        # Extract personal details
+        lines = text.split('\n')
+        name = ''
+        contact_lines = []
+        content_lines = []
+        in_header = True
 
-    matches = list(section_pattern.finditer(text))
-    parsed_sections = OrderedDict()
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            if in_header:
+                if not name and len(line) < 50 and not re.search(r'[\w\.-]+@[\w\.-]+|\+?\d[\d\s\-]{8,}|www\.|linkedin\.com', line, re.IGNORECASE):
+                    name = line
+                    continue
+                if re.search(r'[\w\.-]+@[\w\.-]+|\+?\d[\d\s\-]{8,}|www\.|linkedin\.com|[A-Z][a-z]+,\s*[A-Z]{2}', line, re.IGNORECASE):
+                    contact_lines.append(line)
+                    continue
+                in_header = False
+            content_lines.append(line)
 
-    for i, match in enumerate(matches):
-        start = match.end()
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
-        section_title = match.group(1).strip().title()
-        section_body = text[start:end].strip()
+        parsed_sections['name'] = name
+        for line in contact_lines:
+            if re.search(r'[\w\.-]+@[\w\.-]+', line, re.IGNORECASE):
+                parsed_sections['email'] = line
+            elif re.search(r'\+?\d[\d\s\-]{8,}', line):
+                parsed_sections['phone'] = line
+            elif re.search(r'[A-Z][a-z]+,\s*[A-Z]{2}|[A-Z][a-z]+\s*(?:City|State)', line, re.IGNORECASE):
+                parsed_sections['location'] = line
+            elif re.search(r'www\.|linkedin\.com', line, re.IGNORECASE):
+                parsed_sections['website'] = line
 
-        if section_title in parsed_sections:
-            section_title += f"_{i}"  # avoid duplicates
+        # Extract job title (often after name or in summary)
+        for line in content_lines[:10]:
+            if re.search(r'\b(Engineer|Developer|Manager|Analyst|Consultant|Specialist|Coordinator|Director)\b', line, re.IGNORECASE) and len(line) < 50:
+                parsed_sections['job_title'] = line
+                break
 
-        parsed_sections[section_title] = section_body
+        # Section extraction
+        current_section = None
+        section_content = []
+        section_pattern = '|'.join(section_mappings.keys())
 
-    return dict(parsed_sections)
+        for line in content_lines:
+            line = line.strip()
+            if not line:
+                continue
+            match = re.match(section_pattern, line, re.IGNORECASE)
+            if match:
+                if current_section:
+                    parsed_sections[current_section] = '\n'.join(section_content).strip()
+                    section_content = []
+                for pattern, normalized in section_mappings.items():
+                    if re.match(pattern, line, re.IGNORECASE):
+                        current_section = normalized
+                        break
+                continue
+            if current_section:
+                section_content.append(line)
+
+        if current_section and section_content:
+            parsed_sections[current_section] = '\n'.join(section_content).strip()
+
+        logger.info(f"Extracted sections: {list(parsed_sections.keys())}")
+        return parsed_sections
+    except Exception as e:
+        logger.error(f"[ERROR in extract_resume_sections]: {str(e)}")
+        return {}
 
 def extract_keywords_from_jd(jd_text):
     if not client:
-        return "Cannot extract keywords: OpenAI API key not set."
-
+        return "OpenAI API key not set."
     try:
         prompt = f"""
-From the following job description, extract the most important keywords that should be reflected in a resume.
-Return the keywords as a comma-separated string.
-
+Extract key keywords from the job description as a comma-separated string.
 Job Description:
 {jd_text[:3000]}
-        """
+"""
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
         return response.choices[0].message.content.strip()
-
     except Exception as e:
         logger.error(f"[ERROR in extract_keywords_from_jd]: {str(e)}")
-        return "Failed to extract keywords from job description."
+        return "Failed to extract keywords."
 
 def generate_resume_summary(name, role, experience, skills):
     if not client:
-        return "OpenAI API key not set. Cannot generate summary."
-
+        return "OpenAI API key not set."
     try:
-        # 🧼 Clean personal info from inputs
-        experience = remove_unnecessary_personal_info(experience or "")
-        skills = remove_unnecessary_personal_info(skills or "")
-
         prompt = f"""
-You are a professional resume expert.
-
-Write a concise 2–3 line professional summary for the following person:
+Write a 2–3 line ATS-friendly professional summary for:
 - Name: {name}
 - Role: {role}
 - Experience: {experience}
 - Skills: {skills}
-
-Make it ATS-friendly, use action words, and highlight strengths. Do not include heading or labels.
-        """
-
+Use action words, highlight strengths, no heading.
+"""
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[
-                {"role": "user", "content": prompt}
-            ],
+            messages=[{"role": "user", "content": prompt}],
             temperature=0.7
         )
-
         return response.choices[0].message.content.strip()
-
     except Exception as e:
         logger.error(f"[ERROR in generate_resume_summary]: {str(e)}")
-        return "Failed to generate summary due to AI error."
+        return "Failed to generate summary."
 
 def compare_resume_with_keywords(resume_text, job_keywords):
     if not resume_text or not job_keywords:
         return {"match_score": 0, "missing_keywords": job_keywords}
-
     resume_lower = resume_text.lower()
     keywords = [kw.strip().lower() for kw in job_keywords.split(",") if kw.strip()]
     missing_keywords = [kw for kw in keywords if kw not in resume_lower]
     matched_keywords = [kw for kw in keywords if kw in resume_lower]
-
     match_score = int((len(matched_keywords) / len(keywords)) * 100) if keywords else 0
-
     return {
         "match_score": match_score,
         "matched_keywords": matched_keywords,
@@ -618,30 +501,22 @@ def compare_resume_with_keywords(resume_text, job_keywords):
 
 def analyze_job_description(jd_text):
     if not client:
-        return "OpenAI API key not set. Cannot analyze job description."
-
+        return "OpenAI API key not set."
     try:
         prompt = f"""
-You are an expert resume reviewer.
-
-Analyze the following job description and extract the most relevant:
+Analyze the job description and extract:
 1. Key Skills
 2. Required Qualifications
 3. Recommended Action Verbs
-
-Format the result clearly in 3 sections with headings.
-
+Format in 3 sections with headings.
 Job Description:
 {jd_text}
-        """
-
+"""
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
-
         return response.choices[0].message.content.strip()
-
     except Exception as e:
         logger.error(f"[ERROR in analyze_job_description]: {str(e)}")
         return "Failed to analyze job description."
@@ -651,79 +526,19 @@ def generate_michelle_template_html(sections):
         if not text:
             return ""
         lines = text.strip().split("\n")
-        # For education, avoid bullet points for short entries unless they are clearly list items
         if section_type == "education":
-            # Check if the content looks like a list (e.g., multiple degrees or details with specific patterns)
             if len(lines) > 1 and any(line.startswith(("-", "•")) for line in lines):
-                return "".join(
-                    f"<li>{line.strip().lstrip('-• ').strip()}</li>"
-                    for line in lines
-                    if line.strip()
-                )
-            # For single-line or short education entries, use a paragraph instead
+                return "".join(f"<li>{line.strip().lstrip('-• ').strip()}</li>" for line in lines if line.strip())
             return f"<p>{text.strip()}</p>"
-        # For other sections, keep bullet points
-        return "".join(
-            f"<li>{line.strip().lstrip('-• ').strip()}</li>"
-            for line in lines
-            if line.strip()
-        )
+        return "".join(f"<li>{line.strip().lstrip('-• ').strip()}</li>" for line in lines if line.strip())
 
-    # Extract personal details more reliably
-    name = "Your Name"
-    phone = email = location = website = ""
-    personal_lines = sections.get("personal_details", "").split("\n")
+    name = sections.get("name", "Your Name")
+    phone = sections.get("phone", "Not Provided")
+    email = sections.get("email", "Not Provided")
+    location = sections.get("location", "Not Provided")
+    website = sections.get("website", "Not Provided")
+    title = sections.get("job_title", "Your Role")
 
-    # Enhanced parsing for personal details
-    for line in personal_lines:
-        line = line.strip()
-        if not line:
-            continue
-        # First line without email, phone, or website is likely the name
-        if (
-            name == "Your Name"
-            and "@" not in line
-            and not re.search(r"\d{5,}", line)
-            and not any(x in line.lower() for x in ["www", ".com", "city", "state"])
-            and len(line) < 50
-        ):
-            name = line
-        if "email" in line.lower() or "@" in line or "📧" in line:
-            email = line.replace("📧", "").strip()
-        elif "phone" in line.lower() or re.search(r"\+?\d[\d\s\-]{8,}", line) or "📞" in line:
-            phone = line.replace("📞", "").strip()
-        elif (
-            "location" in line.lower()
-            or "city" in line.lower()
-            or "state" in line.lower()
-            or "📍" in line
-        ):
-            location = line.replace("📍", "").strip()
-        elif "website" in line.lower() or "www" in line.lower() or "🌐" in line:
-            website = line.replace("🌐", "").strip()
-
-    # Fallback for name if not found
-    if name == "Your Name":
-        for section in sections.values():
-            if section:
-                lines = section.split("\n")
-                for line in lines:
-                    line = line.strip()
-                    if (
-                        line
-                        and len(line) < 50
-                        and "@" not in line
-                        and not re.search(r"\d{5,}", line)
-                        and not any(x in line.lower() for x in ["www", ".com", "city", "state"])
-                    ):
-                        name = line
-                        break
-                if name != "Your Name":
-                    break
-
-    title = sections.get("summary", "").split("\n")[0] if sections.get("summary") else "Your Role"
-
-    # Adjust width and padding to reduce left-right space
     return f"""
     <div class='resume-wrapper' style='max-width:95%;margin:0 auto;background:#fff;border:1px solid #ccc;box-shadow:0 0 10px rgba(0,0,0,0.1);'>
       <div class='header' style='background:#d3d3d3;padding:20px;text-align:center;'>
@@ -733,10 +548,10 @@ def generate_michelle_template_html(sections):
       <div class='content' style='display:flex;padding:15px;'>
         <div class='left-panel' style='width:25%;background:#f5f5f5;padding-right:15px;border-right:1px solid #ccc;box-sizing:border-box;'>
           <h3>Contact</h3>
-          <div class='contact-item'>📞 {phone if phone else 'Not Provided'}</div>
-          <div class='contact-item'>✉️ {email if email else 'Not Provided'}</div>
-          <div class='contact-item'>📍 {location if location else 'Not Provided'}</div>
-          <div class='contact-item'>🌐 {website if website else 'Not Provided'}</div>
+          <div class='contact-item'>📞 {phone}</div>
+          <div class='contact-item'>✉️ {email}</div>
+          <div class='contact-item'>📍 {location}</div>
+          <div class='contact-item'>🌐 {website}</div>
           <h3>Education</h3>
           {list_items(sections.get('education', ''), 'education')}
           <h3>Skills</h3>
@@ -765,19 +580,16 @@ def generate_michelle_template_html(sections):
 def check_ats_compatibility_fast(text):
     score = 100
     issues = []
-
     if not re.search(r'\b\w+@\w+\.\w+\b', text):
         issues.append("❌ Missing email - Add your email.")
         score -= 15
     else:
         issues.append("✅ Email found.")
-
     if not re.search(r'\+?\d[\d\s\-]{8,}', text):
         issues.append("❌ Missing phone - Add your phone number.")
         score -= 10
     else:
         issues.append("✅ Phone number found.")
-
     keywords = ["education", "experience", "skills", "certifications"]
     found = [k for k in keywords if k in text.lower()]
     if len(found) < 3:
@@ -785,51 +597,33 @@ def check_ats_compatibility_fast(text):
         score -= 20
     else:
         issues.append("✅ Key sections found.")
-
-    # Limit to 5 issues max
-    issues = issues[:5]
-    return {"score": max(0, score), "issues": issues}
+    return {"score": max(0, score), "issues": issues[:5]}
 
 def check_ats_compatibility_deep(file_path):
     try:
         ext = os.path.splitext(file_path)[1].lower()
-        if ext == ".pdf":
-            text = extract_text_from_pdf(file_path)
-        elif ext == ".docx":
-            text = extract_text_from_docx(file_path)
-        else:
-            return {"error": "Unsupported file type"}
-
+        text = extract_text_from_pdf(file_path) if ext == ".pdf" else extract_text_from_docx(file_path)
         if not text.strip():
             return {"error": "No readable text found in resume"}
-
-        # Basic Checks
         score = 100
         issues = []
-
         if not re.search(r'\b\w+@\w+\.\w+\b', text):
             issues.append("❌ Missing email - Add your email.")
             score -= 10
-
         if not re.search(r'\+?\d[\d\s\-]{8,}', text):
             issues.append("❌ Missing phone - Add your phone number.")
             score -= 10
-
         if len(text.split()) < 150:
             issues.append("❌ Resume too short")
             score -= 10
-
-        # AI validation
         prompt = f"""
-You are an ATS expert. Check the following resume and give up to 5 issues:
+You are an ATS expert. Check the resume and give up to 5 issues:
 Resume:
 {text[:6000]}
-
-Also flag unnecessary personal information like Marital Status, Date of Birth, Gender, Nationality, or Religion as issues with a reason to remove them.
-Return in this format:
+Flag unnecessary personal info like Marital Status, Date of Birth, Gender, Nationality, or Religion.
+Return:
 ["✅ Passed: ...", "❌ Issue: ..."]
-        """
-
+"""
         ai_resp = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
@@ -838,39 +632,23 @@ Return in this format:
         ai_lines = ai_resp.choices[0].message.content.strip().splitlines()
         issues += [line for line in ai_lines if line.strip()]
         score -= sum(5 for line in ai_lines if line.startswith("❌"))
-
         return {"score": max(score, 0), "issues": issues}
-
     except Exception as e:
         return {"error": str(e)}
-import re
 
 def remove_unnecessary_personal_info(text):
-    # Remove Date of Birth
     text = re.sub(r"(Date of Birth|DOB)[:\-]?\s*\d{1,2}[\/\-\.]?\d{1,2}[\/\-\.]?\d{2,4}", "", text, flags=re.IGNORECASE)
     text = re.sub(r"(Date of Birth|DOB)[:\-]?\s*[A-Za-z]+\s+\d{1,2},?\s+\d{4}", "", text, flags=re.IGNORECASE)
-
-    # Remove Gender
     text = re.sub(r"Gender[:\-]?\s*(Male|Female|Other|Prefer not to say)", "", text, flags=re.IGNORECASE)
-
-    # Remove Marital Status
     text = re.sub(r"Marital Status[:\-]?\s*(Single|Married|Divorced|Widowed)", "", text, flags=re.IGNORECASE)
-
-    # Remove Nationality
     text = re.sub(r"Nationality[:\-]?\s*\w+", "", text, flags=re.IGNORECASE)
-
-    # Remove Religion
     text = re.sub(r"Religion[:\-]?\s*\w+", "", text, flags=re.IGNORECASE)
-
-    # Remove long address formats, retain only city and country
-    # e.g. "T-602, Street No 12, Gautampuri, New Delhi 110053, India" → "New Delhi, India"
     text = re.sub(r'((Address|Location)[:\-]?)?\s*[\w\s\-\,\.\/]*?(\b[A-Z][a-z]+\b)[,\s]+(\b[A-Z][a-z]+\b)(?:\s*\d{5,6})?(,\s*India)?', r'\3, \4', text)
-
     return text
 
 def generate_ats_report(text):
-    # Wrapper for backward compatibility
     return check_ats_compatibility_fast(text)
+
 def calculate_resume_score(summary, ats_issues):
     score = 70
     if summary:
