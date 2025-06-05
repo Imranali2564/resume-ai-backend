@@ -224,9 +224,12 @@ def extract_resume_sections(text: str) -> Dict[str, str]:
         "Personal Details", "Contact Information"
     ]
 
-    section_pattern = re.compile(rf"^(?:-)?\s*(?:-)?({'|'.join(map(re.escape, section_headings)}))(?:[:\-]?\s*)$", re.IGNORECASE | re.MULTILINE)
-    matches = list(section_pattern.finditer(text))
-    parsed_sections = OrderedDict()
+    section_pattern = re.compile(
+    rf"^(?:-)?\s*(?:-)?({'|'.join(map(re.escape, section_headings))})(?:[:\-]?\s*)$",
+    re.IGNORECASE | re.MULTILINE
+)
+matches = list(section_pattern.finditer(text))
+parsed_sections = OrderedDict()
 
     # Initialize default sections
     default_sections = {
