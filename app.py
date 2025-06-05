@@ -6,23 +6,7 @@ import os
 import uuid
 import json
 import re
-from resume_ai_analyzer import (
-    generate_resume_summary,
-    generate_michelle_template_html,
-    extract_text_from_resume,
-    extract_resume_sections,
-    analyze_resume_with_openai,
-    extract_text_from_pdf,
-    extract_text_from_docx,
-    check_ats_compatibility,
-    extract_keywords_from_jd,
-    compare_resume_with_keywords,
-    analyze_job_description,
-    fix_resume_formatting,
-    generate_section_content,
-    generate_ats_report,
-    calculate_resume_score
-)
+from resume_ai_analyzer import generate_resume_summary, generate_michelle_template_html, extract_text_from_resume, extract_resume_sections
 try:
     from docx import Document
     from docx.shared import Pt, Inches, RGBColor
@@ -41,6 +25,26 @@ try:
     from reportlab.lib.colors import HexColor
 except ImportError as e:
     logging.error(f"Failed to import reportlab: {str(e)}")
+    raise
+try:
+    from resume_ai_analyzer import (
+    analyze_resume_with_openai,
+    extract_text_from_pdf,
+    extract_text_from_docx,        
+    check_ats_compatibility,
+    extract_keywords_from_jd,
+    compare_resume_with_keywords,
+    analyze_job_description,
+    fix_resume_formatting,
+    generate_section_content,
+    generate_resume_summary,
+    extract_resume_sections,
+    generate_michelle_template_html,
+    generate_ats_report,  # ✅ Already added
+    calculate_resume_score  # ✅ 👈 Add this now
+)
+except ImportError as e:
+    logging.error(f"Failed to import resume_ai_analyzer: {str(e)}")
     raise
 try:
     import fitz  # PyMuPDF for PDF text extraction
@@ -74,6 +78,7 @@ except Exception as e:
     raise RuntimeError(f"Failed to create directories: {str(e)}")
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+# Removes unnecessary personal details from resume text
 def remove_unnecessary_personal_info(text):
     lines = text.split('\n')
     filtered_lines = []
@@ -83,13 +88,14 @@ def remove_unnecessary_personal_info(text):
             filtered_lines.append(line)
     return '\n'.join(filtered_lines)
 
+
 def cleanup_file(filepath):
     try:
-        if filepath and os.path.exists(filepath):
+        if os.path.exists(filepath):
             os.remove(filepath)
             logger.debug(f"Cleaned up file: {filepath}")
     except Exception as e:
-        logger.error(f"Error cleaning up file {filepath}: {str(e)}")
+        logger.error(f"Error cleaning up file: {str(e)}")
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -97,58 +103,50 @@ def health_check():
 
 @app.route("/upload", methods=["POST"])
 def upload_resume():
-    filepaths_to_cleanup = []
     try:
         file = request.files.get("file")
-        if not file or file.filename == '':
+        if not file:
             return jsonify({"error": "No file uploaded"}), 400
 
-        # Validate file size
-        file.seek(0, os.SEEK_END)
-        file_size = file.tell() / 1024  # Size in KB
-        file.seek(0)
-        if file_size == 0:
-            return jsonify({"error": "Uploaded file is empty"}), 400
-        if file_size > 10240:  # 10MB limit
-            return jsonify({"error": f"File size {file_size:.2f} KB exceeds 10MB limit"}), 400
-
+        # ✅ FIX: Directly pass file to extractor (NOT filepath)
         text = extract_text_from_resume(file)
+
         if not text:
             return jsonify({"error": "Failed to extract resume text"}), 500
 
+        # ✅ Cleaned + structured sections (dict)
         parsed_sections = extract_resume_sections(text)
-        if not parsed_sections:
-            return jsonify({"error": "Failed to parse resume sections"}), 500
 
+        # ✅ Extract fields for summary
         name = parsed_sections.get("name", "")
         role = parsed_sections.get("job_title", "")
         experience = parsed_sections.get("work_experience", "")
         skills = parsed_sections.get("skills", "")
 
+        # ✅ Generate professional summary (AI)
         summary = generate_resume_summary(name, role, experience, skills)
-        parsed_sections["summary"] = summary
+        parsed_sections["summary"] = summary  # Inject into parsed data for frontend
 
+        # ✅ ATS Report
         ats_issues = generate_ats_report(text)
+
+        # ✅ Resume Score
         score = calculate_resume_score(summary, ats_issues)
 
+        # ✅ Final response
         return jsonify({
             "resume_text": text,
             "parsedResumeContent": parsed_sections,
-            "suggestions": [],
+            "suggestions": [],  # You can populate suggestions if needed
             "ats_report": ats_issues,
             "score": score
         })
 
     except Exception as e:
-        logger.error(f"Error in /upload: {str(e)}")
-        return jsonify({"error": f"Failed to process upload: {str(e)}"}), 500
-    finally:
-        for filepath in filepaths_to_cleanup:
-            cleanup_file(filepath)
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/ats-check', methods=['POST'])
 def check_ats():
-    filepaths_to_cleanup = []
     try:
         file = request.files.get('file') or request.files.get('resume')
         if not file or file.filename == '':
@@ -158,26 +156,14 @@ def check_ats():
         if ext not in {'.pdf', '.docx'}:
             return jsonify({"error": f"Unsupported file format: {ext}. Please upload a PDF or DOCX."}), 400
 
-        # Validate file size
-        file.seek(0, os.SEEK_END)
-        file_size = file.tell() / 1024  # Size in KB
-        file.seek(0)
-        if file_size == 0:
-            return jsonify({"error": "Uploaded file is empty"}), 400
-        if file_size > 10240:  # 10MB limit
-            return jsonify({"error": f"File size {file_size:.2f} KB exceeds 10MB limit"}), 400
-
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
-        filepaths_to_cleanup.append(filepath)
 
         text = extract_text_from_pdf(filepath) if ext == ".pdf" else extract_text_from_docx(filepath)
-        if not text.strip():
-            return jsonify({"error": "No extractable text found in resume"}), 400
-
         cleaned_text = remove_unnecessary_personal_info(text)
 
+        # Enhanced ATS prompt with personal info warning
         prompt = f"""
 You are an ATS expert. Review the following resume and identify up to 5 ATS-related issues.
 
@@ -207,6 +193,8 @@ Only include meaningful points.
         )
 
         feedback = ai_resp.choices[0].message.content.strip().splitlines()
+
+        # Normalize feedback
         formatted_feedback = []
         for line in feedback:
             line = line.strip()
@@ -221,6 +209,7 @@ Only include meaningful points.
             else:
                 formatted_feedback.append("❌ " + line)
 
+        # Score calculation
         score = 100 - (len([line for line in formatted_feedback if line.startswith("❌")]) * 20)
         score = max(0, min(score, 100))
 
@@ -229,24 +218,24 @@ Only include meaningful points.
     except Exception as e:
         logger.error(f"Error in /ats-check: {str(e)}")
         return jsonify({"error": f"Failed to check ATS compatibility: {str(e)}"}), 500
+
     finally:
-        for filepath in filepaths_to_cleanup:
-            cleanup_file(filepath)
+        try:
+            if 'filepath' in locals() and os.path.exists(filepath):
+                cleanup_file(filepath)
+        except Exception as cleanup_err:
+            logger.warning(f"Cleanup failed: {cleanup_err}")
 
 @app.route('/analyze', methods=['POST'])
 def analyze_resume():
     try:
         data = request.get_json()
-        if not data or "resume_text" not in data:
-            return jsonify({"error": "No resume text provided in request body"}), 400
-
         resume_text = data.get('resume_text')
-        if not isinstance(resume_text, str) or not resume_text.strip():
+        if not resume_text or not isinstance(resume_text, str) or not resume_text.strip():
             return jsonify({"error": "Invalid or empty resume text"}), 400
-
         result = analyze_resume_with_openai(resume_text, atsfix=False)
         if "error" in result:
-            return jsonify({"error": result["error"]}), 500
+            return jsonify({"error": "Unable to generate suggestions. Please check if the API key is set."}), 500
         return jsonify(result)
     except Exception as e:
         logger.error(f"Error in /analyze: {str(e)}")
@@ -256,21 +245,23 @@ def analyze_resume():
 def fix_suggestion():
     try:
         data = request.get_json()
-        if not data or "suggestion" not in data or "full_text" not in data:
-            return jsonify({"error": "Missing suggestion or full_text in request body"}), 400
-
         suggestion = data.get("suggestion")
         full_text = data.get("full_text")
 
-        if not isinstance(suggestion, str) or not suggestion.strip():
-            return jsonify({"error": "Invalid or empty suggestion"}), 400
-        if not isinstance(full_text, str) or not full_text.strip():
-            return jsonify({"error": "Invalid or empty full text"}), 400
+        if not suggestion or not full_text:
+            logger.error("Missing suggestion or full_text in /fix-suggestion request")
+            return jsonify({"error": "Missing suggestion or full text"}), 400
 
         result = generate_section_content(suggestion, full_text)
         if 'error' in result:
+            logger.error(f"Error in generate_section_content: {result['error']}")
             return jsonify({"error": result["error"]}), 400
 
+        if not isinstance(result, dict) or "section" not in result or "fixedContent" not in result:
+            logger.error(f"Invalid response format from generate_section_content: {result}")
+            return jsonify({"error": "Invalid response format from AI"}), 500
+
+        logger.info(f"Successfully generated content for section: {result['section']}")
         return jsonify(result)
 
     except Exception as e:
@@ -281,19 +272,16 @@ def fix_suggestion():
 def preview_resume():
     try:
         data = request.get_json()
-        if not data or "sections" not in data:
-            return jsonify({"error": "No sections provided in request body"}), 400
-
         sections = data.get('sections')
-        if not isinstance(sections, dict) or not sections:
-            return jsonify({"error": "Invalid or empty sections data"}), 400
+        if not sections:
+            logger.error("No sections provided in /preview-resume request")
+            return jsonify({"error": "No sections provided"}), 400
 
+        # Generate HTML
         html_content = """
         <div style='width: 90%; margin: 0 auto; font-family: Arial, sans-serif;'>
         """
         for section, content in sections.items():
-            if not isinstance(content, str):
-                continue
             section_title = section.replace('_', ' ').title()
             html_content += """
             <div class='section' style='margin-bottom: 1.2rem;'>
@@ -303,10 +291,9 @@ def preview_resume():
             """.format(section_title.upper(), content.replace('\n', '<br>'))
         html_content += "</div>"
 
+        # Generate plain text
         resume_text_lines = []
         for section, content in sections.items():
-            if not isinstance(content, str):
-                continue
             section_title = section.replace('_', ' ').title()
             resume_text_lines.append(section_title.upper())
             lines = content.split('\n')
@@ -318,6 +305,7 @@ def preview_resume():
                     resume_text_lines.append(line)
             resume_text_lines.append('')
 
+        # Clean up excessive blank lines
         cleaned_resume = []
         last_was_empty = False
         for line in resume_text_lines:
@@ -335,19 +323,14 @@ def preview_resume():
 
 @app.route('/final-resume', methods=['POST'])
 def final_resume_download():
-    filepaths_to_cleanup = []
     try:
         data = request.get_json()
-        if not data or "html" not in data:
-            return jsonify({"error": "No HTML content provided in request body"}), 400
-
         html_content = data.get("html")
-        file_format = data.get("format", "pdf").lower()
+        file_format = data.get("format", "pdf")
 
-        if not isinstance(html_content, str) or not html_content.strip():
-            return jsonify({"error": "Invalid or empty HTML content"}), 400
-        if file_format not in ["pdf", "docx"]:
-            return jsonify({"error": "Invalid format. Use 'pdf' or 'docx'."}), 400
+        if not html_content:
+            logger.error("No HTML content provided in /final-resume request")
+            return jsonify({"error": "Invalid HTML content provided"}), 400
 
         wrapped_html = """
         <div style='width: 90%; margin: 0 auto; font-family: Arial, sans-serif; padding: 20px;'>
@@ -355,60 +338,55 @@ def final_resume_download():
         </div>
         """.format(html_content)
 
-        if file_format == "pdf":
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as pdf_file:
-                pdfkit.from_string(wrapped_html, pdf_file.name)
-                filepaths_to_cleanup.append(pdf_file.name)
+        if file_format in ["pdf", "docx"]:
+            if file_format == "pdf":
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as pdf_file:
+                    pdfkit.from_string(wrapped_html, pdf_file.name)
+                    logger.info(f"Generated PDF at: {pdf_file.name}")
+                    return send_file(
+                        pdf_file.name,
+                        as_attachment=True,
+                        download_name="Final_Resume.pdf",
+                        mimetype='application/pdf'
+                    )
+
+            else:
+                try:
+                    from html2docx import html2docx
+                except ImportError as e:
+                    logger.error(f"html2docx not installed: {str(e)}")
+                    return jsonify({"error": "Server error: html2docx not installed"}), 500
+
+                docx_bytes = html2docx(wrapped_html)
+                logger.info("Generated DOCX in memory")
                 return send_file(
-                    pdf_file.name,
+                    io.BytesIO(docx_bytes),
                     as_attachment=True,
-                    download_name="Final_Resume.pdf",
-                    mimetype='application/pdf'
+                    download_name="Final_Resume.docx",
+                    mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
                 )
 
         else:
-            try:
-                from html2docx import html2docx
-            except ImportError as e:
-                logger.error(f"html2docx not installed: {str(e)}")
-                return jsonify({"error": "Server error: html2docx not installed"}), 500
-
-            docx_bytes = html2docx(wrapped_html)
-            return send_file(
-                io.BytesIO(docx_bytes),
-                as_attachment=True,
-                download_name="Final_Resume.docx",
-                mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-            )
+            logger.error(f"Invalid format requested: {file_format}")
+            return jsonify({"error": "Invalid format. Use 'pdf' or 'docx'."}), 400
 
     except Exception as e:
         logger.error(f"Error in /final-resume: {str(e)}")
         return jsonify({"error": f"Failed to generate final resume: {str(e)}"}), 500
-    finally:
-        for filepath in filepaths_to_cleanup:
-            cleanup_file(filepath)
 
 @app.route('/generate-cover-letter', methods=['POST'])
 def generate_cover_letter():
-    filepaths_to_cleanup = []
+    file = request.files.get('file') or request.files.get('resume')
+    job_title = request.form.get('job_title')
+    company_name = request.form.get('company_name')
+
+    if not file or not job_title or not company_name:
+        return jsonify({"error": "File, job title, and company name are required"}), 400
+
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     try:
-        file = request.files.get('file') or request.files.get('resume')
-        job_title = request.form.get('job_title')
-        company_name = request.form.get('company_name')
-
-        if not file or not job_title or not company_name:
-            return jsonify({"error": "File, job title, and company name are required"}), 400
-
-        if not isinstance(job_title, str) or not job_title.strip():
-            return jsonify({"error": "Invalid or empty job title"}), 400
-        if not isinstance(company_name, str) or not company_name.strip():
-            return jsonify({"error": "Invalid or empty company name"}), 400
-
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
-        filepaths_to_cleanup.append(filepath)
-
         resume_text = extract_text_from_resume(file)
         if not resume_text.strip():
             return jsonify({"error": "Could not extract text from resume"}), 400
@@ -421,37 +399,33 @@ Resume: {}
 Include a greeting, an introduction, a body highlighting relevant skills and experiences, and a closing statement.
         """.format(job_title, company_name, resume_text[:6000])
 
-        from openai import OpenAI
-        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        cover_letter = response.choices[0].message.content.strip()
-        return jsonify({"cover_letter": cover_letter})
-
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            cover_letter = response.choices[0].message.content.strip()
+            return jsonify({"cover_letter": cover_letter})
+        except Exception as e:
+            logger.error(f"Error in OpenAI API call for /generate-cover-letter: {str(e)}")
+            return jsonify({"error": f"Failed to generate cover letter: {str(e)}"}), 500
     except Exception as e:
         logger.error(f"Error in /generate-cover-letter: {str(e)}")
         return jsonify({"error": f"Failed to generate cover letter: {str(e)}"}), 500
     finally:
-        for filepath in filepaths_to_cleanup:
-            cleanup_file(filepath)
+        cleanup_file(filepath)
 
 @app.route('/download-cover-letter', methods=['POST'])
 def download_cover_letter():
-    filepaths_to_cleanup = []
+    data = request.get_json()
+    cover_letter = data.get('cover_letter')
+    if not cover_letter:
+        return jsonify({"error": "No cover letter provided"}), 400
+
+    output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"cover_letter_{uuid.uuid4()}.docx")
     try:
-        data = request.get_json()
-        if not data or "cover_letter" not in data:
-            return jsonify({"error": "No cover letter provided in request body"}), 400
-
-        cover_letter = data.get('cover_letter')
-        if not isinstance(cover_letter, str) or not cover_letter.strip():
-            return jsonify({"error": "Invalid or empty cover letter"}), 400
-
-        output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"cover_letter_{uuid.uuid4()}.docx")
-        filepaths_to_cleanup.append(output_path)
-
         doc = Document()
         doc.add_heading("Cover Letter", level=1)
         for line in cover_letter.splitlines():
@@ -459,51 +433,33 @@ def download_cover_letter():
             if line:
                 doc.add_paragraph(line)
         doc.save(output_path)
-
         return send_file(
             output_path,
             as_attachment=True,
             download_name="Cover_Letter.docx",
             mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         )
-
     except Exception as e:
         logger.error(f"Error in /download-cover-letter: {str(e)}")
         return jsonify({"error": f"Failed to download cover letter: {str(e)}"}), 500
     finally:
-        for filepath in filepaths_to_cleanup:
-            cleanup_file(filepath)
+        cleanup_file(output_path)
 
 @app.route('/resume-score', methods=['POST'])
 def resume_score():
-    filepaths_to_cleanup = []
+    resume_text = ""
+    filepath = None  # For cleanup later
+
     try:
-        resume_text = ""
         if request.is_json:
             data = request.get_json()
-            if not data or "resume_text" not in data:
-                return jsonify({"error": "No resume text provided in request body"}), 400
             resume_text = data.get("resume_text", "")
-            if not isinstance(resume_text, str) or not resume_text.strip():
-                return jsonify({"error": "Invalid or empty resume text"}), 400
         else:
             file = request.files.get('file')
             if not file:
                 return jsonify({"error": "No file uploaded"}), 400
-
-            # Validate file size
-            file.seek(0, os.SEEK_END)
-            file_size = file.tell() / 1024  # Size in KB
-            file.seek(0)
-            if file_size == 0:
-                return jsonify({"error": "Uploaded file is empty"}), 400
-            if file_size > 10240:  # 10MB limit
-                return jsonify({"error": f"File size {file_size:.2f} KB exceeds 10MB limit"}), 400
-
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
             file.save(filepath)
-            filepaths_to_cleanup.append(filepath)
-
             ext = os.path.splitext(filepath)[1].lower()
             if ext == ".pdf":
                 resume_text = extract_text_from_pdf(filepath)
@@ -544,48 +500,32 @@ Just return a number between 0 and 100, nothing else.
         logger.error(f"Error in /resume-score: {str(e)}")
         return jsonify({"score": 70})
     finally:
-        for filepath in filepaths_to_cleanup:
+        if filepath:
             cleanup_file(filepath)
 
 @app.route('/optimize-keywords', methods=['POST'])
 def optimize_keywords():
-    try:
-        resume_file = request.files.get('resume')
-        job_description = request.form.get('job_description', '')
+    resume_file = request.files.get('resume')
+    job_description = request.form.get('job_description', '')
 
-        if not resume_file or not job_description:
-            return jsonify({"error": "Missing resume or job description"}), 400
+    if not resume_file or not job_description:
+        return jsonify({"error": "Missing resume or job description"}), 400
 
-        if not isinstance(job_description, str) or not job_description.strip():
-            return jsonify({"error": "Invalid or empty job description"}), 400
+    resume_text = extract_text_from_resume(resume_file)
+    if not resume_text.strip():
+        return jsonify({"error": "No extractable text found in resume"}), 400
 
-        resume_text = extract_text_from_resume(resume_file)
-        if not resume_text.strip():
-            return jsonify({"error": "No extractable text found in resume"}), 400
+    jd_keywords = extract_keywords_from_jd(job_description)
+    if not jd_keywords:
+        return jsonify({"error": "No keywords extracted from job description"}), 400
 
-        jd_keywords = extract_keywords_from_jd(job_description)
-        if not jd_keywords or isinstance(jd_keywords, str) and "error" in jd_keywords.lower():
-            return jsonify({"error": "Failed to extract keywords from job description"}), 400
-
-        results = compare_resume_with_keywords(resume_text, jd_keywords)
-        return jsonify(results)
-
-    except Exception as e:
-        logger.error(f"Error in /optimize-keywords: {str(e)}")
-        return jsonify({"error": f"Failed to optimize keywords: {str(e)}"}), 500
+    results = compare_resume_with_keywords(resume_text, jd_keywords)
+    return jsonify(results)
 
 @app.route('/generate-ai-resume', methods=['POST'])
 def generate_ai_resume():
     try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "No data provided in request body"}), 400
-
-        required_fields = ["name", "email", "phone", "location", "education", "experience", "skills"]
-        for field in required_fields:
-            if field not in data or not isinstance(data[field], str):
-                return jsonify({"error": f"Missing or invalid field: {field}"}), 400
-
+        data = request.json
         name = data.get("name", "")
         email = data.get("email", "")
         phone = data.get("phone", "")
@@ -737,85 +677,99 @@ Write a 2-3 line professional summary for a resume.
 def analyze_jd():
     try:
         data = request.get_json()
-        if not data or "job_description" not in data:
-            return jsonify({"error": "No job description provided in request body"}), 400
-
         jd_text = data.get('job_description', '')
-        if not isinstance(jd_text, str) or not jd_text.strip():
-            return jsonify({"error": "Invalid or empty job description"}), 400
-
+        if not jd_text:
+            return jsonify({"error": "No job description provided"}), 400
         result = analyze_job_description(jd_text)
-        if isinstance(result, str) and "error" in result.lower():
-            return jsonify({"error": result}), 500
-        return jsonify({"analysis": result})
+        return jsonify(result)
     except Exception as e:
         logger.error(f"Error in /analyze-jd: {str(e)}")
         return jsonify({"error": f"Failed to analyze job description: {str(e)}"}), 500
 
 @app.route('/convert-format', methods=['POST'])
 def convert_format():
-    filepaths_to_cleanup = []
     try:
         file = request.files.get('file')
         target_format = request.form.get('target_format')
 
         if not file or not target_format:
+            logger.error("Missing file or target format in request")
             return jsonify({"error": "Missing file or target format specified"}), 400
-
-        if not isinstance(target_format, str) or target_format.lower() not in ['text', 'pdf', 'docx']:
-            return jsonify({"error": "Invalid target format. Use 'text', 'pdf', or 'docx'."}), 400
-
-        # Validate file size
-        file.seek(0, os.SEEK_END)
-        file_size = file.tell() / 1024  # Size in KB
-        file.seek(0)
-        if file_size == 0:
-            return jsonify({"error": "Uploaded file is empty"}), 400
-        if file_size > 10240:  # 10MB limit
-            return jsonify({"error": f"File size {file_size:.2f} KB exceeds 10MB limit"}), 400
 
         ext = os.path.splitext(file.filename)[1].lower()
         if ext not in ['.pdf', '.docx']:
+            logger.error(f"Unsupported file format: {ext}")
             return jsonify({"error": f"Invalid file format: {ext}. Please upload a PDF or DOCX file."}), 400
 
         filename = secure_filename(file.filename)
         upload_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"converted_{uuid.uuid4()}.{target_format}")
         html_temp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"temp_{uuid.uuid4()}.html")
-        filepaths_to_cleanup.extend([upload_path, output_path, html_temp_path])
 
         file.save(upload_path)
+        logger.debug(f"Saved uploaded file to {upload_path}")
+
+        if not os.path.exists(upload_path):
+            logger.error(f"File not found after saving: {upload_path}")
+            return jsonify({"error": "File could not be saved properly"}), 500
+
+        os.chmod(upload_path, 0o644)
+        file_size = os.path.getsize(upload_path) / 1024
+        if file_size == 0:
+            logger.error(f"Empty file uploaded: {filename}")
+            return jsonify({"error": "Uploaded file is empty"}), 400
+
+        logger.debug(f"File size: {file_size:.2f} KB")
 
         if ext == '.pdf':
-            with open(upload_path, 'rb') as f:
-                pdf_reader = PyPDF2.PdfReader(f)
-                if pdf_reader.is_encrypted:
-                    return jsonify({"error": "PDF is encrypted and cannot be processed."}), 400
+            try:
+                with open(upload_path, 'rb') as f:
+                    pdf_reader = PyPDF2.PdfReader(f)
+                    if pdf_reader.is_encrypted:
+                        logger.error("Uploaded PDF is encrypted")
+                        return jsonify({"error": "PDF is encrypted and cannot be processed."}), 400
+            except Exception as e:
+                logger.error(f"Invalid or corrupted file: {str(e)}")
+                return jsonify({"error": f"Invalid or corrupted file: {str(e)}"}), 400
 
         if ext == '.docx':
             try:
                 doc = Document(upload_path)
             except Exception as e:
+                logger.error(f"Invalid or corrupted DOCX file: {str(e)}")
                 return jsonify({"error": f"Invalid or corrupted DOCX file: {str(e)}"}), 400
 
         if target_format == 'text':
             text = ""
             if ext == '.pdf':
-                doc = fitz.open(upload_path)
-                if doc.page_count == 0:
-                    return jsonify({"error": "PDF has no content to extract"}), 400
-                text = "\n".join([page.get_text().strip() for page in doc])
-                doc.close()
+                try:
+                    doc = fitz.open(upload_path)
+                    if doc.page_count == 0:
+                        logger.error("PDF has no pages")
+                        return jsonify({"error": "PDF has no content to extract"}), 400
+                    text = "\n".join([page.get_text().strip() for page in doc])
+                    doc.close()
+                    logger.info(f"Extracted text from PDF: {len(text)} characters")
+                except Exception as e:
+                    logger.error(f"Failed to extract text from PDF: {str(e)}")
+                    return jsonify({"error": f"Failed to extract text from PDF: {str(e)}"}), 500
+
             elif ext == '.docx':
-                doc = Document(upload_path)
-                text = "\n".join([para.text for para in doc.paragraphs])
+                try:
+                    doc = Document(upload_path)
+                    text = "\n".join([para.text for para in doc.paragraphs])
+                    logger.info(f"Extracted text from DOCX: {len(text)} characters")
+                except Exception as e:
+                    logger.error(f"Failed to extract text from DOCX: {str(e)}")
+                    return jsonify({"error": f"Failed to extract text from DOCX: {str(e)}"}), 500
 
             if not text.strip():
+                logger.warning("No text could be extracted from the file")
                 return jsonify({"error": "No text could be extracted. The file may be empty or contain only images."}), 400
 
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(text)
-
+            
             return send_file(
                 output_path,
                 as_attachment=True,
@@ -824,109 +778,104 @@ def convert_format():
             )
 
         elif ext == '.docx' and target_format == 'pdf':
-            doc = Document(upload_path)
-            paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
-            if not paragraphs:
-                return jsonify({"error": "DOCX file is empty or contains no readable text."}), 400
+            try:
+                doc = Document(upload_path)
+                paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
+                if not paragraphs:
+                    logger.error("DOCX file has no content")
+                    return jsonify({"error": "DOCX file is empty or contains no readable text."}), 400
 
-            html_content = '\n'.join([f"<p>{para}</p>" for para in paragraphs])
-            with open(html_temp_path, 'w', encoding='utf-8') as f:
-                f.write(html_content)
+                html_content = '\n'.join([f"<p>{para}</p>" for para in paragraphs])
+                
+                with open(html_temp_path, 'w', encoding='utf-8') as f:
+                    f.write(html_content)
+                
+                pdfkit.from_file(html_temp_path, output_path)
+                
+                return send_file(
+                    output_path,
+                    as_attachment=True,
+                    download_name="converted.pdf",
+                    mimetype='application/pdf'
+                )
 
-            pdfkit.from_file(html_temp_path, output_path)
-
-            return send_file(
-                output_path,
-                as_attachment=True,
-                download_name="converted.pdf",
-                mimetype='application/pdf'
-            )
+            except Exception as e:
+                logger.error(f"DOCX to PDF conversion failed: {str(e)}")
+                return jsonify({"error": f"Failed to convert DOCX to PDF: {str(e)}"}), 500
 
         elif ext == '.pdf' and target_format == 'docx':
-            doc = fitz.open(upload_path)
-            if doc.page_count == 0:
-                return jsonify({"error": "PDF has no content to convert"}), 400
-            text = "\n".join([page.get_text().strip() for page in doc])
-            doc.close()
+            try:
+                doc = fitz.open(upload_path)
+                if doc.page_count == 0:
+                    logger.error("PDF has no pages")
+                    return jsonify({"error": "PDF has no content to convert"}), 400
+                text = "\n".join([page.get_text().strip() for page in doc])
+                doc.close()
 
-            if not text.strip():
-                return jsonify({"error": "No text could be extracted from the PDF."}), 400
+                if not text.strip():
+                    logger.warning("No text extracted from PDF")
+                    return jsonify({"error": "No text could be extracted from the PDF."}), 400
 
-            word_doc = Document()
-            word_doc.add_paragraph(text)
-            word_doc.save(output_path)
+                word_doc = Document()
+                word_doc.add_paragraph(text)
+                word_doc.save(output_path)
+                logger.info(f"Converted PDF to DOCX: {output_path}")
+                return send_file(
+                    output_path,
+                    as_attachment=True,
+                    download_name="converted.docx",
+                    mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                )
 
-            return send_file(
-                output_path,
-                as_attachment=True,
-                download_name="converted.docx",
-                mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-            )
+            except Exception as e:
+                logger.error(f"Failed to convert PDF to DOCX: {str(e)}")
+                return jsonify({"error": f"Failed to convert PDF to DOCX: {str(e)}"}), 500
 
         else:
+            logger.error(f"Unsupported conversion request: {ext} to {target_format}")
             return jsonify({"error": "Unsupported conversion request. Only PDF to DOCX, DOCX to PDF, or text extraction are supported."}), 400
 
     except Exception as e:
         logger.error(f"Error in /convert-format: {str(e)}")
         return jsonify({"error": f"Failed to process file: {str(e)}"}), 500
     finally:
-        for filepath in filepaths_to_cleanup:
-            cleanup_file(filepath)
+        cleanup_file(upload_path)
+        cleanup_file(output_path)
+        cleanup_file(html_temp_path)
 
 @app.route('/fix-formatting', methods=['POST'])
 def fix_formatting():
-    filepaths_to_cleanup = []
+    file = request.files.get('file') or request.files.get('resume')
+    if not file:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
     try:
-        file = request.files.get('file') or request.files.get('resume')
-        if not file:
-            return jsonify({"error": "No file uploaded"}), 400
-
-        # Validate file size
-        file.seek(0, os.SEEK_END)
-        file_size = file.tell() / 1024  # Size in KB
-        file.seek(0)
-        if file_size == 0:
-            return jsonify({"error": "Uploaded file is empty"}), 400
-        if file_size > 10240:  # 10MB limit
-            return jsonify({"error": f"File size {file_size:.2f} KB exceeds 10MB limit"}), 400
-
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
-        filepaths_to_cleanup.append(filepath)
-
         result = fix_resume_formatting(filepath)
-        if "error" in result:
-            return jsonify({"error": result["error"]}), 500
+        logger.info(f"Formatted resume at: {filepath}")
         return jsonify(result)
-
     except Exception as e:
         logger.error(f"Error in /fix-formatting: {str(e)}")
         return jsonify({"error": f"Failed to process resume formatting: {str(e)}"}), 500
     finally:
-        for filepath in filepaths_to_cleanup:
-            cleanup_file(filepath)
+        cleanup_file(filepath)
 
 @app.route('/generate-resume-summary', methods=['POST'])
 def generate_resume_summary_api():
     try:
         data = request.get_json()
-        if not data:
-            return jsonify({"error": "No data provided in request body"}), 400
-
-        required_fields = ["name", "role", "experience", "skills"]
-        for field in required_fields:
-            if field not in data or not isinstance(data[field], str):
-                return jsonify({"error": f"Missing or invalid field: {field}"}), 400
-
         name = data.get('name', '')
         role = data.get('role', '')
         experience = data.get('experience', '')
         skills = data.get('skills', '')
 
+        if not name or not role or not experience or not skills:
+            return jsonify({"error": "Missing required fields"}), 400
+
         summary = generate_resume_summary(name, role, experience, skills)
-        if isinstance(summary, str) and "error" in summary.lower():
-            return jsonify({"error": summary}), 500
         return jsonify({"summary": summary})
 
     except Exception as e:
@@ -935,16 +884,12 @@ def generate_resume_summary_api():
 
 @app.route('/send-feedback', methods=['POST'])
 def send_feedback():
-    filepaths_to_cleanup = []
     try:
         data = request.form
         name = data.get('name', 'Unknown')
         email = data.get('email', '')
         message = data.get('message', '')
         file = request.files.get('screenshot')
-
-        if not message or not isinstance(message, str) or not message.strip():
-            return jsonify({"error": "Message is required and must be a non-empty string"}), 400
 
         from email.mime.multipart import MIMEMultipart
         from email.mime.text import MIMEText
@@ -975,7 +920,6 @@ Message:
             filename = secure_filename(file.filename)
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filepath)
-            filepaths_to_cleanup.append(filepath)
 
             with open(filepath, 'rb') as attachment:
                 part = MIMEBase('application', 'octet-stream')
@@ -984,6 +928,8 @@ Message:
             encoders.encode_base64(part)
             part.add_header('Content-Disposition', f'attachment; filename={filename}')
             msg.attach(part)
+
+            cleanup_file(filepath)
 
         server = smtplib.SMTP(smtp_server, smtp_port)
         server.starttls()
@@ -996,23 +942,14 @@ Message:
     except Exception as e:
         logger.error(f"Error sending feedback: {str(e)}")
         return jsonify({"error": f"Failed to send feedback: {str(e)}"}), 500
-    finally:
-        for filepath in filepaths_to_cleanup:
-            cleanup_file(filepath)
 
 @app.route('/send-message', methods=['POST'])
 def send_message():
     try:
         data = request.get_json()
-        if not data:
-            return jsonify({"error": "No data provided in request body"}), 400
-
         name = data.get('name', 'Unknown')
         email = data.get('email', '')
         message = data.get('message', '')
-
-        if not message or not isinstance(message, str) or not message.strip():
-            return jsonify({"error": "Message is required and must be a non-empty string"}), 400
 
         from email.mime.text import MIMEText
         from email.mime.multipart import MIMEMultipart
@@ -1054,25 +991,30 @@ Message:
 def extract_sections():
     try:
         data = request.get_json()
-        if not data or "text" not in data:
-            return jsonify({"error": "No resume text provided in request body"}), 400
-
         text = data.get('text', '')
-        if not isinstance(text, str) or not text.strip():
-            return jsonify({"error": "Invalid or empty resume text"}), 400
+        if not text.strip():
+            logger.warning("No resume text provided in /extract-sections request")
+            return jsonify({"error": "No resume text provided"}), 400
 
         sections = extract_resume_sections(text)
+
+        # Validate sections output
         if not sections or not isinstance(sections, dict):
+            logger.warning(f"Invalid sections extracted: {sections}")
             return jsonify({"error": "Failed to extract sections: Resume format may be unsupported or text is too unstructured."}), 400
 
+        # Ensure sections have content
         if not any(sections.values()):
+            logger.warning("No sections could be extracted from the resume text")
             return jsonify({"error": "Failed to extract sections: No recognizable sections found in the resume."}), 400
 
-        return jsonify(sections)
+        logger.info(f"Successfully extracted sections: {list(sections.keys())}")
+        return jsonify(sections)  # ✅ Return the sections directly, not inside {"sections": ...}
 
     except Exception as e:
-        logger.error(f"Error extracting sections: {str(e)}")
+        logger.error(f"Error extracting sections: {str(e)} | Resume text: {text[:500]}")
         return jsonify({"error": f"Failed to extract sections: {str(e)}"}), 500
+
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
