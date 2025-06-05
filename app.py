@@ -106,12 +106,11 @@ def upload_resume():
         if not file:
             return jsonify({"error": "No file uploaded"}), 400
 
-        filename = secure_filename(file.filename)
-        filepath = os.path.join("uploads", f"{uuid.uuid4()}_{filename}")
-        file.save(filepath)
+        # ✅ FIX: Directly pass file to extractor (NOT filepath)
+        text = extract_text_from_resume(file)
 
-        # ✅ Extract resume text
-        text = extract_text_from_resume(filepath)
+        if not text:
+            return jsonify({"error": "Failed to extract resume text"}), 500
 
         # ✅ Cleaned + structured sections (dict)
         parsed_sections = extract_resume_sections(text)
@@ -136,7 +135,7 @@ def upload_resume():
         return jsonify({
             "resume_text": text,
             "parsedResumeContent": parsed_sections,
-            "suggestions": [],  # use [] or proper suggestion logic if needed
+            "suggestions": [],  # You can populate suggestions if needed
             "ats_report": ats_issues,
             "score": score
         })
