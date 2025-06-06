@@ -6,7 +6,26 @@ import os
 import uuid
 import json
 import re
-from resume_ai_analyzer import generate_resume_summary, generate_michelle_template_html, extract_text_from_resume, extract_resume_sections
+
+from resume_ai_analyzer import (
+    analyze_resume_with_openai,
+    extract_text_from_pdf,
+    extract_text_from_docx,
+    extract_text_from_resume,
+    extract_resume_sections,
+    check_ats_compatibility,
+    check_ats_compatibility_fast,      # ✅ ADD THIS
+    check_ats_compatibility_deep,      # ✅ AND THIS
+    extract_keywords_from_jd,
+    compare_resume_with_keywords,
+    analyze_job_description,
+    fix_resume_formatting,
+    generate_section_content,
+    generate_resume_summary,
+    generate_michelle_template_html,
+    generate_ats_report,
+)
+
 try:
     from docx import Document
     from docx.shared import Pt, Inches, RGBColor
@@ -17,6 +36,7 @@ try:
 except ImportError as e:
     logging.error(f"Failed to import python-docx: {str(e)}")
     raise
+
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -26,25 +46,7 @@ try:
 except ImportError as e:
     logging.error(f"Failed to import reportlab: {str(e)}")
     raise
-try:
-    from resume_ai_analyzer import (
-    analyze_resume_with_openai,
-    extract_text_from_pdf,
-    extract_text_from_docx,        
-    check_ats_compatibility,
-    extract_keywords_from_jd,
-    compare_resume_with_keywords,
-    analyze_job_description,
-    fix_resume_formatting,
-    generate_section_content,
-    generate_resume_summary,
-    extract_resume_sections,
-    generate_michelle_template_html,
-    generate_ats_report,  # ✅ Already added
-)
-except ImportError as e:
-    logging.error(f"Failed to import resume_ai_analyzer: {str(e)}")
-    raise
+
 try:
     import fitz  # PyMuPDF for PDF text extraction
     import PyPDF2  # For PDF validation (encryption check)
