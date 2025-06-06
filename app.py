@@ -108,36 +108,31 @@ def upload_resume():
         if not file:
             return jsonify({"error": "No file uploaded"}), 400
 
-        # ✅ FIX: Directly pass file to extractor (NOT filepath)
+        # ✅ Extract text directly from uploaded file
         text = extract_text_from_resume(file)
 
-        if not text:
+        if not text.strip():
             return jsonify({"error": "Failed to extract resume text"}), 500
 
-        # ✅ Cleaned + structured sections (dict)
+        # ✅ Smart section parser
         parsed_sections = extract_resume_sections(text)
 
-        # ✅ Extract fields for summary
+        # ✅ Optional summary generation
         name = parsed_sections.get("name", "")
         role = parsed_sections.get("job_title", "")
         experience = parsed_sections.get("work_experience", "")
         skills = parsed_sections.get("skills", "")
-
-        # ✅ Generate professional summary (AI)
         summary = generate_resume_summary(name, role, experience, skills)
-        parsed_sections["summary"] = summary  # Inject into parsed data for frontend
+        parsed_sections["summary"] = summary
 
-        # ✅ ATS Report
-        ats_issues = generate_ats_report(text)
+        # ✅ ATS report and score
+        ats_result = generate_ats_report(text)
+        ats_issues = ats_result["issues"]
+        score = ats_result["score"]
 
-        # ✅ Resume Score
-        score = calculate_resume_score(summary, ats_issues)
-
-        # ✅ Final response
         return jsonify({
             "resume_text": text,
             "parsedResumeContent": parsed_sections,
-            "suggestions": [],  # You can populate suggestions if needed
             "ats_report": ats_issues,
             "score": score
         })
@@ -992,29 +987,31 @@ def extract_sections():
     try:
         data = request.get_json()
         text = data.get('text', '')
+
         if not text.strip():
             logger.warning("No resume text provided in /extract-sections request")
             return jsonify({"error": "No resume text provided"}), 400
 
+        # ✅ Smart section extraction
         sections = extract_resume_sections(text)
 
-        # Validate sections output
-        if not sections or not isinstance(sections, dict):
-            logger.warning(f"Invalid sections extracted: {sections}")
-            return jsonify({"error": "Failed to extract sections: Resume format may be unsupported or text is too unstructured."}), 400
+        # ✅ Inject fallback empty keys if missing (optional)
+        required_keys = ["name", "job_title", "contact", "summary", "education", "work_experience", "projects", "skills", "certifications", "languages", "linkedin", "achievements"]
+        for key in required_keys:
+            if key not in sections:
+                sections[key] = ""
 
-        # Ensure sections have content
+        # ✅ Check if anything found at all
         if not any(sections.values()):
             logger.warning("No sections could be extracted from the resume text")
-            return jsonify({"error": "Failed to extract sections: No recognizable sections found in the resume."}), 400
+            return jsonify({"error": "Failed to extract sections: Resume format may be unsupported or unstructured."}), 400
 
         logger.info(f"Successfully extracted sections: {list(sections.keys())}")
-        return jsonify(sections)  # ✅ Return the sections directly, not inside {"sections": ...}
+        return jsonify(sections)
 
     except Exception as e:
         logger.error(f"Error extracting sections: {str(e)} | Resume text: {text[:500]}")
         return jsonify({"error": f"Failed to extract sections: {str(e)}"}), 500
-
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))

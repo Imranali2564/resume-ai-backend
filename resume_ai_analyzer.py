@@ -868,14 +868,74 @@ def remove_unnecessary_personal_info(text):
 
     return text
 
-def generate_ats_report(text):
-    # Wrapper for backward compatibility
-    return check_ats_compatibility_fast(text)
-def calculate_resume_score(summary, ats_issues):
-    score = 70
-    if summary:
-        score += 10
-    if ats_issues:
-        issue_penalty = sum(10 for issue in ats_issues if issue.startswith("❌"))
-        score -= issue_penalty
-    return max(0, min(score, 100))
+def generate_ats_report(resume_text):
+    issues = []
+    score = 100
+
+    if re.search(r"\b(Summary|Objective)\b", resume_text, re.IGNORECASE):
+        issues.append("✅ Summary/Objective section found")
+    else:
+        issues.append("❌ Summary/Objective section missing")
+        score -= 10
+
+    if "Education" in resume_text:
+        issues.append("✅ Education section found")
+    else:
+        issues.append("❌ Education section missing")
+        score -= 10
+
+    if "Experience" in resume_text:
+        issues.append("✅ Experience section found")
+    else:
+        issues.append("❌ Experience section missing")
+        score -= 15
+
+    if "Python" in resume_text or "Project Management" in resume_text:
+        issues.append("✅ Relevant keywords found")
+    else:
+        issues.append("❌ Missing relevant keywords like 'Python'")
+        score -= 10
+
+    if re.search(r"Date of Birth|DOB|Gender|Marital Status", resume_text, re.IGNORECASE):
+        issues.append("❌ Contains personal info (DOB, Gender, etc.)")
+        score -= 5
+    else:
+        issues.append("✅ No personal info found")
+
+    if "responsible of" in resume_text:
+        issues.append("❌ Possible grammar error: 'responsible of'")
+        score -= 5
+    else:
+        issues.append("✅ No obvious grammar issues")
+
+    return {"issues": issues, "score": score}
+
+def fix_ats_issue(resume_text, issue_text):
+    section = "misc"
+    fixed_content = resume_text
+
+    if "Summary/Objective section missing" in issue_text:
+        section = "summary"
+        fixed_content += "\nSummary:\nA highly motivated professional with a passion for excellence."
+
+    elif "Education section missing" in issue_text:
+        section = "education"
+        fixed_content += "\nEducation:\nB.Tech in Computer Science, ABC University"
+
+    elif "Experience section missing" in issue_text:
+        section = "experience"
+        fixed_content += "\nExperience:\nSoftware Engineer at XYZ Ltd (2020 - Present)"
+
+    elif "Missing relevant keywords" in issue_text:
+        section = "skills"
+        fixed_content += "\nSkills:\nPython, Project Management"
+
+    elif "Contains personal info" in issue_text:
+        section = "contact"
+        fixed_content = re.sub(r"(?i)(Date of Birth|DOB|Gender|Marital Status).*?\n", "", resume_text)
+
+    elif "grammar error" in issue_text:
+        section = "summary"
+        fixed_content = resume_text.replace("responsible of", "responsible for")
+
+    return {"section": section, "fixedContent": fixed_content}
