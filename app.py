@@ -189,13 +189,8 @@ Return the improved resume as plain text.
         improved_resume = ai_resp.choices[0].message.content.strip()
         logger.info("Received response from OpenAI")
 
-        pdf_path = os.path.join(app.config['UPLOAD_FOLDER'], f"improved_{filename}.pdf")
-        logger.info(f"Creating PDF at {pdf_path}")
-        create_pdf(improved_resume, pdf_path)
-
-        logger.info("Sending PDF file back to client")
-        response = send_file(pdf_path, as_attachment=True, download_name=f"improved_{filename}.pdf")
-        return response
+        # ✅ Return plain text as JSON
+        return jsonify({"success": True, "data": {"text": improved_resume}})
 
     except Exception as e:
         logger.error(f"Error in /main-upload: {str(e)}")
@@ -205,11 +200,9 @@ Return the improved resume as plain text.
         try:
             if 'filepath' in locals() and os.path.exists(filepath):
                 cleanup_file(filepath)
-            if 'pdf_path' in locals() and os.path.exists(pdf_path):
-                cleanup_file(pdf_path)
         except Exception as cleanup_err:
             logger.warning(f"Cleanup failed: {cleanup_err}")
-   
+  
 
 @app.route('/ats-check', methods=['POST'])
 def check_ats():
