@@ -172,7 +172,7 @@ def main_resume_upload():
 @app.route('/ats-check', methods=['POST'])
 def check_ats():
     try:
-        file = request.files.get('file') or request.files.get('resume')
+        file = request.files.get('file')  # Only look for the key "file"
         if not file or file.filename == '':
             return jsonify({"error": "No file uploaded"}), 400
 
