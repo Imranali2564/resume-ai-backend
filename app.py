@@ -141,32 +141,67 @@ def upload_resume():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     
-@app.route("/main-upload", methods=["POST"])
-def main_resume_upload():
+@app.route('/main-upload', methods=['POST'])
+def main_upload():
     try:
-        file = request.files.get("file")  # ✅ Correct key from proxy
-
-        if not file:
+        file = request.files.get('file')  # Expect the file under the key "file"
+        if not file or file.filename == '':
             return jsonify({"error": "No file uploaded"}), 400
 
-        extracted_text = extract_text_from_resume(file)
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in {'.pdf', '.docx'}:
+            return jsonify({"error": f"Unsupported file format: {ext}. Please upload a PDF or DOCX."}), 400
 
-        if not extracted_text.strip():
-            return jsonify({"error": "Failed to extract resume text"}), 400
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
 
-        ats_report = check_ats_compatibility_fast(extracted_text)
-        deep_check = check_ats_compatibility_deep(file)
+        text = extract_text_from_pdf(filepath) if ext == ".pdf" else extract_text_from_docx(filepath)
+        cleaned_text = remove_unnecessary_personal_info(text)
 
-        return jsonify({
-            "text": extracted_text,
-            "score": ats_report.get("score"),
-            "issues": ats_report.get("issues"),
-            "deepIssues": deep_check.get("issues", []),
-        })
+        # Get job title and company name if provided
+        job_title = request.form.get('job_title', '')
+        company_name = request.form.get('company_name', '')
+
+        prompt = f"""
+You are a professional resume editor. Fix the following resume to make it professional, concise, and tailored for the role of {job_title} at {company_name}. Remove unnecessary personal info (e.g., marital status, date of birth, gender, nationality, religion). Use active voice, quantify achievements where possible, and ensure ATS compatibility.
+
+Resume:
+{cleaned_text[:6000]}
+
+Return the improved resume as plain text.
+"""
+
+        from openai import OpenAI
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        ai_resp = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0
+        )
+
+        improved_resume = ai_resp.choices[0].message.content.strip()
+
+        # Convert the improved resume to PDF
+        pdf_path = os.path.join(app.config['UPLOAD_FOLDER'], f"improved_{filename}.pdf")
+        create_pdf(improved_resume, pdf_path)
+
+        # Send the PDF file back
+        response = send_file(pdf_path, as_attachment=True, download_name=f"improved_{filename}.pdf")
+        return response
 
     except Exception as e:
-        logging.error(f"[ERROR in /main-upload]: {str(e)}")
-        return jsonify({"error": "Something went wrong during upload"}), 500
+        logger.error(f"Error in /main-upload: {str(e)}")
+        return jsonify({"error": f"Failed to process resume: {str(e)}"}), 500
+
+    finally:
+        try:
+            if 'filepath' in locals() and os.path.exists(filepath):
+                cleanup_file(filepath)
+            if 'pdf_path' in locals() and os.path.exists(pdf_path):
+                cleanup_file(pdf_path)
+        except Exception as cleanup_err:
+            logger.warning(f"Cleanup failed: {cleanup_err}")
    
 
 @app.route('/ats-check', methods=['POST'])
