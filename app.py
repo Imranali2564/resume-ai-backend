@@ -144,24 +144,29 @@ def upload_resume():
 @app.route('/main-upload', methods=['POST'])
 def main_upload():
     try:
-        file = request.files.get('file')  # Expect the file under the key "file"
+        logger.info("Received request for /main-upload")
+        file = request.files.get('file')
         if not file or file.filename == '':
+            logger.error("No file uploaded in request")
             return jsonify({"error": "No file uploaded"}), 400
 
+        logger.info(f"File received: {file.filename}, size: {file.content_length}")
         ext = os.path.splitext(file.filename)[1].lower()
         if ext not in {'.pdf', '.docx'}:
+            logger.error(f"Unsupported file format: {ext}")
             return jsonify({"error": f"Unsupported file format: {ext}. Please upload a PDF or DOCX."}), 400
 
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        logger.info(f"Saving file to {filepath}")
         file.save(filepath)
 
         text = extract_text_from_pdf(filepath) if ext == ".pdf" else extract_text_from_docx(filepath)
         cleaned_text = remove_unnecessary_personal_info(text)
 
-        # Get job title and company name if provided
         job_title = request.form.get('job_title', '')
         company_name = request.form.get('company_name', '')
+        logger.info(f"Job title: {job_title}, Company name: {company_name}")
 
         prompt = f"""
 You are a professional resume editor. Fix the following resume to make it professional, concise, and tailored for the role of {job_title} at {company_name}. Remove unnecessary personal info (e.g., marital status, date of birth, gender, nationality, religion). Use active voice, quantify achievements where possible, and ensure ATS compatibility.
@@ -174,6 +179,7 @@ Return the improved resume as plain text.
 
         from openai import OpenAI
         client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        logger.info("Sending request to OpenAI")
         ai_resp = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
@@ -181,12 +187,13 @@ Return the improved resume as plain text.
         )
 
         improved_resume = ai_resp.choices[0].message.content.strip()
+        logger.info("Received response from OpenAI")
 
-        # Convert the improved resume to PDF
         pdf_path = os.path.join(app.config['UPLOAD_FOLDER'], f"improved_{filename}.pdf")
+        logger.info(f"Creating PDF at {pdf_path}")
         create_pdf(improved_resume, pdf_path)
 
-        # Send the PDF file back
+        logger.info("Sending PDF file back to client")
         response = send_file(pdf_path, as_attachment=True, download_name=f"improved_{filename}.pdf")
         return response
 
