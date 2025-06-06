@@ -142,21 +142,18 @@ def upload_resume():
 @app.route("/main-upload", methods=["POST"])
 def main_resume_upload():
     try:
-        # ✅ Accept 'file' instead of 'resume'
-        if 'file' not in request.files:
-            return jsonify({"error": "No resume file found"}), 400
+        file = request.files.get("file")  # ✅ Correct key from proxy
 
-        resume_file = request.files['file']
-        extracted_text = extract_text_from_resume(resume_file)
+        if not file:
+            return jsonify({"error": "No file uploaded"}), 400
 
-        if not extracted_text:
-            return jsonify({"error": "Resume could not be read or is empty"}), 400
+        extracted_text = extract_text_from_resume(file)
 
-        # ✅ Fast ATS score
+        if not extracted_text.strip():
+            return jsonify({"error": "Failed to extract resume text"}), 400
+
         ats_report = check_ats_compatibility_fast(extracted_text)
-
-        # ✅ Deep scan (OCR fallback etc.)
-        deep_check = check_ats_compatibility_deep(resume_file)
+        deep_check = check_ats_compatibility_deep(file)
 
         return jsonify({
             "text": extracted_text,
