@@ -142,16 +142,20 @@ def upload_resume():
 @app.route("/main-upload", methods=["POST"])
 def main_resume_upload():
     try:
-        if 'resume' not in request.files:
+        # ✅ Accept 'file' instead of 'resume'
+        if 'file' not in request.files:
             return jsonify({"error": "No resume file found"}), 400
 
-        resume_file = request.files['resume']
+        resume_file = request.files['file']
         extracted_text = extract_text_from_resume(resume_file)
 
         if not extracted_text:
             return jsonify({"error": "Resume could not be read or is empty"}), 400
 
+        # ✅ Fast ATS score
         ats_report = check_ats_compatibility_fast(extracted_text)
+
+        # ✅ Deep scan (OCR fallback etc.)
         deep_check = check_ats_compatibility_deep(resume_file)
 
         return jsonify({
@@ -164,7 +168,7 @@ def main_resume_upload():
     except Exception as e:
         logging.error(f"[ERROR in /main-upload]: {str(e)}")
         return jsonify({"error": "Something went wrong during upload"}), 500
-    
+   
 
 @app.route('/ats-check', methods=['POST'])
 def check_ats():
