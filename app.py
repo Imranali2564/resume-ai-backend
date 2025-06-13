@@ -1077,6 +1077,33 @@ def extract_sections():
         logger.error(f"Error extracting sections: {str(e)} | Resume text: {text[:500]}")
         return jsonify({"error": f"Failed to extract sections: {str(e)}"}), 500
 
+@app.route('/fix-ats-issue', methods=['POST'])
+def fix_ats_issue_endpoint():
+    try:
+        data = request.get_json()
+        resume_text = data.get("full_resume_text", "")
+        issue_text = data.get("issue_text", "")
+
+        if not resume_text or not issue_text:
+            logger.error("Missing full_resume_text or issue_text in /fix-ats-issue request")
+            return jsonify({"error": "Missing resume text or issue text"}), 400
+
+        result = fix_ats_issue(resume_text, issue_text)
+        if "error" in result:
+            logger.error(f"Error in fix_ats_issue: {result['error']}")
+            return jsonify({"error": result["error"]}), 400
+
+        if not isinstance(result, dict) or "section" not in result or "fixedContent" not in result:
+            logger.error(f"Invalid response format from fix_ats_issue: {result}")
+            return jsonify({"error": "Invalid response format from AI"}), 500
+
+        logger.info(f"Successfully fixed ATS issue for section: {result['section']}")
+        return jsonify(result)
+
+    except Exception as e:
+        logger.error(f"Error in /fix-ats-issue: {str(e)}")
+        return jsonify({"error": f"Failed to fix ATS issue: {str(e)}"}), 500
+    
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     logger.info(f"Starting Flask app on port {port}")

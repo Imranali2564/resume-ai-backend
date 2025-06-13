@@ -230,15 +230,22 @@ Resume:
 
 def check_ats_compatibility(file_path):
     try:
+        # Validate file path and extension
+        if not os.path.exists(file_path):
+            logger.error(f"File not found: {file_path}")
+            return {"error": "File not found on server."}
+
         ext = os.path.splitext(file_path)[1].lower()
         if ext == ".pdf":
             text = extract_text_from_pdf(file_path)
         elif ext == ".docx":
             text = extract_text_from_docx(file_path)
         else:
+            logger.error(f"Unsupported file type: {ext}")
             return {"error": "Unsupported file type."}
 
         if not text.strip():
+            logger.warning(f"No readable text found in resume: {file_path}")
             return {"error": "No readable text found in resume."}
 
         # Initialize issues and score
@@ -324,6 +331,7 @@ def check_ats_compatibility(file_path):
 
         # Limit score to 0-100 range
         score = max(0, min(100, score))
+        logger.info(f"ATS compatibility check completed for {file_path}. Score: {score}, Issues: {len(issues)}")
         return {"issues": issues, "score": score}
 
     except Exception as e:
@@ -911,31 +919,87 @@ def generate_ats_report(resume_text):
     return {"issues": issues, "score": score}
 
 def fix_ats_issue(resume_text, issue_text):
-    section = "misc"
-    fixed_content = resume_text
+    try:
+        logger.info(f"Fixing ATS issue: {issue_text}")
+        # Normalize issue text for processing
+        issue_text = issue_text.strip().lstrip("❌ ").strip()
 
-    if "Summary/Objective section missing" in issue_text:
-        section = "summary"
-        fixed_content += "\nSummary:\nA highly motivated professional with a passion for excellence."
+        # Map common ATS issues to appropriate sections
+        section_mapping = {
+            "Missing email": "personal_details",
+            "Missing phone": "personal_details",
+            "Missing location": "personal_details",
+            "Missing sections": "misc",  # Will determine specific section in generate_section_content
+            "Low keyword density": "skills",
+            "Resume too short": "experience",
+            "Resume too long": "misc",
+            "Special characters detected": "misc",
+            "Missing quantifiable achievements": "experience",
+            "Limited use of action verbs": "experience",
+            "Contains personal info": "personal_details",
+            "Summary/Objective section missing": "summary",
+            "Education section missing": "education",
+            "Experience section missing": "experience",
+            "Missing relevant keywords": "skills",
+            "Possible grammar error": "misc"
+        }
 
-    elif "Education section missing" in issue_text:
-        section = "education"
-        fixed_content += "\nEducation:\nB.Tech in Computer Science, ABC University"
+        # Determine the section to fix
+        section = "misc"
+        for issue_key, mapped_section in section_mapping.items():
+            if issue_key.lower() in issue_text.lower():
+                section = mapped_section
+                break
 
-    elif "Experience section missing" in issue_text:
-        section = "experience"
-        fixed_content += "\nExperience:\nSoftware Engineer at XYZ Ltd (2020 - Present)"
+        # If the issue is about missing sections, extract the specific section from the issue text
+        if "Missing sections" in issue_text:
+            missing_sections = re.search(r"Add\s+([\w\s,]+)", issue_text)
+            if missing_sections:
+                sections_list = missing_sections.group(1).split(", ")
+                # For simplicity, take the first missing section
+                section_name = sections_list[0].strip().lower().replace(" ", "_")
+                if section_name in ["education", "experience", "skills", "certifications"]:
+                    section = section_name
+                    issue_text = f"Missing {section_name} section"
 
-    elif "Missing relevant keywords" in issue_text:
-        section = "skills"
-        fixed_content += "\nSkills:\nPython, Project Management"
+        # Use generate_section_content to fix the issue
+        result = generate_section_content(issue_text, resume_text)
+        if "error" in result:
+            logger.error(f"Failed to fix ATS issue: {result['error']}")
+            return {"error": result["error"]}
 
-    elif "Contains personal info" in issue_text:
-        section = "contact"
-        fixed_content = re.sub(r"(?i)(Date of Birth|DOB|Gender|Marital Status).*?\n", "", resume_text)
+        # Ensure the response format matches what the frontend expects
+        fixed_section = result.get("section", section)
+        fixed_content = result.get("fixedContent", "")
 
-    elif "grammar error" in issue_text:
-        section = "summary"
-        fixed_content = resume_text.replace("responsible of", "responsible for")
+        # If the section is personal_details, ensure we don't duplicate existing info
+        if fixed_section == "personal_details":
+            sections = extract_resume_sections(resume_text)
+            existing_personal = sections.get("personal_details", "").lower()
+            new_content_lines = fixed_content.split("\n")
+            updated_lines = []
+            for line in new_content_lines:
+                line_lower = line.lower()
+                if "email" in line_lower and re.search(r'[\w\.-]+@[\w\.-]+', existing_personal):
+                    continue
+                if "phone" in line_lower and re.search(r'\+?\d[\d\s\-]{8,}', existing_personal):
+                    continue
+                if "location" in line_lower and ("location" in existing_personal or "city" in existing_personal):
+                    continue
+                updated_lines.append(line)
+            fixed_content = "\n".join(updated_lines).strip()
 
-    return {"section": section, "fixedContent": fixed_content}
+        # If the section is misc, append to the appropriate section or return the full text
+        if fixed_section == "misc":
+            fixed_section = "full_resume"
+            fixed_content = resume_text + "\n\n" + fixed_content
+
+        logger.info(f"Fixed ATS issue in section {fixed_section}")
+        return {
+            "section": fixed_section,
+            "fixedContent": fixed_content
+        }
+
+    except Exception as e:
+        logger.error(f"[ERROR in fix_ats_issue]: {str(e)}")
+        return {"error": f"Failed to fix ATS issue: {str(e)}"}
