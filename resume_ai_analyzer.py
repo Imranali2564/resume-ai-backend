@@ -916,26 +916,26 @@ def fix_ats_issue(resume_text, issue_text):
 
     if "Summary/Objective section missing" in issue_text:
         section = "summary"
-        fixed_content += "\nSummary:\nA highly motivated professional with a passion for excellence."
+        fixed_content += "\n\nSummary:\nA highly motivated professional with a passion for excellence."
 
     elif "Education section missing" in issue_text:
         section = "education"
-        fixed_content += "\nEducation:\nB.Tech in Computer Science, ABC University"
+        fixed_content += "\n\nEducation:\nB.Tech in Computer Science, ABC University"
 
     elif "Experience section missing" in issue_text:
         section = "experience"
-        fixed_content += "\nExperience:\nSoftware Engineer at XYZ Ltd (2020 - Present)"
+        fixed_content += "\n\nExperience:\nSoftware Engineer at XYZ Ltd (2020 - Present)"
 
     elif "Missing relevant keywords" in issue_text:
         section = "skills"
-        fixed_content += "\nSkills:\nPython, Project Management"
+        fixed_content += "\n\nSkills:\nPython, Project Management"
 
     elif "Contains personal info" in issue_text:
         section = "contact"
-        fixed_content = re.sub(r"(?i)(Date of Birth|DOB|Gender|Marital Status).*?\n", "", resume_text)
+        fixed_content = re.sub(r"(?i)(Date of Birth|DOB|Gender|Marital Status).*?\n", "", fixed_content)
 
     elif "grammar error" in issue_text:
         section = "summary"
-        fixed_content = resume_text.replace("responsible of", "responsible for")
+        fixed_content = fixed_content.replace("responsible of", "responsible for")
 
     return {"section": section, "fixedContent": fixed_content}

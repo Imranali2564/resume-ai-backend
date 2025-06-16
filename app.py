@@ -1078,15 +1078,17 @@ def extract_sections():
         return jsonify({"error": f"Failed to extract sections: {str(e)}"}), 500
 
 # =====================================================================
-# FINAL API ENDPOINT FOR THE NEW WORDPRESS FRONTEND
+# FINAL API ENDPOINT FOR THE NEW WORDPRESS FRONTEND (CORRECTED INDENTATION)
 # =====================================================================
 @app.route('/api/v1/analyze-resume', methods=['POST'])
 def analyze_resume_for_frontend():
     try:
-        if 'resume_file' not in request.files:  # 'file' को 'resume_file' से बदलें
-        return jsonify({"success": False, "error": "No 'resume_file' part in the request."}), 400
-    
-    file = request.files['resume_file']
+        # The key is changed to 'resume_file' to match the WordPress request
+        if 'resume_file' not in request.files:
+            return jsonify({"success": False, "error": "No 'resume_file' part in the request."}), 400
+        
+        file = request.files['resume_file']
+        
         if file.filename == '':
             return jsonify({"success": False, "error": "No file selected."}), 400
 
@@ -1118,6 +1120,7 @@ def analyze_resume_for_frontend():
                 })
 
         # अंतिम JSON स्ट्रक्चर तैयार करें
+        # यह स्ट्रक्चर हमारे फाइनल जावास्क्रिप्ट कोड से मेल खाता है
         formatted_data = {
             "score": ats_result.get('score', 0),
             "analysis": {
