@@ -1083,10 +1083,10 @@ def extract_sections():
 @app.route('/api/v1/analyze-resume', methods=['POST'])
 def analyze_resume_for_frontend():
     try:
-        if 'file' not in request.files:
-            return jsonify({"success": False, "error": "No file part in the request."}), 400
-        
-        file = request.files['file']
+        if 'resume_file' not in request.files:  # 'file' को 'resume_file' से बदलें
+        return jsonify({"success": False, "error": "No 'resume_file' part in the request."}), 400
+    
+    file = request.files['resume_file']
         if file.filename == '':
             return jsonify({"success": False, "error": "No file selected."}), 400
 
