@@ -1077,6 +1077,63 @@ def extract_sections():
         logger.error(f"Error extracting sections: {str(e)} | Resume text: {text[:500]}")
         return jsonify({"error": f"Failed to extract sections: {str(e)}"}), 500
 
+# =====================================================================
+# FINAL API ENDPOINT FOR THE NEW WORDPRESS FRONTEND
+# =====================================================================
+@app.route('/api/v1/analyze-resume', methods=['POST'])
+def analyze_resume_for_frontend():
+    try:
+        if 'file' not in request.files:
+            return jsonify({"success": False, "error": "No file part in the request."}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({"success": False, "error": "No file selected."}), 400
+
+        # --- 1. Extract Text from Resume ---
+        # हम आपके मौजूदा फंक्शन का उपयोग कर रहे हैं
+        text = extract_text_from_resume(file)
+        if not text:
+            return jsonify({"success": False, "error": "Could not extract text from the resume."}), 500
+
+        # --- 2. Get Analysis from your existing functions ---
+        # हम मानते हैं कि ये फंक्शन आपके resume_ai_analyzer.py में मौजूद हैं
+        ats_result = generate_ats_report(text) # यह आपको {'issues': [...], 'score': 85} देता है
+        extracted_sections = extract_resume_sections(text) # यह आपको सभी सेक्शन देता है
+
+        # --- 3. Re-format the data for our new JavaScript frontend ---
+        # यह सबसे महत्वपूर्ण हिस्सा है
+        
+        # ATS रिपोर्ट को 'passed_checks' और 'issues_to_fix' में बांटें
+        passed_checks = []
+        issues_to_fix = []
+        for issue in ats_result.get('issues', []):
+            if issue.startswith("✅"):
+                passed_checks.append(issue.replace("✅", "").strip())
+            else:
+                # जावास्क्रिप्ट के लिए ऑब्जेक्ट्स का ऐरे बनाएं
+                issues_to_fix.append({
+                    "issue_id": f"err_{len(issues_to_fix) + 1}", # एक यूनिक आईडी बनाएं
+                    "issue_text": issue.replace("❌", "").strip()
+                })
+
+        # अंतिम JSON स्ट्रक्चर तैयार करें
+        formatted_data = {
+            "score": ats_result.get('score', 0),
+            "analysis": {
+                "passed_checks": passed_checks,
+                "issues_to_fix": issues_to_fix
+            },
+            "extracted_data": extracted_sections # इसका नाम हमारे JS के अनुसार है
+        }
+        
+        # सफलता का जवाब भेजें
+        return jsonify({"success": True, "data": formatted_data})
+
+    except Exception as e:
+        logger.error(f"Error in /api/v1/analyze-resume: {str(e)}")
+        return jsonify({"success": False, "error": "An unexpected error occurred on the server."}), 500
+    
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     logger.info(f"Starting Flask app on port {port}")
