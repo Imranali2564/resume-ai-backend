@@ -1087,62 +1087,69 @@ def extract_sections():
 # =====================================================================
 # FINAL API ENDPOINT FOR THE NEW WORDPRESS FRONTEND (CORRECTED INDENTATION)
 # =====================================================================
+
 @app.route('/api/v1/analyze-resume', methods=['POST'])
 def analyze_resume_for_frontend():
     try:
-        # The key is changed to 'resume_file' to match the WordPress request
         if 'resume_file' not in request.files:
             return jsonify({"success": False, "error": "No 'resume_file' part in the request."}), 400
         
         file = request.files['resume_file']
-        
         if file.filename == '':
             return jsonify({"success": False, "error": "No file selected."}), 400
 
         # --- 1. Extract Text from Resume ---
-        # हम आपके मौजूदा फंक्शन का उपयोग कर रहे हैं
         text = extract_text_from_resume(file)
         if not text:
             return jsonify({"success": False, "error": "Could not extract text from the resume."}), 500
 
-        # --- 2. Get Analysis from your existing functions ---
-        # हम मानते हैं कि ये फंक्शन आपके resume_ai_analyzer.py में मौजूद हैं
-        ats_result = generate_ats_report(text, extracted_sections) # यह आपको {'issues': [...], 'score': 85} देता है
-        extracted_sections = extract_resume_sections(text) # यह आपको सभी सेक्शन देता है
+        # --- 2. Get Analysis from your existing functions (CORRECTED ORDER) ---
+        
+        # STEP 2.1: Extract sections FIRST.
+        extracted_sections = extract_resume_sections(text)
+        if not extracted_sections or extracted_sections.get("error"):
+             return jsonify({"success": False, "error": extracted_sections.get("error", "Failed to parse resume sections.")}), 500
+
+        # STEP 2.2: NOW, generate the ATS report using the extracted sections.
+        ats_result = generate_ats_report(text, extracted_sections) 
 
         # --- 3. Re-format the data for our new JavaScript frontend ---
-        # यह सबसे महत्वपूर्ण हिस्सा है
         
         # ATS रिपोर्ट को 'passed_checks' और 'issues_to_fix' में बांटें
+        # (This part of your code was correct, it is just moved for clarity)
         passed_checks = []
         issues_to_fix = []
-        for issue in ats_result.get('issues', []):
-            if issue.startswith("✅"):
-                passed_checks.append(issue.replace("✅", "").strip())
+        # We now use the 'issues' key which is returned by our new generate_ats_report function
+        for issue_text in ats_result.get('issues', []):
+            if issue_text.startswith("✅"):
+                passed_checks.append(issue_text)
             else:
                 # जावास्क्रिप्ट के लिए ऑब्जेक्ट्स का ऐरे बनाएं
                 issues_to_fix.append({
                     "issue_id": f"err_{len(issues_to_fix) + 1}", # एक यूनिक आईडी बनाएं
-                    "issue_text": issue.replace("❌", "").strip()
+                    "issue_text": issue_text
                 })
 
         # अंतिम JSON स्ट्रक्चर तैयार करें
-        # यह स्ट्रक्चर हमारे फाइनल जावास्क्रिप्ट कोड से मेल खाता है
         formatted_data = {
             "score": ats_result.get('score', 0),
             "analysis": {
                 "passed_checks": passed_checks,
                 "issues_to_fix": issues_to_fix
             },
-            "extracted_data": extracted_sections # इसका नाम हमारे JS के अनुसार है
+            "extracted_data": extracted_sections 
         }
         
         # सफलता का जवाब भेजें
         return jsonify({"success": True, "data": formatted_data})
 
     except Exception as e:
+        # This will catch any other unexpected errors
         logger.error(f"Error in /api/v1/analyze-resume: {str(e)}")
-        return jsonify({"success": False, "error": "An unexpected error occurred on the server."}), 500
+        # It's helpful to log the full traceback for debugging
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({"success": False, "error": "An unexpected server error occurred."}), 500
     
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
