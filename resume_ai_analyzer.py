@@ -847,30 +847,48 @@ def remove_unnecessary_personal_info(text):
     return text
 
 # In resume_ai_analyzer.py
-# Replace the existing generate_ats_report function with this one
+# Replace ONLY the generate_ats_report function with this new, much smarter version.
 
 def generate_ats_report(resume_text):
+    """
+    FINAL ADVANCED VERSION
+    This AI-powered version uses a more robust prompt with examples (few-shot)
+    to generate a highly relevant and actionable ATS report.
+    """
     if not client:
         logger.error("OpenAI client not initialized. Cannot generate ATS report.")
         return {"score": 0, "issues": ["❌ OpenAI API key not configured."]}
 
-    logger.info("Generating new AI-powered ATS report...")
+    logger.info("Generating FINAL advanced AI-powered ATS report...")
 
-    # The prompt is now smarter and checks for verbosity in sections
+    # This is a much more robust prompt that gives the AI clear instructions and examples.
     prompt = f"""
-You are an expert ATS (Applicant Tracking System) reviewer. Analyze the following resume text.
-Based on the content, identify up to 4 specific strengths (as "✅ Passed Checks") and up to 4 specific weaknesses (as "❌ Issues to Fix").
+You are a world-class ATS (Applicant Tracking System) reviewer. Your job is to provide a critical and helpful analysis of the provided resume text.
 
-Your analysis must include the following checks:
-1.  **Relevance:** Are the suggestions relevant to the job profile implied by the resume?
-2.  **Conciseness:** Check if sections like "Skills" are written in long paragraphs instead of a concise list. If so, flag it as an issue. For example: "❌ Skills section is too wordy. It should be a list of keywords."
-3.  **Actionable Feedback:** Weaknesses should be actionable suggestions for improvement.
+**Your Task:**
+Analyze the resume and generate a JSON object containing two lists: "passed_checks" and "issues_to_fix".
 
-Do not suggest adding 'Python' unless the resume is clearly for a technical or data-related role.
+**Instructions & Rules:**
+1.  **Be Specific & Actionable:** Do not give generic advice.
+2.  **Check for Wordiness:** Pay close attention to the 'Skills' section. If it's a long paragraph instead of a list of keywords, you MUST flag it.
+3.  **Be Relevant:** All feedback must be relevant to the job profile implied by the resume (e.g., don't suggest 'Python' for a non-tech role).
+4.  **Format Correctly:** Each item in the lists must start with the correct emoji (✅ for passed, ❌ for issues).
 
-Format your response as a single JSON object with two keys: "passed_checks" and "issues_to_fix".
+**Example of High-Quality Output:**
+{{
+  "passed_checks": [
+    "✅ The resume includes a clear and concise professional summary.",
+    "✅ Contact information (email and phone) is present and correctly formatted.",
+    "✅ The resume effectively uses action verbs to describe experiences."
+  ],
+  "issues_to_fix": [
+    "❌ The Skills section is written as a paragraph. It should be a concise, bulleted list of keywords for better ATS parsing.",
+    "❌ The resume lacks quantifiable achievements. Add specific metrics (e.g., 'managed a team of 5', 'increased sales by 10%').",
+    "❌ Unnecessary personal information (like marital status or full address) should be removed."
+  ]
+}}
 
-Resume text to analyze:
+**Now, analyze the following resume text and generate the JSON object:**
 ---
 {resume_text[:7000]}
 ---
@@ -878,9 +896,9 @@ Resume text to analyze:
 
     try:
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo-1106",
+            model="gpt-4o",  # Using a more advanced model for higher quality results
             messages=[
-                {"role": "system", "content": "You are an expert ATS resume reviewer who responds in JSON format."},
+                {"role": "system", "content": "You are an expert ATS resume reviewer who responds in perfect JSON format based on the user's instructions."},
                 {"role": "user", "content": prompt}
             ],
             response_format={"type": "json_object"}
@@ -888,18 +906,20 @@ Resume text to analyze:
         
         raw_response = response.choices[0].message.content
         report_data = json.loads(raw_response)
-        logger.info("Successfully generated AI-based ATS report.")
+        logger.info("Successfully generated advanced AI-based ATS report.")
 
         passed = report_data.get("passed_checks", [])
         issues = report_data.get("issues_to_fix", [])
         
-        formatted_passed = [f"✅ {check.replace('✅', '').strip()}" for check in passed]
-        formatted_issues = [f"❌ {issue.replace('❌', '').strip()}" for issue in issues]
+        # The AI should already be providing the emojis, but we ensure it as a fallback.
+        formatted_passed = [check if check.startswith("✅") else f"✅ {check}" for check in passed]
+        formatted_issues = [issue if issue.startswith("❌") else f"❌ {issue}" for issue in issues]
         
         combined_issues_for_frontend = formatted_passed + formatted_issues
 
-        score = 100 - (len(formatted_issues) * 10)
-        score = max(20, min(100, score))
+        # A more balanced score calculation
+        score = 100 - (len(formatted_issues) * 8) - (max(0, 3 - len(formatted_passed)) * 5)
+        score = max(40, min(100, score))
 
         return {"issues": combined_issues_for_frontend, "score": score}
 
