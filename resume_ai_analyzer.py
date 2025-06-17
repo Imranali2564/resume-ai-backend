@@ -879,47 +879,73 @@ def remove_unnecessary_personal_info(text):
 
     return text
 
+# In resume_ai_analyzer.py
+# Replace the old, rule-based generate_ats_report function with this new AI-powered version.
+
 def generate_ats_report(resume_text):
-    issues = []
-    score = 100
+    """
+    This new AI-powered version generates a dynamic and relevant ATS report
+    by asking an AI to act as an ATS reviewer, instead of using hardcoded rules.
+    """
+    if not client:
+        # If the OpenAI client isn't configured, return an error.
+        logger.error("OpenAI client not initialized. Cannot generate ATS report.")
+        return {"score": 0, "issues": ["❌ OpenAI API key not configured."]}
 
-    if re.search(r"\b(Summary|Objective)\b", resume_text, re.IGNORECASE):
-        issues.append("✅ Summary/Objective section found")
-    else:
-        issues.append("❌ Summary/Objective section missing")
-        score -= 10
+    logger.info("Generating new AI-powered ATS report...")
 
-    if "Education" in resume_text:
-        issues.append("✅ Education section found")
-    else:
-        issues.append("❌ Education section missing")
-        score -= 10
+    # This prompt asks the AI to act as an expert ATS and provide relevant feedback.
+    prompt = f"""
+You are an expert ATS (Applicant Tracking System) reviewer for a top recruitment firm.
+Your task is to analyze the following resume text and provide a professional ATS report.
 
-    if "Experience" in resume_text:
-        issues.append("✅ Experience section found")
-    else:
-        issues.append("❌ Experience section missing")
-        score -= 15
+1.  **Analyze the content:** Based on the roles and skills mentioned in the resume, identify its strengths and weaknesses from an ATS perspective.
+2.  **Provide Feedback:** Give up to 4 specific strengths (as "✅ Passed Checks") and up to 4 specific weaknesses (as "❌ Issues to Fix").
+3.  **Be Relevant:** The feedback must be relevant to the job profile suggested by the resume. For example, do not suggest adding 'Python' for a non-technical role like a telecaller. Instead, suggest adding communication or CRM software skills.
+4.  **Be Actionable:** Weaknesses should be actionable suggestions for improvement. For example, instead of "Weak summary," suggest "The summary could be strengthened by adding 2-3 key achievements."
 
-    if "Python" in resume_text or "Project Management" in resume_text:
-        issues.append("✅ Relevant keywords found")
-    else:
-        issues.append("❌ Missing relevant keywords like 'Python'")
-        score -= 10
+**Resume text to analyze:**
+---
+{resume_text[:7000]}
+---
 
-    if re.search(r"Date of Birth|DOB|Gender|Marital Status", resume_text, re.IGNORECASE):
-        issues.append("❌ Contains personal info (DOB, Gender, etc.)")
-        score -= 5
-    else:
-        issues.append("✅ No personal info found")
+Return your complete analysis as a single JSON object with two keys: "passed_checks" and "issues_to_fix". Both keys should hold a list of strings. Your entire output must be only the JSON object.
+"""
 
-    if "responsible of" in resume_text:
-        issues.append("❌ Possible grammar error: 'responsible of'")
-        score -= 5
-    else:
-        issues.append("✅ No obvious grammar issues")
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo-1106",  # This model is good with JSON format
+            messages=[
+                {"role": "system", "content": "You are an expert ATS resume reviewer who responds in JSON format."},
+                {"role": "user", "content": prompt}
+            ],
+            response_format={"type": "json_object"}
+        )
+        
+        raw_response = response.choices[0].message.content
+        report_data = json.loads(raw_response)
+        logger.info("Successfully generated AI-based ATS report.")
 
-    return {"issues": issues, "score": score}
+        passed = report_data.get("passed_checks", [])
+        issues = report_data.get("issues_to_fix", [])
+        
+        # Make sure the checks and issues have the correct emoji format
+        formatted_passed = [f"✅ {check.replace('✅', '').strip()}" for check in passed]
+        formatted_issues = [f"❌ {issue.replace('❌', '').strip()}" for issue in issues]
+        
+        # Combine passed checks and issues into a single list for the frontend
+        combined_issues_for_frontend = formatted_passed + formatted_issues
+
+        # Calculate a dynamic score based on the number of issues found by the AI
+        score = 100 - (len(formatted_issues) * 10) # 10 points deducted per issue
+        score = max(20, min(100, score)) # Ensure score is between 20 and 100
+
+        return {"issues": combined_issues_for_frontend, "score": score}
+
+    except Exception as e:
+        logger.error(f"[ERROR in new generate_ats_report]: {str(e)}")
+        # Fallback to a simple message in case of AI error
+        return {"score": 0, "issues": ["❌ AI analysis failed. Please check the server logs."]}
 
 def fix_ats_issue(resume_text, issue_text):
     section = "misc"
