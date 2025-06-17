@@ -468,58 +468,113 @@ Your entire response must be only the JSON object.
         return {"error": f"Failed to generate section content: {str(e)}"}
 
 # In resume_ai_analyzer.py
-# Replace the old extract_resume_sections function with this new, AI-powered version.
+# Replace the extract_resume_sections function with this one:
 
 def extract_resume_sections(text):
-    """
-    This new version uses AI to parse the resume text into a structured JSON format,
-    which is much more reliable than regex for varied resume layouts.
-    """
     if not client:
-        logger.error("OpenAI client not initialized. Cannot extract sections.")
-        return {"error": "OpenAI client not initialized. Cannot extract sections."}
-
-    logger.info("Starting AI-powered section extraction...")
-
-    # This detailed prompt asks the AI to act as a parser and return structured JSON.
+        return {"error": "OpenAI client not initialized."}
+    logger.info("Starting ADVANCED AI-powered section extraction...")
     prompt = f"""
-You are an expert resume parser. Analyze the provided resume text and extract the information into a structured JSON object.
-The JSON object should have the following keys: "name", "job_title", "contact", "summary", "education", "work_experience", "skills", "languages", "projects", "certifications", "awards".
+You are a highly-skilled resume parsing expert. Your only job is to convert the resume text below into a structured JSON object.
 
-- For "education", return a list of objects, each with "degree", "school", and "duration".
-- For "work_experience", return a list of objects, each with "title", "company", "duration", and "details" (as a list of strings).
-- For "projects", return a list of objects, each with "title" and "details".
-- For "skills" and "languages", return a list of strings.
-- For other keys like "name", "job_title", "contact", "summary", "certifications", and "awards", return a single string.
-- If a section is not found, its value should be null or an empty list/string.
+**JSON Structure Rules:**
+- Keys must be: "name", "job_title", "contact", "summary", "education", "work_experience", "skills", "languages", "projects".
+- "education" and "work_experience" must be LISTS of OBJECTS.
+- "skills" and "languages" must be LISTS of STRINGS.
+- All other keys must be STRINGS.
+- If a section is missing, its value must be null or an empty list/string.
 
-Here is the resume text to parse:
+**Example of PERFECT output:**
+{{
+  "name": "Insha",
+  "job_title": "Tele Caller",
+  "contact": "Phone: 9654031233\\nEmail: inshaansari844@gmail.com\\nAddress: T_602, Street No 12 Gautampuri New Delhi 110053",
+  "summary": "A highly motivated and results-oriented individual with a strong foundation in computer applications (CCA) and 6 months of experience in telecalling. Eager to leverage acquired skills and knowledge to contribute to a dynamic and growth-oriented organization.",
+  "education": [
+    {{ "degree": "B.A", "school": "Mata Sundri College for Women (University Of Delhi)", "duration": "1st Year (Present)" }},
+    {{ "degree": "12th", "school": "Government Girls Senior Secondary School", "duration": "2023" }},
+    {{ "degree": "10th", "school": "Government Girls Senior Secondary School", "duration": "2021" }}
+  ],
+  "work_experience": [
+    {{ "title": "Tele Caller", "company": "Unknown Company", "duration": "Having 6 Month Experience", "details": ["Contacted potential customers to promote products or services.", "Provided accurate and relevant information.", "Maintained detailed records of calls and interactions."] }}
+  ],
+  "skills": ["Proficient in MS Word, MS Excel, MS PowerPoint, MS Access", "Excellent written and verbal communication", "Effective communication with diverse people", "Exceptional customer service", "Task prioritization and meeting deadlines", "Quick learner and adaptable"],
+  "languages": ["Hindi", "English"],
+  "projects": null
+}}
+
+**Now, parse the following resume text into this exact JSON structure:**
 ---
 {text[:8000]}
 ---
 """
-
     try:
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo-1106",  # Using a model that is good with JSON outputs
+            model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"} # Instruct the model to return a JSON object
+            response_format={"type": "json_object"}
         )
-        
-        raw_response = response.choices[0].message.content
-        logger.info("Successfully received structured data from AI.")
-        
-        # The AI should return a valid JSON string, so we parse it.
-        parsed_json = json.loads(raw_response)
+        parsed_json = json.loads(response.choices[0].message.content)
+        logger.info("Successfully performed ADVANCED section extraction.")
         return parsed_json
-
-    except json.JSONDecodeError as json_err:
-        logger.error(f"AI returned invalid JSON: {json_err}")
-        logger.error(f"Raw response from AI: {raw_response}")
-        return {"error": "Failed to parse structured data from AI."}
     except Exception as e:
         logger.error(f"[ERROR in new extract_resume_sections]: {str(e)}")
         return {"error": f"An unexpected error occurred during AI section extraction: {str(e)}"}
+
+# =================================================================
+
+# Also in resume_ai_analyzer.py
+# Replace the generate_ats_report function with this one:
+
+def generate_ats_report(resume_text):
+    if not client:
+        return {"score": 0, "issues": ["❌ OpenAI API key not configured."]}
+    logger.info("Generating FINAL advanced AI-powered ATS report...")
+    prompt = f"""
+You are a world-class ATS reviewer. Analyze the resume text and generate a JSON object with "passed_checks" and "issues_to_fix".
+
+**CRITICAL INSTRUCTIONS:**
+1.  **Identify MISSING Sections:** Check if important sections like "Projects", "Certifications", or "Internship" are missing. If they are missing and seem relevant for the user's profile, suggest adding them in the 'issues_to_fix' list.
+2.  **Check for Conciseness:** If the 'Skills' section is a long paragraph, flag it as an issue.
+3.  **Be Relevant & Actionable:** All feedback must be specific and helpful.
+
+**Example of High-Quality Output:**
+{{
+  "passed_checks": [
+    "✅ The resume includes a clear professional summary.",
+    "✅ Contact information is present."
+  ],
+  "issues_to_fix": [
+    "❌ The Skills section is too wordy and should be a concise bullet point list.",
+    "❌ The resume lacks quantifiable achievements (e.g., 'increased sales by 10%').",
+    "❌ Consider adding a 'Projects' section to showcase practical skills."
+  ]
+}}
+
+**Analyze the following resume and generate the JSON object:**
+---
+{resume_text[:7000]}
+---
+"""
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "system", "content": "You are a helpful ATS reviewer responding in JSON."}, {"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        report_data = json.loads(response.choices[0].message.content)
+        logger.info("Successfully generated advanced AI-based ATS report.")
+        passed = report_data.get("passed_checks", [])
+        issues = report_data.get("issues_to_fix", [])
+        formatted_passed = [f"✅ {check.replace('✅', '').strip()}" for check in passed]
+        formatted_issues = [f"❌ {issue.replace('❌', '').strip()}" for issue in issues]
+        combined_issues = formatted_passed + formatted_issues
+        score = max(40, 100 - (len(formatted_issues) * 8))
+        return {"issues": combined_issues, "score": score}
+    except Exception as e:
+        logger.error(f"[ERROR in new generate_ats_report]: {str(e)}")
+        return {"score": 0, "issues": ["❌ AI analysis failed. Please check server logs."]}
+    
 def extract_keywords_from_jd(jd_text):
     if not client:
         return "Cannot extract keywords: OpenAI API key not set."
