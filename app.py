@@ -1107,7 +1107,7 @@ def analyze_resume_for_frontend():
 
         # --- 2. Get Analysis from your existing functions ---
         # हम मानते हैं कि ये फंक्शन आपके resume_ai_analyzer.py में मौजूद हैं
-        ats_result = generate_ats_report(text, extracted_sections # यह आपको {'issues': [...], 'score': 85} देता है
+        ats_result = generate_ats_report(text, extracted_sections) # यह आपको {'issues': [...], 'score': 85} देता है
         extracted_sections = extract_resume_sections(text) # यह आपको सभी सेक्शन देता है
 
         # --- 3. Re-format the data for our new JavaScript frontend ---
