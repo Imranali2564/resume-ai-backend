@@ -553,7 +553,28 @@ Here is the resume text to parse:
     except Exception as e:
         logger.error(f"[ERROR in new extract_resume_sections]: {str(e)}")
         return {"error": f"An unexpected error occurred during AI section extraction: {str(e)}"}
+def extract_keywords_from_jd(jd_text):
+    if not client:
+        return "Cannot extract keywords: OpenAI API key not set."
 
+    try:
+        prompt = f"""
+From the following job description, extract the most important keywords that should be reflected in a resume.
+Return the keywords as a comma-separated string.
+
+Job Description:
+{jd_text[:3000]}
+        """
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        logger.error(f"[ERROR in extract_keywords_from_jd]: {str(e)}")
+        return "Failed to extract keywords from job description."
+    
 def generate_resume_summary(name, role, experience, skills):
     if not client:
         return "OpenAI API key not set. Cannot generate summary."
