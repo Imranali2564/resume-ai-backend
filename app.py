@@ -303,7 +303,14 @@ def analyze_resume():
 @app.route('/fix-suggestion', methods=['POST'])
 def fix_suggestion():
     try:
-        data = request.get_json()
+        # --- THIS IS THE ONLY CHANGE NEEDED ---
+        # Instead of request.get_json(), we get the payload from form data and load it as JSON
+        if 'payload' not in request.form:
+            return jsonify({"error": "Missing payload in request form"}), 400
+            
+        data = json.loads(request.form.get('payload'))
+        # --- END OF CHANGE ---
+
         suggestion = data.get("suggestion")
         full_text = data.get("full_text")
 
