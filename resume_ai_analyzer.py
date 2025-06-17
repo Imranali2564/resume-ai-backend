@@ -471,9 +471,60 @@ Your entire response must be only the JSON object.
 # Replace the extract_resume_sections function with this one:
 
 def extract_resume_sections(text):
-    # This function should already be the advanced AI-powered one from before.
-    # No changes needed here if it's already parsing into structured JSON.
-    # ... (Keep the AI-powered extract_resume_sections function here) ...
+    """
+    This advanced AI-powered function parses resume text into a structured JSON object.
+    """
+    if not client:
+        logger.error("OpenAI client not initialized. Cannot extract sections.")
+        return {"error": "OpenAI client not initialized."}
+
+    logger.info("Starting AI-powered section extraction...")
+    
+    prompt = f"""
+You are a highly-skilled resume parsing expert. Your only job is to convert the resume text below into a structured JSON object.
+
+**JSON Structure Rules:**
+- Keys must be: "name", "job_title", "contact", "summary", "education", "work_experience", "skills", "languages", "projects".
+- "education" and "work_experience" must be LISTS of OBJECTS.
+- "skills" and "languages" must be LISTS of STRINGS.
+- All other keys must be STRINGS.
+- If a section is missing, its value must be null or an empty list/string.
+
+**Example of PERFECT output:**
+{{
+  "name": "Insha",
+  "job_title": "Tele Caller",
+  "contact": "Phone: 9654031233\\nEmail: inshaansari844@gmail.com\\nAddress: T_602, Street No 12 Gautampuri New Delhi 110053",
+  "summary": "A highly motivated and results-oriented individual with a strong foundation in computer applications (CCA) and 6 months of experience in telecalling. Eager to leverage acquired skills and knowledge to contribute to a dynamic and growth-oriented organization.",
+  "education": [
+    {{ "degree": "B.A", "school": "Mata Sundri College for Women (University Of Delhi)", "duration": "1st Year (Present)" }},
+    {{ "degree": "12th", "school": "Government Girls Senior Secondary School", "duration": "2023" }}
+  ],
+  "work_experience": [
+    {{ "title": "Tele Caller", "company": "Unknown Company", "duration": "6 Months Experience", "details": ["Contacted potential customers to promote products or services.", "Provided accurate and relevant information.", "Maintained detailed records of calls and interactions."] }}
+  ],
+  "skills": ["MS Word", "MS Excel", "MS PowerPoint", "MS Access", "Excellent written and verbal communication", "Customer service", "Time Management"],
+  "languages": ["Hindi", "English"],
+  "projects": null
+}}
+
+**Now, parse the following resume text into this exact JSON structure:**
+---
+{text[:8000]}
+---
+"""
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        parsed_json = json.loads(response.choices[0].message.content)
+        logger.info("Successfully performed ADVANCED section extraction.")
+        return parsed_json
+    except Exception as e:
+        logger.error(f"[ERROR in extract_resume_sections]: {str(e)}")
+        return {"error": f"An unexpected error occurred during AI section extraction: {str(e)}"}
 
 def generate_ats_report(resume_text, extracted_data):
     """
