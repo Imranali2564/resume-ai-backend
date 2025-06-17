@@ -471,55 +471,107 @@ Your entire response must be only the JSON object.
 # Replace the extract_resume_sections function with this one:
 
 def extract_resume_sections(text):
+    # This function should already be the advanced AI-powered one from before.
+    # No changes needed here if it's already parsing into structured JSON.
+    # ... (Keep the AI-powered extract_resume_sections function here) ...
+
+def generate_ats_report(resume_text, extracted_data):
+    """
+    Smarter ATS report that also checks for missing sections based on context.
+    """
     if not client:
-        return {"error": "OpenAI client not initialized."}
-    logger.info("Starting ADVANCED AI-powered section extraction...")
+        return {"score": 0, "issues": ["❌ OpenAI API key not configured."]}
+    
+    logger.info("Generating FINAL advanced AI-powered ATS report...")
+    
+    # Create a summary of the resume for context
+    resume_context = f"Role: {extracted_data.get('job_title', 'N/A')}. Experience: {len(extracted_data.get('work_experience', []))} entries. Skills: {', '.join(extracted_data.get('skills', []))}"
+
     prompt = f"""
-You are a highly-skilled resume parsing expert. Your only job is to convert the resume text below into a structured JSON object.
+You are a world-class ATS resume reviewer. Your task is to provide a critical and helpful analysis of the provided resume text.
 
-**JSON Structure Rules:**
-- Keys must be: "name", "job_title", "contact", "summary", "education", "work_experience", "skills", "languages", "projects".
-- "education" and "work_experience" must be LISTS of OBJECTS.
-- "skills" and "languages" must be LISTS of STRINGS.
-- All other keys must be STRINGS.
-- If a section is missing, its value must be null or an empty list/string.
+**Resume Context:** {resume_context}
 
-**Example of PERFECT output:**
-{{
-  "name": "Insha",
-  "job_title": "Tele Caller",
-  "contact": "Phone: 9654031233\\nEmail: inshaansari844@gmail.com\\nAddress: T_602, Street No 12 Gautampuri New Delhi 110053",
-  "summary": "A highly motivated and results-oriented individual with a strong foundation in computer applications (CCA) and 6 months of experience in telecalling. Eager to leverage acquired skills and knowledge to contribute to a dynamic and growth-oriented organization.",
-  "education": [
-    {{ "degree": "B.A", "school": "Mata Sundri College for Women (University Of Delhi)", "duration": "1st Year (Present)" }},
-    {{ "degree": "12th", "school": "Government Girls Senior Secondary School", "duration": "2023" }},
-    {{ "degree": "10th", "school": "Government Girls Senior Secondary School", "duration": "2021" }}
-  ],
-  "work_experience": [
-    {{ "title": "Tele Caller", "company": "Unknown Company", "duration": "Having 6 Month Experience", "details": ["Contacted potential customers to promote products or services.", "Provided accurate and relevant information.", "Maintained detailed records of calls and interactions."] }}
-  ],
-  "skills": ["Proficient in MS Word, MS Excel, MS PowerPoint, MS Access", "Excellent written and verbal communication", "Effective communication with diverse people", "Exceptional customer service", "Task prioritization and meeting deadlines", "Quick learner and adaptable"],
-  "languages": ["Hindi", "English"],
-  "projects": null
-}}
+**Instructions & Rules:**
+1.  **Identify Missing Sections:** Based on the resume context, suggest adding important missing sections. For a developer, suggest 'Projects'. For a student, 'Internship'. If experience is present, 'Achievements' could be a good addition.
+2.  **Check for Wordiness:** Check if the 'Skills' section is a long paragraph. If so, flag it as an issue.
+3.  **Be Actionable:** All feedback must be specific and helpful.
+4.  **Format Correctly:** Respond with a JSON object with "passed_checks" and "issues_to_fix" lists.
 
-**Now, parse the following resume text into this exact JSON structure:**
+**Resume text to analyze:**
 ---
-{text[:8000]}
+{resume_text[:7000]}
 ---
 """
     try:
         response = client.chat.completions.create(
             model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "system", "content": "You are a helpful ATS reviewer responding in JSON."}, {"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
-        parsed_json = json.loads(response.choices[0].message.content)
-        logger.info("Successfully performed ADVANCED section extraction.")
-        return parsed_json
+        report_data = json.loads(response.choices[0].message.content)
+        # ... (rest of the function logic for parsing and scoring remains the same) ...
+        return {"issues": combined_issues, "score": score}
+
     except Exception as e:
-        logger.error(f"[ERROR in new extract_resume_sections]: {str(e)}")
-        return {"error": f"An unexpected error occurred during AI section extraction: {str(e)}"}
+        logger.error(f"[ERROR in generate_ats_report]: {str(e)}")
+        return {"score": 0, "issues": ["❌ AI analysis failed."]}
+
+
+def generate_section_content(suggestion, full_text):
+    """
+    The smartest version yet. It handles specific instructions for different types of fixes.
+    """
+    if not client:
+        return {"error": "OpenAI API key not set."}
+
+    logger.info(f"Generating content for suggestion: {suggestion}")
+
+    prompt = f"""
+You are an AI resume writing expert. Your task is to fix a specific issue in a resume based on a suggestion.
+
+**SUGGESTION TO FIX:**
+{suggestion}
+
+**FULL RESUME TEXT:**
+{full_text[:8000]}
+
+**SPECIAL INSTRUCTIONS based on the SUGGESTION:**
+
+1.  **If the suggestion is about a "wordy skills section"**: Your task is to extract only the core keywords from the resume's skills section and format them as a simple, clean, bulleted list. Return this list in the `fixedContent`. The `section` key should be "skills".
+2.  **If the suggestion is to "remove personal information"**: Your task is to find the contact section in the resume text, remove any private info (DOB, marital status, gender, nationality), and return ONLY the professional contact details (Email, Phone, Address, LinkedIn) in the `fixedContent`. The `section` key should be "contact".
+3.  **If the suggestion is about "lacks quantifiable achievements"**: Your task is to find the 'Work Experience' section, pick ONE bullet point, and rewrite it to include a plausible metric (e.g., change "Managed projects" to "Managed 5 concurrent projects"). Return the ENTIRE rewritten work experience section in the `fixedContent`. The `section` key should be "work_experience".
+4.  **For any other suggestion**: Analyze the suggestion and the resume, and provide the improved text for the most relevant section.
+
+**Your entire response MUST be a single JSON object with two keys:**
+1.  `section`: The name of the resume section that needs to be updated (e.g., "skills", "contact", "work_experience").
+2.  `fixedContent`: The new, improved content for that section.
+"""
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a resume fixing assistant that responds in perfect JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            response_format={"type": "json_object"}
+        )
+        
+        result = json.loads(response.choices[0].message.content)
+        logger.info(f"Successfully generated content for section: {result.get('section')}")
+        
+        section = result.get("section", "").lower().replace(" ", "_")
+        content = result.get("fixedContent", "")
+
+        if isinstance(content, str) and content.strip().startswith('-'):
+            content = [line.strip().lstrip('-•* ').strip() for line in content.split('\n') if line.strip()]
+
+        return {"section": section, "fixedContent": content}
+
+    except Exception as e:
+        logger.error(f"[ERROR in generate_section_content]: {str(e)}")
+        return {"error": f"Failed to generate section content: {str(e)}"}
 
 # =================================================================
 
