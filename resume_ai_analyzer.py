@@ -500,69 +500,59 @@ Resume:
         logger.error(f"[ERROR in generate_section_content]: {str(e)}")
         return {"error": f"Failed to generate section content: {str(e)}"}
 
-# ✅ Updated extract_resume_sections function inside resume_ai_analyzer.py
+# In resume_ai_analyzer.py
+# Replace the old extract_resume_sections function with this new, AI-powered version.
 
 def extract_resume_sections(text):
-    import re
-    from collections import OrderedDict
-
-    # Define common resume section headings
-    section_headings = [
-        "Objective", "Summary", "Profile", "Career Objective",
-        "Education", "Academic Background", "Educational Qualifications",
-        "Experience", "Work Experience", "Professional Experience",
-        "Internship", "Internships",
-        "Projects", "Personal Projects", "Technical Projects",
-        "Skills", "Technical Skills", "Key Skills",
-        "Certifications", "Courses", "Licenses",
-        "Awards", "Achievements", "Honors",
-        "Languages", "Languages Known",
-        "Hobbies", "Interests",
-        "Publications", "Research Work",
-        "Extracurricular Activities", "Volunteer Work",
-        "References"
-    ]
-
-    # Build pattern to match section titles
-    section_pattern = re.compile(rf"^({'|'.join(section_headings)})(:?\s*)$", re.IGNORECASE | re.MULTILINE)
-
-    matches = list(section_pattern.finditer(text))
-    parsed_sections = OrderedDict()
-
-    for i, match in enumerate(matches):
-        start = match.end()
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
-        section_title = match.group(1).strip().title()
-        section_body = text[start:end].strip()
-
-        if section_title in parsed_sections:
-            section_title += f"_{i}"  # avoid duplicates
-
-        parsed_sections[section_title] = section_body
-
-    return dict(parsed_sections)
-
-def extract_keywords_from_jd(jd_text):
+    """
+    This new version uses AI to parse the resume text into a structured JSON format,
+    which is much more reliable than regex for varied resume layouts.
+    """
     if not client:
-        return "Cannot extract keywords: OpenAI API key not set."
+        logger.error("OpenAI client not initialized. Cannot extract sections.")
+        return {"error": "OpenAI client not initialized. Cannot extract sections."}
+
+    logger.info("Starting AI-powered section extraction...")
+
+    # This detailed prompt asks the AI to act as a parser and return structured JSON.
+    prompt = f"""
+You are an expert resume parser. Analyze the provided resume text and extract the information into a structured JSON object.
+The JSON object should have the following keys: "name", "job_title", "contact", "summary", "education", "work_experience", "skills", "languages", "projects", "certifications", "awards".
+
+- For "education", return a list of objects, each with "degree", "school", and "duration".
+- For "work_experience", return a list of objects, each with "title", "company", "duration", and "details" (as a list of strings).
+- For "projects", return a list of objects, each with "title" and "details".
+- For "skills" and "languages", return a list of strings.
+- For other keys like "name", "job_title", "contact", "summary", "certifications", and "awards", return a single string.
+- If a section is not found, its value should be null or an empty list/string.
+
+Here is the resume text to parse:
+---
+{text[:8000]}
+---
+"""
 
     try:
-        prompt = f"""
-From the following job description, extract the most important keywords that should be reflected in a resume.
-Return the keywords as a comma-separated string.
-
-Job Description:
-{jd_text[:3000]}
-        """
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
+            model="gpt-3.5-turbo-1106",  # Using a model that is good with JSON outputs
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"} # Instruct the model to return a JSON object
         )
-        return response.choices[0].message.content.strip()
+        
+        raw_response = response.choices[0].message.content
+        logger.info("Successfully received structured data from AI.")
+        
+        # The AI should return a valid JSON string, so we parse it.
+        parsed_json = json.loads(raw_response)
+        return parsed_json
 
+    except json.JSONDecodeError as json_err:
+        logger.error(f"AI returned invalid JSON: {json_err}")
+        logger.error(f"Raw response from AI: {raw_response}")
+        return {"error": "Failed to parse structured data from AI."}
     except Exception as e:
-        logger.error(f"[ERROR in extract_keywords_from_jd]: {str(e)}")
-        return "Failed to extract keywords from job description."
+        logger.error(f"[ERROR in new extract_resume_sections]: {str(e)}")
+        return {"error": f"An unexpected error occurred during AI section extraction: {str(e)}"}
 
 def generate_resume_summary(name, role, experience, skills):
     if not client:
