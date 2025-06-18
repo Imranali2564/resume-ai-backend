@@ -546,9 +546,21 @@ You are a world-class ATS resume reviewer. Your task is to provide a critical an
 
 **Instructions & Rules:**
 1.  **Identify MISSING Sections:** Based on the resume context, suggest adding important missing sections like "Projects" or "Certifications".
-2.  **Check for Wordiness:** Check if the 'Skills' section is a long paragraph. If so, you MUST flag it as "❌ The Skills section is too wordy and should be a concise bulleted list."
+2.  **Check for Wordiness:** If the 'Skills' section is a long paragraph, you MUST flag it as "❌ The Skills section is too wordy and should be a concise bulleted list."
 3.  **Be Relevant & Actionable:** All feedback must be specific and helpful.
 4.  **Format Correctly:** Respond with a JSON object with "passed_checks" and "issues_to_fix" lists. Each item MUST start with the correct emoji (✅ or ❌).
+
+**Example of High-Quality Output:**
+{{
+  "passed_checks": [
+    "✅ The resume includes a clear and concise professional summary.",
+    "✅ Contact information (email and phone) is present and correctly formatted."
+  ],
+  "issues_to_fix": [
+    "❌ The Skills section is written as a paragraph. It should be a concise, bulleted list of keywords for better ATS parsing.",
+    "❌ The resume lacks quantifiable achievements. Add specific metrics (e.g., 'managed a team of 5', 'increased sales by 10%')."
+  ]
+}}
 
 **Analyze the following resume and generate the JSON object:**
 ---
@@ -566,11 +578,15 @@ You are a world-class ATS resume reviewer. Your task is to provide a critical an
         passed = report_data.get("passed_checks", [])
         issues = report_data.get("issues_to_fix", [])
         
+        # Ensure emojis are present
         formatted_passed = [check if check.startswith("✅") else f"✅ {check}" for check in passed]
         formatted_issues = [issue if issue.startswith("❌") else f"❌ {issue}" for issue in issues]
         
         combined_issues = formatted_passed + formatted_issues
+
+        # Calculate a dynamic score
         score = max(40, 100 - (len(formatted_issues) * 8))
+
         return {"issues": combined_issues, "score": score}
 
     except Exception as e:
