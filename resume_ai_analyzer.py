@@ -837,10 +837,13 @@ Analyze the resume and generate the JSON object:
 def generate_section_content(suggestion, full_text):
     """
     Handles all types of fixes, including creating new sections and summarizing skills.
+    This new version ALSO re-analyzes the resume to provide an updated score.
     """
     if not client: return {"error": "OpenAI API key not set."}
     logger.info(f"Generating content for suggestion: {suggestion}")
-    prompt = f"""
+    
+    # Prompt to get the fix
+    fix_prompt = f"""
 You are an AI resume expert. Fix a specific issue in a resume based on the suggestion.
 SUGGESTION: {suggestion}
 FULL RESUME: {full_text[:8000]}
@@ -849,23 +852,53 @@ SPECIAL INSTRUCTIONS:
 1.  If suggestion is about a "wordy skills section": Extract core keywords from the skills section and format them as a concise list of 5-7 key skills in `fixedContent`. The `section` key must be "skills".
 2.  If suggestion is to "remove personal information": Return ONLY professional contact details (Email, Phone, Address) as a single string in `fixedContent`. The `section` key must be "contact".
 3.  If suggestion is about "lacks quantifiable achievements": Rewrite ONE bullet point in the 'Work Experience' section to include a metric. Return the ENTIRE rewritten work experience section in `fixedContent`. The `section` key must be "work_experience".
-4.  If suggestion is to ADD A MISSING SECTION (e.g., 'Projects'): Create the section with 1-2 relevant example bullet points. The `section` key should be the new section's name.
+4.  If suggestion is to ADD A MISSING SECTION (e.g., 'Projects'): Create the section with 1-2 relevant example bullet points. The `section` key should be the new section's name (e.g., "projects").
 
 Respond with a single JSON object: {{"section": "section_name_in_snake_case", "fixedContent": "new_content_here"}}
 """
     try:
+        # 1. पहला AI कॉल: टेक्स्ट को फिक्स करवाएं
         response = client.chat.completions.create(
             model="gpt-4o",
-            messages=[{"role": "system", "content": "You are a resume fixing assistant that responds in perfect JSON."}, {"role": "user", "content": prompt}],
+            messages=[{"role": "system", "content": "You are a resume fixing assistant that responds in perfect JSON."}, {"role": "user", "content": fix_prompt}],
             response_format={"type": "json_object"}
         )
-        result = json.loads(response.choices[0].message.content)
-        section = result.get("section", "").lower().replace(" ", "_")
-        content = result.get("fixedContent", "")
-        return {"section": section, "fixedContent": content}
+        fix_result = json.loads(response.choices[0].message.content)
+        
+        section_key = fix_result.get("section", "").lower().replace(" ", "_")
+        fixed_content = fix_result.get("fixedContent", "")
+
+        if not section_key or not fixed_content:
+            raise ValueError("AI did not return a valid section or content.")
+
+        # 2. अब, पूरे रिज्यूमे को नए कंटेंट के साथ अपडेट करें
+        # (यह एक सिंपल तरीका है, इसे और बेहतर बनाया जा सकता है)
+        original_sections = extract_resume_sections(full_text)
+        original_sections[section_key] = fixed_content
+        
+        # Plain text बनाना इतना ज़रूरी नहीं है, इसलिए हम इसे अभी के लिए छोड़ सकते हैं
+        # new_full_text = ... (आप चाहें तो यहाँ नया टेक्स्ट बना सकते हैं)
+
+        # 3. दूसरा AI कॉल: अपडेटेड रिज्यूमे पर नई ATS रिपोर्ट और स्कोर पाएं
+        # हम पुराने टेक्स्ट और नए सेक्शंस का उपयोग करेंगे
+        new_ats_report = generate_ats_report(full_text, original_sections)
+
+        # 4. सब कुछ एक साथ वापस भेजें
+        final_response = {
+            "section": section_key,
+            "fixedContent": fixed_content,
+            "newScore": new_ats_report.get("score"),
+            "updatedAnalysis": {
+                "passed_checks": [check for check in new_ats_report.get("issues", []) if check.startswith("✅")],
+                "issues_to_fix": [{ "issue_id": f"err_{i+1}", "issue_text": issue } for i, issue in enumerate(new_ats_report.get("issues", [])) if issue.startswith("❌")]
+            }
+        }
+        
+        return final_response
+
     except Exception as e:
         logger.error(f"Error in generate_section_content: {e}")
-        return {"error": "Failed to generate section content."}
+        return {"error": "Failed to generate and re-analyze section content."}
 
 # =====================================================================
 # END OF REPLACEMENT BLOCK

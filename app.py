@@ -303,36 +303,35 @@ def analyze_resume():
 @app.route('/fix-suggestion', methods=['POST'])
 def fix_suggestion():
     try:
-        # --- THIS IS THE ONLY CHANGE NEEDED ---
-        # Instead of request.get_json(), we get the payload from form data and load it as JSON
         if 'payload' not in request.form:
-            return jsonify({"error": "Missing payload in request form"}), 400
+            return jsonify({"success": False, "error": "Missing payload in request form"}), 400
             
         data = json.loads(request.form.get('payload'))
-        # --- END OF CHANGE ---
-
         suggestion = data.get("suggestion")
         full_text = data.get("full_text")
 
         if not suggestion or not full_text:
             logger.error("Missing suggestion or full_text in /fix-suggestion request")
-            return jsonify({"error": "Missing suggestion or full text"}), 400
+            return jsonify({"success": False, "error": "Missing suggestion or full text"}), 400
 
+        # यह फंक्शन अब फिक्स करने के साथ-साथ री-एनालिसिस भी करेगा
         result = generate_section_content(suggestion, full_text)
+        
         if 'error' in result:
             logger.error(f"Error in generate_section_content: {result['error']}")
-            return jsonify({"error": result["error"]}), 400
+            return jsonify({"success": False, "error": result["error"]}), 500
 
-        if not isinstance(result, dict) or "section" not in result or "fixedContent" not in result:
+        # सुनिश्चित करें कि ज़रूरी डेटा मौजूद है
+        if not all(k in result for k in ["section", "fixedContent", "newScore", "updatedAnalysis"]):
             logger.error(f"Invalid response format from generate_section_content: {result}")
-            return jsonify({"error": "Invalid response format from AI"}), 500
+            return jsonify({"success": False, "error": "Invalid response format from AI"}), 500
 
-        logger.info(f"Successfully generated content for section: {result['section']}")
-        return jsonify(result)
+        logger.info(f"Successfully fixed and re-analyzed section: {result['section']}")
+        return jsonify({"success": True, "data": result}) # <<< पूरे रिजल्ट को data key में भेजें
 
     except Exception as e:
         logger.error(f"Error in /fix-suggestion: {str(e)}")
-        return jsonify({"error": f"Failed to process suggestion: {str(e)}"}), 500
+        return jsonify({"success": False, "error": f"Failed to process suggestion: {str(e)}"}), 500
 
 @app.route('/preview-resume', methods=['POST'])
 def preview_resume():
