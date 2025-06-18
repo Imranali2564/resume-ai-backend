@@ -521,25 +521,34 @@ You are a highly-skilled resume parsing expert. Your only job is to convert the 
         logger.error(f"[ERROR in extract_resume_sections]: {str(e)}")
         return {"error": f"An unexpected error occurred during AI section extraction: {str(e)}"}
 
+# In resume_ai_analyzer.py
+# Replace your old generate_ats_report function with this correct version that accepts two arguments.
+
 def generate_ats_report(resume_text, extracted_data):
     """
-    FINAL ADVANCED VERSION: Generates a dynamic ATS report, checking for missing sections.
+    FINAL ADVANCED VERSION
+    This AI-powered version uses a more robust prompt with examples (few-shot)
+    to generate a highly relevant and actionable ATS report. It accepts extracted_data for context.
     """
     if not client:
+        logger.error("OpenAI client not initialized. Cannot generate ATS report.")
         return {"score": 0, "issues": ["❌ OpenAI API key not configured."]}
-    
+
     logger.info("Generating FINAL advanced AI-powered ATS report...")
     
+    # Create a summary of the resume for context, which is why we need extracted_data
     resume_context = f"Role: {extracted_data.get('job_title', 'N/A')}. Experience: {len(extracted_data.get('work_experience', []))} entries. Skills: {', '.join(extracted_data.get('skills', []))}"
 
     prompt = f"""
-You are a world-class ATS resume reviewer. Analyze the resume text and generate a JSON object with "passed_checks" and "issues_to_fix".
+You are a world-class ATS resume reviewer. Your task is to provide a critical and helpful analysis of the provided resume text.
 
-**CRITICAL INSTRUCTIONS:**
-1.  **Identify MISSING Sections:** Based on the resume context ({resume_context}), suggest adding important missing sections like "Projects" or "Certifications".
-2.  **Check for Wordiness:** If the 'Skills' section is a long paragraph, you MUST flag it as "❌ The Skills section is too wordy and should be a concise bulleted list."
+**Resume Context:** {resume_context}
+
+**Instructions & Rules:**
+1.  **Identify MISSING Sections:** Based on the resume context, suggest adding important missing sections like "Projects" or "Certifications".
+2.  **Check for Wordiness:** Check if the 'Skills' section is a long paragraph. If so, you MUST flag it as "❌ The Skills section is too wordy and should be a concise bulleted list."
 3.  **Be Relevant & Actionable:** All feedback must be specific and helpful.
-4.  **Format Correctly:** Respond with a JSON object. Each item in the lists MUST start with the correct emoji (✅ or ❌).
+4.  **Format Correctly:** Respond with a JSON object with "passed_checks" and "issues_to_fix" lists. Each item MUST start with the correct emoji (✅ or ❌).
 
 **Analyze the following resume and generate the JSON object:**
 ---
