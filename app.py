@@ -24,6 +24,10 @@ from resume_ai_analyzer import (
     generate_resume_summary,
     generate_michelle_template_html,
     generate_ats_report,
+    extract_resume_sections_safely,
+    generate_stable_ats_report,
+    generate_targeted_fix,
+    calculate_new_score,
 )
 
 try:
@@ -309,29 +313,34 @@ def fix_suggestion():
         data = json.loads(request.form.get('payload'))
         suggestion = data.get("suggestion")
         full_text = data.get("full_text")
+        current_score = data.get("current_score") # <<< हमें JS से वर्तमान स्कोर चाहिए
 
-        if not suggestion or not full_text:
-            logger.error("Missing suggestion or full_text in /fix-suggestion request")
-            return jsonify({"success": False, "error": "Missing suggestion or full text"}), 400
+        if not all([suggestion, full_text, isinstance(current_score, int)]):
+            return jsonify({"success": False, "error": "Missing suggestion, text, or current_score."}), 400
 
-        # यह फंक्शन अब फिक्स करने के साथ-साथ री-एनालिसिस भी करेगा
-        result = generate_section_content(suggestion, full_text)
+        # STEP 1: Get the targeted fix from the AI.
+        fix_result = generate_targeted_fix(suggestion, full_text) # <<< बदला हुआ
         
-        if 'error' in result:
-            logger.error(f"Error in generate_section_content: {result['error']}")
-            return jsonify({"success": False, "error": result["error"]}), 500
+        if 'error' in fix_result:
+            return jsonify({"success": False, "error": fix_result["error"]}), 500
 
-        # सुनिश्चित करें कि ज़रूरी डेटा मौजूद है
-        if not all(k in result for k in ["section", "fixedContent", "newScore", "updatedAnalysis"]):
-            logger.error(f"Invalid response format from generate_section_content: {result}")
-            return jsonify({"success": False, "error": "Invalid response format from AI"}), 500
+        # STEP 2: Calculate the new score predictably.
+        new_score = calculate_new_score(current_score, suggestion) # <<< बदला हुआ
+        
+        # Combine results into the final response
+        final_response = {
+            "section": fix_result["section"],
+            "fixedContent": fix_result["fixedContent"],
+            "newScore": new_score
+        }
 
-        logger.info(f"Successfully fixed and re-analyzed section: {result['section']}")
-        return jsonify({"success": True, "data": result}) # <<< पूरे रिजल्ट को data key में भेजें
+        # NOTE: We no longer return 'updatedAnalysis'. The frontend will handle the UI state.
+        return jsonify({"success": True, "data": final_response})
 
     except Exception as e:
-        logger.error(f"Error in /fix-suggestion: {str(e)}")
-        return jsonify({"success": False, "error": f"Failed to process suggestion: {str(e)}"}), 500
+        import traceback
+        logger.error(f"Error in /fix-suggestion: {traceback.format_exc()}")
+        return jsonify({"success": False, "error": "An unexpected server error occurred."}), 500
 
 @app.route('/preview-resume', methods=['POST'])
 def preview_resume():
@@ -1087,9 +1096,6 @@ def extract_sections():
 # FINAL API ENDPOINT FOR THE NEW WORDPRESS FRONTEND (CORRECTED INDENTATION)
 # =====================================================================
 
-# In app.py
-# Replace the temporary debugging function with this final, correct version.
-
 @app.route('/api/v1/analyze-resume', methods=['POST'])
 def analyze_resume_for_frontend():
     try:
@@ -1100,29 +1106,27 @@ def analyze_resume_for_frontend():
         if file.filename == '':
             return jsonify({"success": False, "error": "No file selected."}), 400
 
-        text = extract_text_from_resume(file)
+        text = extract_text_from_resume(file) # This helper function is still valid
         if not text:
             return jsonify({"success": False, "error": "Could not extract text from the resume."}), 500
 
-        # STEP 2.1: Extract sections FIRST.
-        extracted_sections = extract_resume_sections(text)
+        # STEP 1: Extract sections SAFELY without any changes.
+        extracted_sections = extract_resume_sections_safely(text) # <<< बदला हुआ
         if not extracted_sections or extracted_sections.get("error"):
              return jsonify({"success": False, "error": extracted_sections.get("error", "Failed to parse resume sections.")}), 500
 
-        # STEP 2.2: NOW, generate the ATS report using the extracted sections.
-        ats_result = generate_ats_report(text, extracted_sections) 
+        # STEP 2: Generate a STABLE ATS report.
+        ats_result = generate_stable_ats_report(text, extracted_sections) # <<< बदला हुआ
 
-        # --- Re-format the data for our new JavaScript frontend ---
-        passed_checks = []
+        # Format the data for the frontend
+        passed_checks = ats_result.get("passed_checks", [])
         issues_to_fix = []
-        for issue_text in ats_result.get('issues', []):
-            if issue_text.startswith("✅"):
-                passed_checks.append(issue_text)
-            else:
-                issues_to_fix.append({
-                    "issue_id": f"err_{len(issues_to_fix) + 1}",
-                    "issue_text": issue_text
-                })
+        raw_issues = ats_result.get("issues_to_fix", [])
+        for i, issue_text in enumerate(raw_issues):
+            issues_to_fix.append({
+                "issue_id": f"err_{i+1}",
+                "issue_text": issue_text
+            })
 
         formatted_data = {
             "score": ats_result.get('score', 0),

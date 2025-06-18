@@ -768,138 +768,156 @@ def fix_ats_issue(resume_text, issue_text):
     return {"section": section, "fixedContent": fixed_content}
 
 # =====================================================================
-# START: REPLACE THESE 3 FUNCTIONS IN resume_ai_analyzer.py
+# NEW STABLE AI FUNCTIONS
 # =====================================================================
 
-def extract_resume_sections(text):
+def extract_resume_sections_safely(text):
     """
-    Parses resume text into a structured JSON object using an advanced AI prompt.
+    NEW STABLE VERSION: Extracts resume sections WITHOUT any modification.
+    This ensures the user's original data is always shown in the preview.
     """
     if not client: return {"error": "OpenAI client not initialized."}
-    logger.info("Starting FINAL AI-powered section extraction...")
+    logger.info("Starting STABLE section extraction (verbatim)...")
+    
     prompt = f"""
-You are a resume parsing expert. Convert the resume text below into a structured JSON object.
-CRITICAL RULE: Extract content EXACTLY as written. DO NOT summarize or rephrase.
-Keys must be: "name", "job_title", "contact", "summary", "education", "work_experience", "skills", "languages", "projects".
-"education" and "work_experience" MUST be lists of objects.
-"skills" and "languages" MUST be lists of strings.
-If a section is not found, its value MUST be null.
+    You are a resume parsing machine. Your ONLY job is to extract text and structure it in JSON.
+    CRITICAL RULE: Extract content EXACTLY as written. DO NOT summarize, rephrase, add, or remove any words from the original text. The output must be a verbatim copy.
+    
+    The JSON keys must be: "name", "job_title", "contact", "summary", "education", "work_experience", "skills", "languages", "projects", "certifications".
+    - "education" and "work_experience" MUST be lists of objects.
+    - "skills", "languages", "projects", "certifications" MUST be lists of strings.
+    - If a section is not found, its value MUST be null.
 
-Parse the following resume text:
----
-{text[:8000]}
----
-"""
+    Parse the following resume text VERBATIM:
+    ---
+    {text[:8000]}
+    ---
+    """
     try:
         response = client.chat.completions.create(
-            model="gpt-4o", messages=[{"role": "user", "content": prompt}], response_format={"type": "json_object"}
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
         )
         return json.loads(response.choices[0].message.content)
     except Exception as e:
-        logger.error(f"[ERROR in extract_resume_sections]: {e}")
+        logger.error(f"[ERROR in extract_resume_sections_safely]: {e}")
         return {"error": "AI failed to parse sections."}
 
-def generate_ats_report(resume_text, extracted_data):
+def generate_stable_ats_report(resume_text, extracted_data):
     """
-    Generates a dynamic and relevant ATS report, also checking for missing sections.
+    NEW STABLE VERSION: Generates a predictable ATS report by checking for specific, fixed criteria.
+    This reduces the chances of random, new issues appearing.
     """
     if not client: return {"score": 0, "issues": ["❌ OpenAI API key not configured."]}
-    logger.info("Generating FINAL advanced AI-powered ATS report...")
-    resume_context = f"Role: {extracted_data.get('job_title', 'N/A')}. Has Experience: {bool(extracted_data.get('work_experience'))}"
-    prompt = f"""
-You are a world-class ATS reviewer. Analyze the resume text.
-Context: {resume_context}
-Instructions:
-1.  Identify MISSING sections (like "Projects", "Certifications").
-2.  Check for WORDINESS in the 'Skills' section. If it's a paragraph, flag it as an issue.
-3.  Check for lack of QUANTIFIABLE ACHIEVEMENTS in the experience section.
-4.  Give specific, ACTIONABLE feedback.
-5.  Respond with a JSON object with "passed_checks" and "issues_to_fix" lists. Each item MUST start with an emoji (✅ or ❌).
-
-Analyze the resume and generate the JSON object:
----
-{resume_text[:7000]}
----
-"""
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o", messages=[{"role": "system", "content": "You are a helpful ATS reviewer responding in JSON."}, {"role": "user", "content": prompt}], response_format={"type": "json_object"}
-        )
-        report_data = json.loads(response.choices[0].message.content)
-        passed = [check for check in report_data.get("passed_checks", []) if check]
-        issues = [issue for issue in report_data.get("issues_to_fix", []) if issue]
-        score = max(40, 100 - (len(issues) * 8))
-        return {"issues": passed + issues, "score": score}
-    except Exception as e:
-        logger.error(f"[ERROR in new generate_ats_report]: {e}")
-        return {"score": 0, "issues": ["❌ AI analysis failed."]}
-
-def generate_section_content(suggestion, full_text):
-    """
-    Handles all types of fixes, including creating new sections and summarizing skills.
-    This new version ALSO re-analyzes the resume to provide an updated score.
-    """
-    if not client: return {"error": "OpenAI API key not set."}
-    logger.info(f"Generating content for suggestion: {suggestion}")
+    logger.info("Generating STABLE ATS report...")
     
-    # Prompt to get the fix
-    fix_prompt = f"""
-You are an AI resume expert. Fix a specific issue in a resume based on the suggestion.
-SUGGESTION: {suggestion}
-FULL RESUME: {full_text[:8000]}
+    resume_context = f"The user's resume has the following sections: {list(extracted_data.keys())}."
+    prompt = f"""
+    You are a very strict and consistent ATS reviewer. Analyze the resume text based ONLY on the following criteria.
+    Context: {resume_context}
 
-SPECIAL INSTRUCTIONS:
-1.  If suggestion is about a "wordy skills section": Extract core keywords from the skills section and format them as a concise list of 5-7 key skills in `fixedContent`. The `section` key must be "skills".
-2.  If suggestion is to "remove personal information": Return ONLY professional contact details (Email, Phone, Address) as a single string in `fixedContent`. The `section` key must be "contact".
-3.  If suggestion is about "lacks quantifiable achievements": Rewrite ONE bullet point in the 'Work Experience' section to include a metric. Return the ENTIRE rewritten work experience section in `fixedContent`. The `section` key must be "work_experience".
-4.  If suggestion is to ADD A MISSING SECTION (e.g., 'Projects'): Create the section with 1-2 relevant example bullet points. The `section` key should be the new section's name (e.g., "projects").
+    CRITERIA TO CHECK:
+    1.  **Contact Information**: Is there an email and phone number?
+    2.  **Key Sections**: Are 'Education', 'Work Experience', and 'Skills' sections present?
+    3.  **Missing Impactful Sections**: Are 'Projects' or 'Certifications' sections missing? Suggest adding them if they are.
+    4.  **Quantifiable Achievements**: Does the 'Work Experience' section lack numbers, percentages, or metrics (e.g., "managed a team of 5", "increased sales by 15%")?
+    5.  **Wordiness**: Is the 'Skills' section written as a long paragraph instead of a list?
+    6.  **Professional Summary**: Is a summary or objective missing at the top?
 
-Respond with a single JSON object: {{"section": "section_name_in_snake_case", "fixedContent": "new_content_here"}}
-"""
+    Instructions:
+    - For each criterion, provide ONE clear "passed" or "issue" statement.
+    - Respond with a JSON object containing "passed_checks" and "issues_to_fix" lists.
+    - Every item in the lists MUST start with an emoji (✅ for passed, ❌ for issue).
+    - Be consistent. Do not invent new types of issues.
+
+    Analyze the resume and generate the JSON object based ONLY on the criteria above:
+    ---
+    {resume_text[:7000]}
+    ---
+    """
     try:
-        # 1. पहला AI कॉल: टेक्स्ट को फिक्स करवाएं
         response = client.chat.completions.create(
             model="gpt-4o",
-            messages=[{"role": "system", "content": "You are a resume fixing assistant that responds in perfect JSON."}, {"role": "user", "content": fix_prompt}],
+            messages=[{"role": "system", "content": "You are a helpful and consistent ATS reviewer responding in JSON."}, {"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        report_data = json.loads(response.choices[0].message.content)
+        
+        passed = report_data.get("passed_checks", [])
+        issues = report_data.get("issues_to_fix", [])
+        
+        # Predictable Score: Start at 100 and subtract a fixed amount for each issue found.
+        score = max(30, 100 - (len(issues) * 10))
+        
+        return {"passed_checks": passed, "issues_to_fix": issues, "score": score}
+    except Exception as e:
+        logger.error(f"[ERROR in generate_stable_ats_report]: {e}")
+        return {"score": 0, "passed_checks": [], "issues_to_fix": ["❌ AI analysis failed."]}
+
+def generate_targeted_fix(suggestion, full_text):
+    """
+    NEW STABLE VERSION: This function ONLY generates the fixed text for a single issue.
+    It does NOT re-analyze the whole resume.
+    """
+    if not client: return {"error": "OpenAI API key not set."}
+    logger.info(f"Generating TARGETED fix for suggestion: {suggestion}")
+    
+    prompt = f"""
+    You are an AI resume expert. Your task is to fix ONE specific issue in a resume based on the given suggestion.
+
+    SUGGESTION:
+    {suggestion}
+
+    FULL RESUME TEXT (for context):
+    {full_text[:8000]}
+
+    INSTRUCTIONS:
+    - Focus ONLY on the suggestion. Do not fix anything else.
+    - Based on the suggestion, identify which section of the resume needs to be changed (e.g., "skills", "work_experience", "projects").
+    - Generate the improved content for that section.
+    - If the suggestion is to ADD a missing section, create content for it.
+    
+    Respond with a single JSON object with two keys:
+    1. "section": The name of the section you fixed (e.g., "skills", "projects").
+    2. "fixedContent": The new, improved text or list for that section.
+    
+    Example Response: {{"section": "skills", "fixedContent": ["Python", "JavaScript", "Project Management"]}}
+    """
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "system", "content": "You are a resume fixing assistant that responds in perfect JSON."}, {"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
         fix_result = json.loads(response.choices[0].message.content)
         
-        section_key = fix_result.get("section", "").lower().replace(" ", "_")
-        fixed_content = fix_result.get("fixedContent", "")
-
-        if not section_key or not fixed_content:
-            raise ValueError("AI did not return a valid section or content.")
-
-        # 2. अब, पूरे रिज्यूमे को नए कंटेंट के साथ अपडेट करें
-        # (यह एक सिंपल तरीका है, इसे और बेहतर बनाया जा सकता है)
-        original_sections = extract_resume_sections(full_text)
-        original_sections[section_key] = fixed_content
-        
-        # Plain text बनाना इतना ज़रूरी नहीं है, इसलिए हम इसे अभी के लिए छोड़ सकते हैं
-        # new_full_text = ... (आप चाहें तो यहाँ नया टेक्स्ट बना सकते हैं)
-
-        # 3. दूसरा AI कॉल: अपडेटेड रिज्यूमे पर नई ATS रिपोर्ट और स्कोर पाएं
-        # हम पुराने टेक्स्ट और नए सेक्शंस का उपयोग करेंगे
-        new_ats_report = generate_ats_report(full_text, original_sections)
-
-        # 4. सब कुछ एक साथ वापस भेजें
-        final_response = {
-            "section": section_key,
-            "fixedContent": fixed_content,
-            "newScore": new_ats_report.get("score"),
-            "updatedAnalysis": {
-                "passed_checks": [check for check in new_ats_report.get("issues", []) if check.startswith("✅")],
-                "issues_to_fix": [{ "issue_id": f"err_{i+1}", "issue_text": issue } for i, issue in enumerate(new_ats_report.get("issues", [])) if issue.startswith("❌")]
-            }
-        }
-        
-        return final_response
-
+        # Ensure the response has the correct format
+        if "section" not in fix_result or "fixedContent" not in fix_result:
+            raise ValueError("AI response did not contain 'section' or 'fixedContent'.")
+            
+        return fix_result
     except Exception as e:
-        logger.error(f"Error in generate_section_content: {e}")
-        return {"error": "Failed to generate and re-analyze section content."}
+        logger.error(f"[ERROR in generate_targeted_fix]: {e}")
+        return {"error": "AI failed to generate the targeted fix."}
 
-# =====================================================================
-# END OF REPLACEMENT BLOCK
-# =====================================================================
+def calculate_new_score(current_score, issue_text):
+    """
+    NEW: A predictable, rule-based function to update the score.
+    """
+    logger.info(f"Calculating new score. Current: {current_score}")
+    increment = 0
+    issue_text = issue_text.lower()
+    
+    if "missing" in issue_text:
+        increment = 10  # Critical fix
+    elif "achievements" in issue_text or "quantifiable" in issue_text:
+        increment = 8   # Major fix
+    elif "wordiness" in issue_text or "formatting" in issue_text:
+        increment = 6   # Medium fix
+    else:
+        increment = 5   # Minor fix
+        
+    new_score = min(100, current_score + increment)
+    logger.info(f"Score incremented by {increment}. New score: {new_score}")
+    return new_score
