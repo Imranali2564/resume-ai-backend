@@ -774,167 +774,104 @@ def fix_ats_issue(resume_text, issue_text):
 
 def extract_resume_sections(text):
     """
-    Parses resume text into a structured JSON object using AI.
+    ULTIMATE VERSION: Extracts content VERBATIM without summarizing.
     """
-    if not client:
-        logger.error("OpenAI client not initialized.")
-        return {"error": "OpenAI client not initialized."}
-    logger.info("Starting AI-powered section extraction...")
+    if not client: return {"error": "OpenAI client not initialized."}
+    logger.info("Starting ULTIMATE AI section extraction...")
     prompt = f"""
-You are a highly-skilled resume parsing expert. Your only job is to convert the resume text below into a perfectly structured JSON object.
+You are a resume parsing expert. Your ONLY job is to convert the resume text into a structured JSON object.
 
-**JSON Structure Rules:**
-- Keys must be: "name", "job_title", "contact", "summary", "education", "work_experience", "skills", "languages", "projects".
-- "education" and "work_experience" must be LISTS of OBJECTS.
-- "skills" and "languages" must be LISTS of STRINGS.
-- If a section is missing, its value must be null or an empty list/string.
+**CRITICAL RULE: You MUST extract the content for each section EXACTLY as it is written in the original text. DO NOT summarize, shorten, rephrase, or change the content in any way.**
 
-**Example of PERFECT output:**
-{{
-  "name": "Insha",
-  "job_title": "Tele Caller",
-  "contact": "Phone: 9654031233\\nEmail: inshaansari844@gmail.com",
-  "education": [
-    {{ "degree": "B.A", "school": "Mata Sundri College", "duration": "Present" }}
-  ],
-  "work_experience": [],
-  "skills": ["MS Word", "MS Excel", "MS PowerPoint", "Excellent communication"],
-  "languages": ["Hindi", "English"],
-  "projects": null
-}}
+- JSON keys must be: "name", "job_title", "contact", "summary", "education", "work_experience", "skills", "languages", "projects".
+- "education" and "work_experience" MUST be lists of objects.
+- "skills" and "languages" MUST be lists of strings.
+- If a section is not found, its value MUST be null.
 
-**Now, parse the following resume text into this exact JSON structure:**
+**Now, parse the following resume text into the exact JSON structure:**
 ---
 {text[:8000]}
 ---
 """
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
+            model="gpt-4o", messages=[{"role": "user", "content": prompt}], response_format={"type": "json_object"}
         )
-        parsed_json = json.loads(response.choices[0].message.content)
-        logger.info("Successfully performed ADVANCED section extraction.")
-        return parsed_json
+        return json.loads(response.choices[0].message.content)
     except Exception as e:
-        logger.error(f"[ERROR in extract_resume_sections]: {str(e)}")
-        return {"error": f"An unexpected error occurred during AI section extraction: {str(e)}"}
+        logger.error(f"Error in extract_resume_sections: {e}")
+        return {"error": "AI failed to parse sections."}
 
-# =====================================================================
 
 def generate_ats_report(resume_text, extracted_data):
     """
-    Generates a dynamic and relevant ATS report by accepting context.
+    ULTIMATE VERSION: Generates a comprehensive ATS report, checking for everything.
     """
-    if not client:
-        return {"score": 0, "issues": ["❌ OpenAI API key not configured."]}
-    
-    logger.info("Generating FINAL advanced AI-powered ATS report...")
-    
-    resume_context = f"Role: {extracted_data.get('job_title', 'N/A')}. Experience: {len(extracted_data.get('work_experience', []))} entries. Skills: {', '.join(extracted_data.get('skills', []))}"
-
+    if not client: return {"score": 0, "issues": ["❌ OpenAI API key not configured."]}
+    logger.info("Generating ULTIMATE advanced AI-powered ATS report...")
+    resume_context = f"Role: {extracted_data.get('job_title', 'N/A')}. Has Experience: {bool(extracted_data.get('work_experience'))}"
     prompt = f"""
-You are a world-class ATS resume reviewer. Your task is to provide a critical and helpful analysis of the provided resume text.
+You are a world-class ATS reviewer. Analyze the resume text.
+**Context:** {resume_context}
+**Instructions:**
+1.  **Find Missing Sections:** Suggest adding important missing sections like 'Projects' or 'Certifications'.
+2.  **Check Formatting:** Check for wordiness in the 'Skills' section and poor formatting in the 'Education' section.
+3.  **Check Content Quality:** Suggest adding quantifiable achievements if they are missing from the 'Work Experience' section.
+4.  **Be Actionable & Relevant:** All feedback must be specific and helpful.
+5.  **Format Correctly:** Respond with a JSON object with "passed_checks" and "issues_to_fix" lists. Each item must start with an emoji (✅ or ❌).
 
-**Resume Context:** {resume_context}
-
-**Instructions & Rules:**
-1.  **Identify MISSING Sections:** Based on the resume context, suggest adding important missing sections like "Projects" or "Certifications".
-2.  **Check for Wordiness:** If the 'Skills' section is a long paragraph, you MUST flag it as "❌ The Skills section is too wordy and should be a concise bulleted list."
-3.  **Be Relevant & Actionable:** All feedback must be specific and helpful.
-4.  **Format Correctly:** Respond with a JSON object with "passed_checks" and "issues_to_fix" lists. Each item MUST start with the correct emoji (✅ or ❌).
-
-**Example of High-Quality Output:**
-{{
-  "passed_checks": [
-    "✅ The resume includes a clear and concise professional summary.",
-    "✅ Contact information (email and phone) is present and correctly formatted."
-  ],
-  "issues_to_fix": [
-    "❌ The Skills section is written as a paragraph. It should be a concise, bulleted list of keywords for better ATS parsing.",
-    "❌ The resume lacks quantifiable achievements. Add specific metrics (e.g., 'managed a team of 5', 'increased sales by 10%')."
-  ]
-}}
-
-**Analyze the following resume and generate the JSON object:**
+**Analyze the resume and generate the JSON object:**
 ---
 {resume_text[:7000]}
 ---
 """
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "system", "content": "You are a helpful ATS reviewer responding in JSON."}, {"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
+            model="gpt-4o", messages=[{"role": "system", "content": "You are a helpful ATS reviewer responding in JSON."}, {"role": "user", "content": prompt}], response_format={"type": "json_object"}
         )
         report_data = json.loads(response.choices[0].message.content)
-        
-        passed = report_data.get("passed_checks", [])
-        issues = report_data.get("issues_to_fix", [])
-        
-        # Ensure emojis are present
-        formatted_passed = [check if check.startswith("✅") else f"✅ {check}" for check in passed]
-        formatted_issues = [issue if issue.startswith("❌") else f"❌ {issue}" for issue in issues]
-        
-        combined_issues = formatted_passed + formatted_issues
-
-        # Calculate a dynamic score
-        score = max(40, 100 - (len(formatted_issues) * 8))
-
-        return {"issues": combined_issues, "score": score}
-
+        passed = [check for check in report_data.get("passed_checks", []) if check]
+        issues = [issue for issue in report_data.get("issues_to_fix", []) if issue]
+        score = max(40, 100 - (len(issues) * 8))
+        return {"issues": passed + issues, "score": score}
     except Exception as e:
-        logger.error(f"[ERROR in new generate_ats_report]: {str(e)}")
-        return {"score": 0, "issues": ["❌ AI analysis failed. Please check server logs."]}
+        logger.error(f"Error in generate_ats_report: {e}")
+        return {"score": 0, "issues": ["❌ AI analysis failed."]}
 
-# =====================================================================
 
 def generate_section_content(suggestion, full_text):
     """
-    Handles specific instructions for different types of fixes using AI.
+    ULTIMATE VERSION: Handles all fix types, including creating new sections and summarizing.
     """
-    if not client:
-        return {"error": "OpenAI API key not set."}
-
+    if not client: return {"error": "OpenAI API key not set."}
     logger.info(f"Generating content for suggestion: {suggestion}")
-
     prompt = f"""
-You are an AI resume writing expert. Your task is to fix a specific issue in a resume based on a suggestion.
+You are an AI resume writing expert. Your task is to fix a specific issue in a resume.
 
-**SUGGESTION TO FIX:**
-{suggestion}
+**SUGGESTION TO FIX:** {suggestion}
+**FULL RESUME TEXT:** {full_text[:8000]}
 
-**FULL RESUME TEXT:**
-{full_text[:8000]}
+**SPECIAL INSTRUCTIONS:**
+1.  **If the suggestion is about a "wordy skills section"**: Extract the core keywords from the resume's skills section and format them as a concise list of 5-7 key skills. Return this list in `fixedContent`. The `section` key should be "skills".
+2.  **If the suggestion is to "remove personal information"**: Return ONLY the professional contact details (Email, Phone, Address) as a single string in `fixedContent`. The `section` key must be "contact".
+3.  **If the suggestion is about "lacks quantifiable achievements"**: Rewrite ONE bullet point in the 'Work Experience' section to include a plausible metric (e.g., 'achieved 20% increase in sales'). Return the ENTIRE rewritten work experience section in `fixedContent`. The `section` key should be "work_experience".
+4.  **If the suggestion is to ADD A MISSING SECTION (e.g., 'Projects', 'Certifications', 'Hobbies')**: You MUST create that new section. Generate 1-2 relevant, example bullet points for it based on the user's profile. The `section` key in your response should be the name of the new section (e.g., "projects").
+5.  **If the suggestion is to fix FORMATTING (e.g., in Education)**: Re-write the specified section with improved, professional formatting. For Education, each entry should be on a new line with clear separation.
 
-**SPECIAL INSTRUCTIONS based on the SUGGESTION:**
-1.  If the suggestion is about a "wordy skills section": Extract only the core keywords and format them as a simple, clean list of strings in `fixedContent`. The `section` key should be "skills".
-2.  If the suggestion is to "remove personal information": Find the contact section, remove private info (DOB, etc.), and return ONLY the professional details (Email, Phone, Address) as a single string in `fixedContent`. The `section` key should be "contact".
-3.  If the suggestion is about "lacks quantifiable achievements": Find the 'Work Experience' section, pick ONE bullet point, and rewrite it to include a plausible metric. Return the ENTIRE rewritten work experience section as a list of objects in `fixedContent`. The `section` key should be "work_experience".
-4.  For any other suggestion: Analyze the suggestion and the resume, and provide the improved text for the most relevant section.
-
-**Your entire response MUST be a single JSON object with two keys:**
-1.  `section`: The name of the resume section to update (e.g., "skills", "contact", "work_experience").
-2.  `fixedContent`: The new, improved content for that section (string or list of strings/objects).
+**Your response MUST be a single JSON object with two keys:**
+1.  `section`: The lowercase_snake_case name of the section to update (e.g., "skills", "work_experience").
+2.  `fixedContent`: The new, improved content for that section.
 """
     try:
         response = client.chat.completions.create(
             model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are a resume fixing assistant that responds in perfect JSON."},
-                {"role": "user", "content": prompt}
-            ],
+            messages=[{"role": "system", "content": "You are a resume fixing assistant that responds in perfect JSON."}, {"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
-        
         result = json.loads(response.choices[0].message.content)
-        
         section = result.get("section", "").lower().replace(" ", "_")
         content = result.get("fixedContent", "")
-
         return {"section": section, "fixedContent": content}
-
     except Exception as e:
-        logger.error(f"[ERROR in generate_section_content]: {str(e)}")
-        return {"error": f"Failed to generate section content: {str(e)}"}
+        logger.error(f"Error in generate_section_content: {e}")
+        return {"error": "Failed to generate section content."}
