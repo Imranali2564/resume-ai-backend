@@ -640,33 +640,33 @@ You are an AI resume writing expert. Your task is to fix a specific issue in a r
 
 # =================================================================
 
-# Also in resume_ai_analyzer.py
-# Replace the generate_ats_report function with this one:
+# In resume_ai_analyzer.py
+# This is the correct version that accepts two arguments.
 
-def generate_ats_report(resume_text):
+def generate_ats_report(resume_text, extracted_data):
+    """
+    FINAL ADVANCED VERSION
+    This AI-powered version uses a more robust prompt with examples (few-shot)
+    to generate a highly relevant and actionable ATS report. It accepts extracted_data for context.
+    """
     if not client:
+        logger.error("OpenAI client not initialized. Cannot generate ATS report.")
         return {"score": 0, "issues": ["❌ OpenAI API key not configured."]}
+
     logger.info("Generating FINAL advanced AI-powered ATS report...")
+    
+    resume_context = f"Role: {extracted_data.get('job_title', 'N/A')}. Experience: {len(extracted_data.get('work_experience', []))} entries. Skills: {', '.join(extracted_data.get('skills', []))}"
+
     prompt = f"""
-You are a world-class ATS reviewer. Analyze the resume text and generate a JSON object with "passed_checks" and "issues_to_fix".
+You are a world-class ATS resume reviewer. Your task is to provide a critical and helpful analysis of the provided resume text.
 
-**CRITICAL INSTRUCTIONS:**
-1.  **Identify MISSING Sections:** Check if important sections like "Projects", "Certifications", or "Internship" are missing. If they are missing and seem relevant for the user's profile, suggest adding them in the 'issues_to_fix' list.
-2.  **Check for Conciseness:** If the 'Skills' section is a long paragraph, flag it as an issue.
+**Resume Context:** {resume_context}
+
+**Instructions & Rules:**
+1.  **Identify MISSING Sections:** Based on the resume context, suggest adding important missing sections like "Projects" or "Certifications".
+2.  **Check for Wordiness:** If the 'Skills' section is a long paragraph, you MUST flag it as "❌ The Skills section is too wordy and should be a concise bulleted list."
 3.  **Be Relevant & Actionable:** All feedback must be specific and helpful.
-
-**Example of High-Quality Output:**
-{{
-  "passed_checks": [
-    "✅ The resume includes a clear professional summary.",
-    "✅ Contact information is present."
-  ],
-  "issues_to_fix": [
-    "❌ The Skills section is too wordy and should be a concise bullet point list.",
-    "❌ The resume lacks quantifiable achievements (e.g., 'increased sales by 10%').",
-    "❌ Consider adding a 'Projects' section to showcase practical skills."
-  ]
-}}
+4.  **Format Correctly:** Respond with a JSON object with "passed_checks" and "issues_to_fix" lists. Each item MUST start with the correct emoji (✅ or ❌).
 
 **Analyze the following resume and generate the JSON object:**
 ---
@@ -680,14 +680,17 @@ You are a world-class ATS reviewer. Analyze the resume text and generate a JSON 
             response_format={"type": "json_object"}
         )
         report_data = json.loads(response.choices[0].message.content)
-        logger.info("Successfully generated advanced AI-based ATS report.")
+        
         passed = report_data.get("passed_checks", [])
         issues = report_data.get("issues_to_fix", [])
-        formatted_passed = [f"✅ {check.replace('✅', '').strip()}" for check in passed]
-        formatted_issues = [f"❌ {issue.replace('❌', '').strip()}" for issue in issues]
+        
+        formatted_passed = [check if check.startswith("✅") else f"✅ {check}" for check in passed]
+        formatted_issues = [issue if issue.startswith("❌") else f"❌ {issue}" for issue in issues]
+        
         combined_issues = formatted_passed + formatted_issues
         score = max(40, 100 - (len(formatted_issues) * 8))
         return {"issues": combined_issues, "score": score}
+
     except Exception as e:
         logger.error(f"[ERROR in new generate_ats_report]: {str(e)}")
         return {"score": 0, "issues": ["❌ AI analysis failed. Please check server logs."]}

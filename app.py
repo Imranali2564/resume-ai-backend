@@ -1089,17 +1089,57 @@ def extract_sections():
 # =====================================================================
 
 # In app.py
-# Temporarily replace the entire analyze_resume_for_frontend function with this debug code.
+# Replace the temporary debugging function with this final, correct version.
 
 @app.route('/api/v1/analyze-resume', methods=['POST'])
 def analyze_resume_for_frontend():
-    # --- TEMPORARY DEBUGGING CODE V3 ---
-    # This function now does nothing but return a success message.
-    logger.info("--- DEBUGGING V3: Reached the deployment test endpoint! ---")
-    return jsonify({
-        "success": False,  # We set success to false to trigger the alert in JavaScript
-        "error": "--- DEPLOYMENT TEST V3 SUCCESSFUL! Your changes are live. ---" 
-    })
+    try:
+        if 'resume_file' not in request.files:
+            return jsonify({"success": False, "error": "No 'resume_file' part in the request."}), 400
+        
+        file = request.files['resume_file']
+        if file.filename == '':
+            return jsonify({"success": False, "error": "No file selected."}), 400
+
+        text = extract_text_from_resume(file)
+        if not text:
+            return jsonify({"success": False, "error": "Could not extract text from the resume."}), 500
+
+        # STEP 2.1: Extract sections FIRST.
+        extracted_sections = extract_resume_sections(text)
+        if not extracted_sections or extracted_sections.get("error"):
+             return jsonify({"success": False, "error": extracted_sections.get("error", "Failed to parse resume sections.")}), 500
+
+        # STEP 2.2: NOW, generate the ATS report using the extracted sections.
+        ats_result = generate_ats_report(text, extracted_sections) 
+
+        # --- Re-format the data for our new JavaScript frontend ---
+        passed_checks = []
+        issues_to_fix = []
+        for issue_text in ats_result.get('issues', []):
+            if issue_text.startswith("✅"):
+                passed_checks.append(issue_text)
+            else:
+                issues_to_fix.append({
+                    "issue_id": f"err_{len(issues_to_fix) + 1}",
+                    "issue_text": issue_text
+                })
+
+        formatted_data = {
+            "score": ats_result.get('score', 0),
+            "analysis": {
+                "passed_checks": passed_checks,
+                "issues_to_fix": issues_to_fix
+            },
+            "extracted_data": extracted_sections 
+        }
+        
+        return jsonify({"success": True, "data": formatted_data})
+
+    except Exception as e:
+        import traceback
+        logger.error(f"Error in /api/v1/analyze-resume: {traceback.format_exc()}")
+        return jsonify({"success": False, "error": "An unexpected server error occurred."}), 500
     
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
