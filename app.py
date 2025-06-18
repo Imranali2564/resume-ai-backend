@@ -115,7 +115,7 @@ def upload_resume():
         if not text.strip():
             return jsonify({"error": "Failed to extract resume text"}), 500
 
-        # ✅ Smart section parser
+        # ✅ Smart section parser - this is already here, which is great!
         parsed_sections = extract_resume_sections(text)
 
         # ✅ Optional summary generation
@@ -126,8 +126,8 @@ def upload_resume():
         summary = generate_resume_summary(name, role, experience, skills)
         parsed_sections["summary"] = summary
 
-        # ✅ ATS report and score
-        ats_result = generate_ats_report(text)
+        # ✅ ATS report and score (THIS IS THE CORRECTED LINE)
+        ats_result = generate_ats_report(text, parsed_sections)
         ats_issues = ats_result["issues"]
         score = ats_result["score"]
 
