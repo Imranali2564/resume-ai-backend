@@ -467,43 +467,37 @@ Your entire response must be only the JSON object.
         logger.error(f"[ERROR in generate_section_content]: {str(e)}")
         return {"error": f"Failed to generate section content: {str(e)}"}
 
-# In resume_ai_analyzer.py
-# Replace the extract_resume_sections function with this one:
+# In resume_ai_analyzer.py, replace only the extract_resume_sections function
 
 def extract_resume_sections(text):
-    """
-    FINAL ADVANCED VERSION: Parses resume text into a structured JSON object using AI.
-    """
     if not client:
-        logger.error("OpenAI client not initialized.")
         return {"error": "OpenAI client not initialized."}
-    logger.info("Starting AI-powered section extraction...")
+    logger.info("Starting FINAL AI-powered section extraction...")
     prompt = f"""
-You are a highly-skilled resume parsing expert. Your only job is to convert the resume text below into a structured JSON object.
+You are a world-class resume parsing expert. Your sole job is to convert the resume text below into a perfectly structured JSON object.
 
 **JSON Structure Rules:**
-- Keys must be: "name", "job_title", "contact", "summary", "education", "work_experience", "skills", "languages", "projects", "certifications", "awards".
-- "education" and "work_experience" must be LISTS of OBJECTS.
-- "skills" and "languages" must be LISTS of STRINGS.
-- If a section is missing, its value must be null or an empty list/string.
+- The root must be a JSON object.
+- Keys must be: "name", "job_title", "contact", "summary", "education", "work_experience", "skills", "languages", "projects".
+- "education" and "work_experience" MUST be lists of objects. Each object in the list represents a separate entry (e.g., a separate degree or a separate job).
+- "skills" and "languages" MUST be lists of simple strings.
+- All other keys ("name", "job_title", "contact", "summary", "projects") MUST be simple strings.
+- If a section is not found, its value MUST be null.
 
-**Example of PERFECT output:**
-{{
-  "name": "Insha",
-  "job_title": "Tele Caller",
-  "contact": "Phone: 9654031233\\nEmail: inshaansari844@gmail.com\\nAddress: T_602, Street No 12 Gautampuri New Delhi 110053",
-  "education": [
-    {{ "degree": "B.A", "school": "Mata Sundri College for Women (University Of Delhi)", "duration": "1st Year (Present)" }}
-  ],
-  "work_experience": [
-    {{ "title": "Tele Caller", "company": "Unknown Company", "duration": "6 Months Experience", "details": ["Contacted potential customers to promote products or services."] }}
-  ],
-  "skills": ["MS Word", "MS Excel", "MS PowerPoint", "Excellent communication"],
-  "languages": ["Hindi", "English"],
-  "projects": null
-}}
+**Example of PERFECT parsing for Education:**
+If the text is:
+"Education
+B.A
+Mata Sundri College for Women (University Of Delhi) / 1st Year (Present)
+12th
+Government Girls Senior Secondary School / 2023"
+The output for "education" key should be:
+"education": [
+    {{ "degree": "B.A", "school": "Mata Sundri College for Women (University Of Delhi)", "duration": "1st Year (Present)" }},
+    {{ "degree": "12th", "school": "Government Girls Senior Secondary School", "duration": "2023" }}
+]
 
-**Now, parse the following resume text into this exact JSON structure:**
+**Now, parse the following resume text into the specified JSON structure:**
 ---
 {text[:8000]}
 ---
@@ -515,11 +509,11 @@ You are a highly-skilled resume parsing expert. Your only job is to convert the 
             response_format={"type": "json_object"}
         )
         parsed_json = json.loads(response.choices[0].message.content)
-        logger.info("Successfully performed ADVANCED section extraction.")
+        logger.info("Successfully performed FINAL section extraction.")
         return parsed_json
     except Exception as e:
         logger.error(f"[ERROR in extract_resume_sections]: {str(e)}")
-        return {"error": f"An unexpected error occurred during AI section extraction: {str(e)}"}
+        return {"error": "An unexpected error occurred during AI section extraction."}
 
 # In resume_ai_analyzer.py
 # Replace your old generate_ats_report function with this correct version that accepts two arguments.
