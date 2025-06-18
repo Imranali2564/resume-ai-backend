@@ -773,22 +773,24 @@ def fix_ats_issue(resume_text, issue_text):
 
 def extract_resume_sections_safely(text):
     """
-    NEW STABLE VERSION: Extracts resume sections WITHOUT any modification.
-    This ensures the user's original data is always shown in the preview.
+    ULTRA-STRICT STABLE VERSION: Forces the AI to act as a dumb parser and extract text verbatim.
     """
     if not client: return {"error": "OpenAI client not initialized."}
-    logger.info("Starting STABLE section extraction (verbatim)...")
+    logger.info("Starting ULTRA-STRICT section extraction (verbatim)...")
     
     prompt = f"""
-    You are a resume parsing machine. Your ONLY job is to extract text and structure it in JSON.
-    CRITICAL RULE: Extract content EXACTLY as written. DO NOT summarize, rephrase, add, or remove any words from the original text. The output must be a verbatim copy.
+    You are a dumb data extraction machine. Your only function is to copy text from the user's resume into the correct JSON field.
     
-    The JSON keys must be: "name", "job_title", "contact", "summary", "education", "work_experience", "skills", "languages", "projects", "certifications".
-    - "education" and "work_experience" MUST be lists of objects.
-    - "skills", "languages", "projects", "certifications" MUST be lists of strings.
-    - If a section is not found, its value MUST be null.
+    VERY IMPORTANT RULES:
+    1.  **DO NOT CHANGE A SINGLE WORD.** Do not summarize, rephrase, correct, or add anything. The output must be a 100% verbatim copy of the user's text.
+    2.  **Contact Field:** Combine all contact details (email, phone, address, LinkedIn) into a SINGLE string and put it in the "contact" field.
+    3.  **Skills/Languages:** Extract skills and languages as a simple list of strings. For example: ["Python", "JavaScript", "SQL"].
+    4.  **Experience/Education:** For "work_experience" and "education", extract them as a list of objects, keeping the original text inside the object's values.
+    5.  **Null for Missing:** If a section does not exist in the resume, its value in the JSON MUST be null.
 
-    Parse the following resume text VERBATIM:
+    JSON Keys: "name", "job_title", "contact", "summary", "skills", "languages", "work_experience", "education", "projects", "certifications".
+
+    Now, parse the following resume text following these strict rules without any deviation:
     ---
     {text[:8000]}
     ---
@@ -802,7 +804,7 @@ def extract_resume_sections_safely(text):
         return json.loads(response.choices[0].message.content)
     except Exception as e:
         logger.error(f"[ERROR in extract_resume_sections_safely]: {e}")
-        return {"error": "AI failed to parse sections."}
+        return {"error": "AI failed to parse sections verbatim."}
 
 def generate_stable_ats_report(resume_text, extracted_data):
     """
