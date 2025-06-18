@@ -8,26 +8,26 @@ import json
 import re
 
 from resume_ai_analyzer import (
-    analyze_resume_with_openai,
-    extract_text_from_pdf,
-    extract_text_from_docx,
-    extract_text_from_resume,
-    extract_resume_sections,
-    check_ats_compatibility,
-    check_ats_compatibility_fast,      # ✅ ADD THIS
-    check_ats_compatibility_deep,      # ✅ AND THIS
-    extract_keywords_from_jd,
-    compare_resume_with_keywords,
-    analyze_job_description,
-    fix_resume_formatting,
-    generate_section_content,
-    generate_resume_summary,
-    generate_michelle_template_html,
-    generate_ats_report,
+    # New and Corrected Functions for the Stable Strategy
     extract_resume_sections_safely,
     generate_stable_ats_report,
     generate_targeted_fix,
     calculate_new_score,
+
+    # Existing Utility and Other Functions
+    analyze_resume_with_openai,
+    extract_text_from_pdf,
+    extract_text_from_docx,
+    extract_text_from_resume,
+    check_ats_compatibility,
+    check_ats_compatibility_fast,
+    check_ats_compatibility_deep,
+    extract_keywords_from_jd,
+    compare_resume_with_keywords,
+    analyze_job_description,
+    fix_resume_formatting,
+    generate_resume_summary,
+    generate_michelle_template_html
 )
 
 try:
