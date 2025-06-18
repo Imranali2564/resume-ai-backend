@@ -409,40 +409,36 @@ Resume:
         return {"error": "Failed to fix resume formatting due to an API error"}
 
 
-# In resume_ai_analyzer.py, replace only the extract_resume_sections function
+# In resume_ai_analyzer.py, replace the extract_resume_sections function
 
 def extract_resume_sections(text):
     """
-    FINAL ADVANCED VERSION: Parses resume text into a structured JSON object using AI.
+    FINAL and MOST ACCURATE version for parsing.
     """
-    if not client:
-        logger.error("OpenAI client not initialized.")
-        return {"error": "OpenAI client not initialized."}
-    logger.info("Starting AI-powered section extraction...")
+    if not client: return {"error": "OpenAI client not initialized."}
+    logger.info("Starting FINAL AI-powered section extraction...")
     prompt = f"""
-You are a highly-skilled resume parsing expert. Your only job is to convert the resume text below into a perfectly structured JSON object.
+You are a world-class resume parsing expert. Your ONLY job is to convert the resume text below into a structured JSON object.
 
-**JSON Structure Rules:**
-- Keys must be: "name", "job_title", "contact", "summary", "education", "work_experience", "skills", "languages", "projects", "certifications", "awards".
-- "education" and "work_experience" must be LISTS of OBJECTS.
-- "skills" and "languages" must be LISTS of STRINGS.
-- If a section is missing, its value must be null or an empty list/string.
+**CRITICAL RULES:**
+- You must extract the content for each section EXACTLY as it is written in the text. DO NOT summarize or shorten it.
+- The JSON keys must be: "name", "job_title", "contact", "summary", "education", "work_experience", "skills", "languages", "projects", "certifications", "awards".
+- "education" and "work_experience" MUST be lists of objects. Each separate degree or job is a separate object in the list.
+- "skills" and "languages" MUST be lists of strings.
+- If a section is not found, its value MUST be null.
 
-**Example of PERFECT output:**
-{{
-  "name": "Insha",
-  "job_title": "Tele Caller",
-  "contact": "Phone: 9654031233\\nEmail: inshaansari844@gmail.com",
-  "education": [
-    {{ "degree": "B.A", "school": "Mata Sundri College", "duration": "Present" }}
-  ],
-  "work_experience": [],
-  "skills": ["MS Word", "MS Excel", "MS PowerPoint", "Excellent communication"],
-  "languages": ["Hindi", "English"],
-  "projects": null
-}}
+**Example of PERFECT parsing:**
+Resume Text:
+"SKILLS
+Computer Applications (CCA): Proficient in using various software...
+Communication: Excellent written and verbal communication skills..."
+Correct JSON Output for "skills" key:
+"skills": [
+    "Computer Applications (CCA): Proficient in using various software applications such as word processing (MS Word), spreadsheets (MS Excel), presentation software (MS PowerPoint), and basic database management (MS Access).",
+    "Communication: Excellent written and verbal communication skills, honed through telecalling experience. Ability to communicate effectively with a diverse range of people."
+]
 
-**Now, parse the following resume text into this exact JSON structure:**
+**Now, parse the following resume text into the specified JSON structure:**
 ---
 {text[:8000]}
 ---
@@ -453,25 +449,23 @@ You are a highly-skilled resume parsing expert. Your only job is to convert the 
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
-        parsed_json = json.loads(response.choices[0].message.content)
-        logger.info("Successfully performed ADVANCED section extraction.")
-        return parsed_json
+        return json.loads(response.choices[0].message.content)
     except Exception as e:
         logger.error(f"[ERROR in extract_resume_sections]: {str(e)}")
-        return {"error": f"An unexpected error occurred during AI section extraction: {str(e)}"}
+        return {"error": "AI failed to parse sections."}
 
+# =================================================================
+
+# In resume_ai_analyzer.py, also replace the generate_section_content function
 
 def generate_section_content(suggestion, full_text):
     """
-    FINAL ADVANCED VERSION: Handles specific instructions for different types of fixes.
+    The smartest version yet. It can create new sections from scratch.
     """
-    if not client:
-        return {"error": "OpenAI API key not set."}
-
+    if not client: return {"error": "OpenAI API key not set."}
     logger.info(f"Generating content for suggestion: {suggestion}")
-
     prompt = f"""
-You are an AI resume writing expert. Your task is to fix a specific issue in a resume based on a suggestion.
+You are an AI resume writing expert. Your task is to fix a specific issue in a resume.
 
 **SUGGESTION TO FIX:**
 {suggestion}
@@ -479,36 +473,29 @@ You are an AI resume writing expert. Your task is to fix a specific issue in a r
 **FULL RESUME TEXT:**
 {full_text[:8000]}
 
-**SPECIAL INSTRUCTIONS based on the SUGGESTION:**
-1.  If the suggestion is about a "wordy skills section": Extract only the core keywords and format them as a simple, clean list of strings in `fixedContent`. The `section` key should be "skills".
-2.  If the suggestion is to "remove personal information": Find the contact section, remove private info (DOB, etc.), and return ONLY the professional details (Email, Phone, Address) as a single string in `fixedContent`. The `section` key should be "contact".
-3.  If the suggestion is about "lacks quantifiable achievements": Find the 'Work Experience' section, pick ONE bullet point, and rewrite it to include a plausible metric. Return the ENTIRE rewritten work experience section as a list of objects in `fixedContent`. The `section` key should be "work_experience".
-4.  For any other suggestion: Analyze the suggestion and the resume, and provide the improved text for the most relevant section.
+**SPECIAL INSTRUCTIONS:**
+1.  **If the suggestion is to ADD A MISSING SECTION (like 'Projects' or 'Certifications')**: Your task is to CREATE a new section with that title and generate 1-2 relevant, example bullet points based on the user's profile. The `section` key in your response should be the name of the new section (e.g., "projects").
+2.  **If the suggestion is about a "wordy skills section"**: Extract core keywords and format them as a list of strings in `fixedContent`. The `section` key should be "skills".
+3.  **If the suggestion is to "remove personal information"**: Return ONLY the professional contact details (Email, Phone, Address) as a single string in `fixedContent`. The `section` key should be "contact".
+4.  **If the suggestion is about "lacks quantifiable achievements"**: Rewrite ONE bullet point in the 'Work Experience' section to include a plausible metric. Return the ENTIRE rewritten work experience section in `fixedContent`. The `section` key should be "work_experience".
 
 **Your entire response MUST be a single JSON object with two keys:**
-1.  `section`: The name of the resume section to update (e.g., "skills", "contact", "work_experience").
-2.  `fixedContent`: The new, improved content for that section (string or list of strings/objects).
+1.  `section`: The name of the resume section to update (e.g., "skills", "projects").
+2.  `fixedContent`: The new, improved content for that section.
 """
     try:
         response = client.chat.completions.create(
             model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are a resume fixing assistant that responds in perfect JSON."},
-                {"role": "user", "content": prompt}
-            ],
+            messages=[{"role": "system", "content": "You are a resume fixing assistant that responds in perfect JSON."}, {"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
-        
         result = json.loads(response.choices[0].message.content)
-        
         section = result.get("section", "").lower().replace(" ", "_")
         content = result.get("fixedContent", "")
-
         return {"section": section, "fixedContent": content}
-
     except Exception as e:
         logger.error(f"[ERROR in generate_section_content]: {str(e)}")
-        return {"error": f"Failed to generate section content: {str(e)}"}
+        return {"error": f"Failed to generate section content."}
 
 # =================================================================
 
