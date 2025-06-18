@@ -768,27 +768,24 @@ def fix_ats_issue(resume_text, issue_text):
     return {"section": section, "fixedContent": fixed_content}
 
 # =====================================================================
-# FINAL, UPGRADED FUNCTIONS BLOCK
-# Replace your old versions of these 3 functions with this entire block.
+# START: REPLACE THESE 3 FUNCTIONS IN resume_ai_analyzer.py
 # =====================================================================
 
 def extract_resume_sections(text):
     """
-    ULTIMATE VERSION: Extracts content VERBATIM without summarizing.
+    Parses resume text into a structured JSON object using an advanced AI prompt.
     """
     if not client: return {"error": "OpenAI client not initialized."}
-    logger.info("Starting ULTIMATE AI section extraction...")
+    logger.info("Starting FINAL AI-powered section extraction...")
     prompt = f"""
-You are a resume parsing expert. Your ONLY job is to convert the resume text into a structured JSON object.
+You are a resume parsing expert. Convert the resume text below into a structured JSON object.
+CRITICAL RULE: Extract content EXACTLY as written. DO NOT summarize or rephrase.
+Keys must be: "name", "job_title", "contact", "summary", "education", "work_experience", "skills", "languages", "projects".
+"education" and "work_experience" MUST be lists of objects.
+"skills" and "languages" MUST be lists of strings.
+If a section is not found, its value MUST be null.
 
-**CRITICAL RULE: You MUST extract the content for each section EXACTLY as it is written in the original text. DO NOT summarize, shorten, rephrase, or change the content in any way.**
-
-- JSON keys must be: "name", "job_title", "contact", "summary", "education", "work_experience", "skills", "languages", "projects".
-- "education" and "work_experience" MUST be lists of objects.
-- "skills" and "languages" MUST be lists of strings.
-- If a section is not found, its value MUST be null.
-
-**Now, parse the following resume text into the exact JSON structure:**
+Parse the following resume text:
 ---
 {text[:8000]}
 ---
@@ -799,28 +796,27 @@ You are a resume parsing expert. Your ONLY job is to convert the resume text int
         )
         return json.loads(response.choices[0].message.content)
     except Exception as e:
-        logger.error(f"Error in extract_resume_sections: {e}")
+        logger.error(f"[ERROR in extract_resume_sections]: {e}")
         return {"error": "AI failed to parse sections."}
-
 
 def generate_ats_report(resume_text, extracted_data):
     """
-    ULTIMATE VERSION: Generates a comprehensive ATS report, checking for everything.
+    Generates a dynamic and relevant ATS report, also checking for missing sections.
     """
     if not client: return {"score": 0, "issues": ["❌ OpenAI API key not configured."]}
-    logger.info("Generating ULTIMATE advanced AI-powered ATS report...")
+    logger.info("Generating FINAL advanced AI-powered ATS report...")
     resume_context = f"Role: {extracted_data.get('job_title', 'N/A')}. Has Experience: {bool(extracted_data.get('work_experience'))}"
     prompt = f"""
 You are a world-class ATS reviewer. Analyze the resume text.
-**Context:** {resume_context}
-**Instructions:**
-1.  **Find Missing Sections:** Suggest adding important missing sections like 'Projects' or 'Certifications'.
-2.  **Check Formatting:** Check for wordiness in the 'Skills' section and poor formatting in the 'Education' section.
-3.  **Check Content Quality:** Suggest adding quantifiable achievements if they are missing from the 'Work Experience' section.
-4.  **Be Actionable & Relevant:** All feedback must be specific and helpful.
-5.  **Format Correctly:** Respond with a JSON object with "passed_checks" and "issues_to_fix" lists. Each item must start with an emoji (✅ or ❌).
+Context: {resume_context}
+Instructions:
+1.  Identify MISSING sections (like "Projects", "Certifications").
+2.  Check for WORDINESS in the 'Skills' section. If it's a paragraph, flag it as an issue.
+3.  Check for lack of QUANTIFIABLE ACHIEVEMENTS in the experience section.
+4.  Give specific, ACTIONABLE feedback.
+5.  Respond with a JSON object with "passed_checks" and "issues_to_fix" lists. Each item MUST start with an emoji (✅ or ❌).
 
-**Analyze the resume and generate the JSON object:**
+Analyze the resume and generate the JSON object:
 ---
 {resume_text[:7000]}
 ---
@@ -835,32 +831,27 @@ You are a world-class ATS reviewer. Analyze the resume text.
         score = max(40, 100 - (len(issues) * 8))
         return {"issues": passed + issues, "score": score}
     except Exception as e:
-        logger.error(f"Error in generate_ats_report: {e}")
+        logger.error(f"[ERROR in new generate_ats_report]: {e}")
         return {"score": 0, "issues": ["❌ AI analysis failed."]}
-
 
 def generate_section_content(suggestion, full_text):
     """
-    ULTIMATE VERSION: Handles all fix types, including creating new sections and summarizing.
+    Handles all types of fixes, including creating new sections and summarizing skills.
     """
     if not client: return {"error": "OpenAI API key not set."}
     logger.info(f"Generating content for suggestion: {suggestion}")
     prompt = f"""
-You are an AI resume writing expert. Your task is to fix a specific issue in a resume.
+You are an AI resume expert. Fix a specific issue in a resume based on the suggestion.
+SUGGESTION: {suggestion}
+FULL RESUME: {full_text[:8000]}
 
-**SUGGESTION TO FIX:** {suggestion}
-**FULL RESUME TEXT:** {full_text[:8000]}
+SPECIAL INSTRUCTIONS:
+1.  If suggestion is about a "wordy skills section": Extract core keywords from the skills section and format them as a concise list of 5-7 key skills in `fixedContent`. The `section` key must be "skills".
+2.  If suggestion is to "remove personal information": Return ONLY professional contact details (Email, Phone, Address) as a single string in `fixedContent`. The `section` key must be "contact".
+3.  If suggestion is about "lacks quantifiable achievements": Rewrite ONE bullet point in the 'Work Experience' section to include a metric. Return the ENTIRE rewritten work experience section in `fixedContent`. The `section` key must be "work_experience".
+4.  If suggestion is to ADD A MISSING SECTION (e.g., 'Projects'): Create the section with 1-2 relevant example bullet points. The `section` key should be the new section's name.
 
-**SPECIAL INSTRUCTIONS:**
-1.  **If the suggestion is about a "wordy skills section"**: Extract the core keywords from the resume's skills section and format them as a concise list of 5-7 key skills. Return this list in `fixedContent`. The `section` key should be "skills".
-2.  **If the suggestion is to "remove personal information"**: Return ONLY the professional contact details (Email, Phone, Address) as a single string in `fixedContent`. The `section` key must be "contact".
-3.  **If the suggestion is about "lacks quantifiable achievements"**: Rewrite ONE bullet point in the 'Work Experience' section to include a plausible metric (e.g., 'achieved 20% increase in sales'). Return the ENTIRE rewritten work experience section in `fixedContent`. The `section` key should be "work_experience".
-4.  **If the suggestion is to ADD A MISSING SECTION (e.g., 'Projects', 'Certifications', 'Hobbies')**: You MUST create that new section. Generate 1-2 relevant, example bullet points for it based on the user's profile. The `section` key in your response should be the name of the new section (e.g., "projects").
-5.  **If the suggestion is to fix FORMATTING (e.g., in Education)**: Re-write the specified section with improved, professional formatting. For Education, each entry should be on a new line with clear separation.
-
-**Your response MUST be a single JSON object with two keys:**
-1.  `section`: The lowercase_snake_case name of the section to update (e.g., "skills", "work_experience").
-2.  `fixedContent`: The new, improved content for that section.
+Respond with a single JSON object: {{"section": "section_name_in_snake_case", "fixedContent": "new_content_here"}}
 """
     try:
         response = client.chat.completions.create(
@@ -875,3 +866,7 @@ You are an AI resume writing expert. Your task is to fix a specific issue in a r
     except Exception as e:
         logger.error(f"Error in generate_section_content: {e}")
         return {"error": "Failed to generate section content."}
+
+# =====================================================================
+# END OF REPLACEMENT BLOCK
+# =====================================================================
