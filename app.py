@@ -9,7 +9,7 @@ import re
 
 from resume_ai_analyzer import (
     # New and Corrected Functions for the Stable Strategy
-    extract_resume_sections_safely,
+    extract_and_structure_data,
     generate_stable_ats_report,
     generate_targeted_fix,
     calculate_new_score,
