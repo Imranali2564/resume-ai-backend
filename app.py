@@ -307,34 +307,34 @@ def analyze_resume():
 @app.route('/fix-suggestion', methods=['POST'])
 def fix_suggestion():
     try:
-        if 'payload' not in request.form:
-            return jsonify({"success": False, "error": "Missing payload in request form"}), 400
-            
         data = json.loads(request.form.get('payload'))
         suggestion = data.get("suggestion")
-        full_text = data.get("full_text")
-        current_score = data.get("current_score") # <<< हमें JS से वर्तमान स्कोर चाहिए
+        current_score = data.get("current_score")
+        
+        # This is the new information that will now come from JavaScript.
+        section_name_to_fix = data.get("section_name")
+        section_content = data.get("section_content")
+        full_resume_text = data.get("full_resume_text") # Full resume text just for context.
 
-        if not all([suggestion, full_text, isinstance(current_score, int)]):
-            return jsonify({"success": False, "error": "Missing suggestion, text, or current_score."}), 400
+        if not all([suggestion, section_name_to_fix, section_content, full_resume_text]):
+            return jsonify({"success": False, "error": "Missing required data for fix."}), 400
 
-        # STEP 1: Get the targeted fix from the AI.
-        fix_result = generate_targeted_fix(suggestion, full_text) # <<< बदला हुआ
+        # The AI will now be given only the content of the relevant section for a precise fix.
+        fix_result = generate_targeted_fix(suggestion, section_name_to_fix, section_content, full_resume_text)
         
         if 'error' in fix_result:
             return jsonify({"success": False, "error": fix_result["error"]}), 500
 
-        # STEP 2: Calculate the new score predictably.
-        new_score = calculate_new_score(current_score, suggestion) # <<< बदला हुआ
+        # The score will be calculated based on rules.
+        new_score = calculate_new_score(current_score, suggestion)
         
-        # Combine results into the final response
+        # The final response to be sent to the frontend.
         final_response = {
             "section": fix_result["section"],
             "fixedContent": fix_result["fixedContent"],
             "newScore": new_score
         }
-
-        # NOTE: We no longer return 'updatedAnalysis'. The frontend will handle the UI state.
+        
         return jsonify({"success": True, "data": final_response})
 
     except Exception as e:
@@ -1106,38 +1106,35 @@ def analyze_resume_for_frontend():
         if file.filename == '':
             return jsonify({"success": False, "error": "No file selected."}), 400
 
-        text = extract_text_from_resume(file) # This helper function is still valid
+        text = extract_text_from_resume(file)
         if not text:
             return jsonify({"success": False, "error": "Could not extract text from the resume."}), 500
 
-        # STEP 1: Extract sections SAFELY without any changes.
-        extracted_sections = extract_resume_sections_safely(text) # <<< बदला हुआ
-        if not extracted_sections or extracted_sections.get("error"):
-             return jsonify({"success": False, "error": extracted_sections.get("error", "Failed to parse resume sections.")}), 500
+        # --- "Two-Pass" architecture is implemented here ---
+        # It extracts both raw and structured data at once.
+        raw_data, structured_data = extract_and_structure_data(text)
 
-        # STEP 2: Generate a STABLE ATS report.
-        ats_result = generate_stable_ats_report(text, extracted_sections) # <<< बदला हुआ
+        # AI analysis is now done using the structured data for better context.
+        ats_result = generate_stable_ats_report(text, structured_data)
 
-        # Format the data for the frontend
-        passed_checks = ats_result.get("passed_checks", [])
-        issues_to_fix = []
-        raw_issues = ats_result.get("issues_to_fix", [])
-        for i, issue_text in enumerate(raw_issues):
-            issues_to_fix.append({
-                "issue_id": f"err_{i+1}",
-                "issue_text": issue_text
-            })
+        # Format the data for the frontend.
+        issues_to_fix = [
+            {"issue_id": f"err_{i+1}", "issue_text": issue}
+            for i, issue in enumerate(ats_result.get("issues_to_fix", []))
+        ]
 
-        formatted_data = {
-            "score": ats_result.get('score', 0),
+        # This is the new data structure that will be sent to the frontend.
+        final_data_packet = {
+            "raw_data": raw_data,
+            "structured_data": structured_data,
             "analysis": {
-                "passed_checks": passed_checks,
+                "passed_checks": ats_result.get("passed_checks", []),
                 "issues_to_fix": issues_to_fix
             },
-            "extracted_data": extracted_sections 
+            "score": ats_result.get('score', 0)
         }
         
-        return jsonify({"success": True, "data": formatted_data})
+        return jsonify({"success": True, "data": final_data_packet})
 
     except Exception as e:
         import traceback
