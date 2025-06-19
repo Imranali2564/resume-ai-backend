@@ -1143,6 +1143,45 @@ def analyze_resume_for_frontend():
         import traceback
         logger.error(f"Error in /api/v1/analyze-resume: {traceback.format_exc()}")
         return jsonify({"success": False, "error": "An unexpected server error occurred."}), 500
+from docx import Document
+import html2text
+
+@app.route('/api/v1/generate-docx', methods=['POST'])
+def generate_docx_from_html():
+    try:
+        data = json.loads(request.form.get('payload'))
+        html_content = data.get("html_content")
+
+        if not html_content:
+            return jsonify({"success": False, "error": "No HTML content provided"}), 400
+
+        # Convert HTML to a more plain text format for better DOCX conversion
+        h = html2text.HTML2Text()
+        h.ignore_links = False
+        h.body_width = 0
+        plain_text = h.handle(html_content)
+
+        # Create a new Document
+        doc = Document()
+        doc.add_paragraph(plain_text)
+
+        # Save to a bytes buffer
+        file_stream = io.BytesIO()
+        doc.save(file_stream)
+        file_stream.seek(0)
+
+        return send_file(
+            file_stream,
+            as_attachment=True,
+            download_name='resume.docx',
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+
+    except Exception as e:
+        logger.error(f"Error in /api/v1/generate-docx: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": "Failed to generate DOCX file"}), 500
     
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
