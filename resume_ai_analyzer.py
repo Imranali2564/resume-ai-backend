@@ -27,16 +27,7 @@ else:
     except Exception as e:
         logger.error(f"Failed to initialize OpenAI client: {str(e)}")
         client = None
-        
-def get_ai_response(prompt, response_format={"type": "json_object"}):
-        if not client: return None
-        try:
-            response = client.chat.completions.create(model="gpt-4o", messages=[{"role": "user", "content": prompt}], response_format=response_format)
-            return json.loads(response.choices[0].message.content)
-        except Exception as e:
-            logger.error(f"AI call failed: {e}")
-            return None
-        
+
 def extract_text_from_pdf(file_path):
     try:
         # First, try to extract text directly using PyMuPDF
@@ -780,17 +771,54 @@ def fix_ats_issue(resume_text, issue_text):
 # NEW STABLE AI FUNCTIONS
 # =====================================================================
 
-def extract_and_structure_data(full_text):
+def refine_list_section(section_name, section_text):
     """
-    Implements the "Two-Pass" architecture.
-    Pass 1: Extracts raw, verbatim text chunks for initial preview.
-    Pass 2: Uses targeted AI calls to create a structured version for fixes.
-    Returns both raw and structured data.
+    AI HELPER: Cleans up list-based sections like 'Languages' to ensure only relevant items are included.
     """
-    logger.info("Starting 'Two-Pass' data extraction...")
+    if not section_text or not client: return [line.strip() for line in section_text.split('\n') if line.strip()]
     
-    # --- PASS 1: Verbatim Extraction using Regex ---
-    known_headings_map = {
+    logger.info(f"Refining list section: '{section_name}'...")
+    prompt = f"""
+    You are a data cleaning expert. The following text is from the "{section_name}" section of a resume.
+    Your job is to clean this text and return only the relevant items as a JSON list of strings.
+
+    For example, if the section is "Languages", only return actual languages.
+    If the section is "Skills", only return actual skills.
+    
+    Remove any items that do not belong.
+
+    Text to clean:
+    ---
+    {section_text}
+    ---
+    
+    Return a single JSON object with one key, "cleaned_list", containing the list of strings.
+    Example: {{"cleaned_list": ["Hindi", "English"]}}
+    """
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        result = json.loads(response.choices[0].message.content)
+        return result.get("cleaned_list", [])
+    except Exception as e:
+        logger.error(f"Could not refine section {section_name}: {e}")
+        # Fallback to simple split if AI fails
+        return [line.strip() for line in section_text.split('\n') if line.strip()]
+
+def extract_resume_sections_safely(text):
+    """
+    FINAL RELIABLE VERSION: This function uses a more robust "step-by-step" strategy.
+    1. It first splits the resume into text chunks based on headings using code (not AI).
+    2. It then uses targeted AI calls ONLY for complex sections like 'work_experience'.
+    This ensures original data is preserved and extraction is far more reliable.
+    """
+    logger.info("Starting FINAL 'Step-by-Step' section extraction...")
+    
+    # Define common resume section headings and their variations
+    section_map = {
         'summary': ['summary', 'profile', 'objective'],
         'skills': ['skills', 'technical skills', 'core competencies'],
         'work_experience': ['experience', 'work experience', 'professional experience', 'employment history'],
@@ -798,128 +826,229 @@ def extract_and_structure_data(full_text):
         'projects': ['projects', 'personal projects'],
         'certifications': ['certifications', 'licenses & certifications'],
         'languages': ['languages']
+        # Contact, Name, and Title are handled separately
     }
-    # Broader regex to catch all potential headings, including non-standard ones
-    pattern = re.compile(r'^\s*([a-zA-Z\s/&]+?)\s*[:\n]', re.IGNORECASE | re.MULTILINE)
+
+    # Create a regex pattern to split the text by any of the known headings
+    all_headings = [item for sublist in section_map.values() for item in sublist]
+    # Regex to split by headings, case-insensitive, must be at the start of a line
+    pattern = re.compile(r'^\s*(' + '|'.join(all_headings) + r')\s*[:\n]', re.IGNORECASE | re.MULTILINE)
     
-    text_chunks = pattern.split(full_text)
+    # Split the resume text into chunks based on the headings
+    text_chunks = pattern.split(text)
+    
+    # The first chunk is everything before the first heading (often contains name, title, contact)
     header_chunk = text_chunks[0].strip()
     
-    raw_data = {'header': header_chunk}
-    non_standard_sections = {}
-    
-    # Create a flattened list of all known heading variations for quick lookup
-    all_known_variations = {variation: std_name for std_name, variations in known_headings_map.items() for variation in variations}
-
+    # Process the rest of the chunks
+    extracted_sections_raw = {}
+    # Iterate through the chunks, taking them two at a time (heading, content)
     for i in range(1, len(text_chunks), 2):
-        heading = text_chunks[i].strip()
-        heading_lower = heading.lower()
+        heading = text_chunks[i].lower().strip()
         content = text_chunks[i+1].strip()
         
-        if heading_lower in all_known_variations:
-            std_name = all_known_variations[heading_lower]
-            raw_data[std_name] = content
-        else:
-            logger.info(f"Found non-standard section: '{heading}'")
-            non_standard_sections[heading] = content
+        # Find which standard section this heading belongs to
+        for standard_name, variations in section_map.items():
+            if heading in variations:
+                extracted_sections_raw[standard_name] = content
+                break
     
-    if non_standard_sections:
-        raw_data['non_standard_sections'] = non_standard_sections
+    final_data = {}
 
-    # --- PASS 2: AI Structuring (Targeted & Controlled) ---
-    structured_data = {}
-    
-    
-    # Structure complex sections
-    for section in ['work_experience', 'education']:
-        if raw_data.get(section):
-            prompt = f'Parse the following "{section}" text VERBATIM into a JSON list of objects (with keys like title, company, duration, details for experience; or degree, school, duration for education): --- {raw_data[section]} ---'
-            parsed_content = get_ai_response(prompt)
-            if parsed_content and isinstance(parsed_content, dict):
-                for val in parsed_content.values():
-                    if isinstance(val, list): structured_data[section] = val; break
-            else: structured_data[section] = [{"details": [raw_data[section]]}] # Fallback
-    
-    # Structure simple list sections
-    for section in ['skills', 'languages', 'projects', 'certifications']:
-        if raw_data.get(section):
-            prompt = f'From the following "{section}" text, extract only the relevant items as a JSON list of strings: --- {raw_data[section]} ---'
-            parsed_content = get_ai_response(prompt)
-            if parsed_content and isinstance(parsed_content, dict):
-                key = list(parsed_content.keys())[0]
-                structured_data[section] = parsed_content.get(key, [])
-            else: structured_data[section] = raw_data.get(section, "").split('\n') # Fallback
+    # --- Use AI ONLY where absolutely necessary ---
 
-    structured_data['summary'] = raw_data.get('summary', '')
+    # For simple text sections, just use the raw extracted text to ensure it's original
+    final_data['summary'] = extracted_sections_raw.get('summary', '')
 
-    # Structure the header
-    prompt = f'From the text below, extract "name", "job_title", and combine all contact info into a single "contact" string. JSON response: {{"name": "...", "job_title": "...", "contact": "..."}}. Text: --- {raw_data.get("header", "")} ---'
-    header_data = get_ai_response(prompt)
-    if header_data: structured_data.update(header_data)
+    # For list-based sections, clean them up slightly
+    def clean_list_section(raw_text):
+        if not raw_text: return []
+        # Split by newlines and remove empty lines or bullet points
+        return [re.sub(r'^[•*-]\s*', '', line).strip() for line in raw_text.split('\n') if line.strip()]
 
-    if non_standard_sections: structured_data['non_standard_sections'] = non_standard_sections
+    final_data['skills'] = refine_list_section('Skills', extracted_sections_raw.get('skills', ''))
+    final_data['languages'] = refine_list_section('Languages', extracted_sections_raw.get('languages', ''))
+    final_data['projects'] = clean_list_section(extracted_sections_raw.get('projects'))
+    final_data['certifications'] = clean_list_section(extracted_sections_raw.get('certifications'))
 
-    return raw_data, structured_data
-
-def generate_stable_ats_report(full_text, structured_data):
-    """Generates ATS report, now aware of non-standard sections."""
-    logger.info("Generating final ATS report...")
-    
-    non_standard_text = ""
-    if structured_data.get('non_standard_sections'):
-        headings = ", ".join(structured_data['non_standard_sections'].keys())
-        non_standard_text = f"8. **Non-Standard Sections**: The resume contains these non-standard sections: {headings}. Suggest merging them into standard sections. For example, 'Additional Courses' should be moved to 'Certifications'."
-    
-    prompt = f"""
-    You are a strict ATS reviewer. Analyze the resume based ONLY on these criteria:
-    1. Contact Info: Are email and phone present?
-    2. Key Sections: Are 'Education', 'Work Experience', and 'Skills' present?
-    3. Missing Impactful Sections: Are 'Projects' or 'Certifications' missing?
-    4. Quantifiable Achievements: Does 'Work Experience' lack numbers/metrics?
-    5. Formatting: Check for awkward formatting, especially in 'Education'.
-    {non_standard_text}
-
-    Respond with JSON: {{"passed_checks": ["✅..."], "issues_to_fix": ["❌..."]}}.
-    Analyze: --- {full_text[:7000]} ---
-    """
-    # (The rest of the function remains the same as your last working version)
-    # ...
-    report_data = get_ai_response(prompt) or {}
-    issues = report_data.get("issues_to_fix", [])
-    score = max(30, 100 - (len(issues) * 10))
-    return {"passed_checks": report_data.get("passed_checks", []), "issues_to_fix": issues, "score": score}
-
-
-def generate_targeted_fix(suggestion, section_name, section_content_json, full_resume_text):
-    """Generates a surgical fix, preventing fabrication."""
-    logger.info(f"Generating surgical fix for '{section_name}'...")
-    
-    prompt = f"""
-    You are a precise resume editor. Your task is to perform a small, surgical edit on a specific section of a resume, based on a single suggestion.
-    
-    **Suggestion to fix:** "{suggestion}"
-    **Section to modify:** "{section_name}"
-    **Current content of this section (in JSON format):**
-    {section_content_json}
-
-    **Your Task & Rules:**
-    - If the suggestion is about **quantifiable achievements**: Modify ONLY ONE bullet point in the provided content to include a realistic metric. DO NOT change other bullet points. DO NOT invent new jobs.
-    - If the suggestion is about **formatting**: Correct the structure of the JSON objects (e.g., combine degree and school into one entry) but keep the original words.
-    - If the suggestion is to **add a missing section** (like 'Projects'): Create 1-2 relevant project examples based on the user's overall resume skills and experience.
-    - If the suggestion is to **merge a non-standard section**: Take the content and reformat it for the target section (e.g., reformat 'Additional Courses' for the 'Certifications' section).
-    
-    **Full resume (for context only, do not use to fabricate data):**
-    {full_resume_text[:4000]}
-
-    Respond with a single JSON object containing the updated content for ONLY the "{section_name}" section.
-    The key should be "{section_name}" and the value should be the fixed list of objects or strings.
-    """
-    fixed_data = get_ai_response(prompt)
-    if not fixed_data or not isinstance(fixed_data, dict):
-        return {"error": "AI failed to generate a valid fix."}
+    # --- Targeted AI call for complex sections (Experience & Education) ---
+    def parse_complex_section(section_name, section_text):
+        if not section_text or not client: return []
+        logger.info(f"Making targeted AI call to parse '{section_name}' section...")
         
-    fixed_section_key = list(fixed_data.keys())[0]
-    return {"section": fixed_section_key, "fixedContent": fixed_data[fixed_section_key]}
+        # Determine the expected structure based on the section
+        if section_name == 'work_experience':
+            json_structure = '[{"title": "...", "company": "...", "duration": "...", "details": ["..."]}]'
+        elif section_name == 'education':
+            json_structure = '[{"degree": "...", "school": "...", "duration": "...", "details": ["..."]}]'
+        else:
+            return []
+
+        prompt = f"""
+        You are a data parsing machine. Your only job is to convert the following text from a resume's "{section_name}" section into a structured JSON list.
+        Extract the text VERBATIM without changing any words.
+
+        Desired JSON structure:
+        {json_structure}
+
+        Parse this text:
+        ---
+        {section_text}
+        ---
+        """
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+            # The AI might return the data inside a key, so we find the first list in the response.
+            parsed_json = json.loads(response.choices[0].message.content)
+            for key, value in parsed_json.items():
+                if isinstance(value, list):
+                    return value
+            return [] # Return empty if no list is found
+        except Exception as e:
+            logger.error(f"Targeted AI parsing failed for {section_name}: {e}")
+            return [f"AI failed to parse this section. Original text: {section_text}"]
+
+    final_data['work_experience'] = parse_complex_section('work_experience', extracted_sections_raw.get('work_experience'))
+    final_data['education'] = parse_complex_section('education', extracted_sections_raw.get('education'))
+
+    # --- AI call just for the header info (Name, Title, Contact) ---
+    def parse_header(header_text):
+        if not header_text or not client: return {}, ""
+        logger.info("Making targeted AI call to parse header...")
+        prompt = f"""
+        From the text below, extract the person's full name, job title, and combine all contact information (email, phone, address, links) into a single string.
+        
+        Desired JSON: {{"name": "...", "job_title": "...", "contact": "..."}}
+        
+        Parse this text:
+        ---
+        {header_text}
+        ---
+        """
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+            return json.loads(response.choices[0].message.content)
+        except Exception as e:
+            logger.error(f"Header AI parsing failed: {e}")
+            return {"name": "Error", "job_title": "Error", "contact": header_text}
+
+    header_data = parse_header(header_chunk)
+    final_data.update(header_data)
+
+    # Ensure all required keys exist, even if they are empty or null
+    all_keys = ["name", "job_title", "contact", "summary", "skills", "languages", "work_experience", "education", "projects", "certifications"]
+    for key in all_keys:
+        if key not in final_data:
+            final_data[key] = None
+
+    logger.info("Successfully extracted sections using 'Step-by-Step' strategy.")
+    return final_data
+
+def generate_stable_ats_report(resume_text, extracted_data):
+    """
+    NEW STABLE VERSION: Generates a predictable ATS report by checking for specific, fixed criteria.
+    This reduces the chances of random, new issues appearing.
+    """
+    if not client: return {"score": 0, "issues": ["❌ OpenAI API key not configured."]}
+    logger.info("Generating STABLE ATS report...")
+    
+    resume_context = f"The user's resume has the following sections: {list(extracted_data.keys())}."
+    prompt = f"""
+    You are a very strict and consistent ATS reviewer. Analyze the resume text based ONLY on the following criteria.
+    Context: {resume_context}
+
+    CRITERIA TO CHECK:
+    1.  **Contact Information**: Is there an email and phone number?
+    2.  **Key Sections**: Are 'Education', 'Work Experience', and 'Skills' sections present?
+    3.  **Missing Impactful Sections**: Are 'Projects' or 'Certifications' sections missing? Suggest adding them if they are.
+    4.  **Quantifiable Achievements**: Does the 'Work Experience' section lack numbers, percentages, or metrics (e.g., "managed a team of 5", "increased sales by 15%")?
+    5.  **Wordiness**: Is the 'Skills' section written as a long paragraph instead of a list?
+    6.  **Professional Summary**: Is a summary or objective missing at the top?
+    7.  **Poor Formatting**: Check for inconsistent or awkward formatting within sections, especially 'Education'. For example, are dates, percentages, or GPAs on separate, misaligned lines? Flag this as a formatting issue.
+
+    Instructions:
+    - For each criterion, provide ONE clear "passed" or "issue" statement.
+    - Respond with a JSON object containing "passed_checks" and "issues_to_fix" lists.
+    - Every item in the lists MUST start with an emoji (✅ for passed, ❌ for issue).
+    - Be consistent. Do not invent new types of issues.
+
+    Analyze the resume and generate the JSON object based ONLY on the criteria above:
+    ---
+    {resume_text[:7000]}
+    ---
+    """
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "system", "content": "You are a helpful and consistent ATS reviewer responding in JSON."}, {"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        report_data = json.loads(response.choices[0].message.content)
+        
+        passed = report_data.get("passed_checks", [])
+        issues = report_data.get("issues_to_fix", [])
+        
+        # Predictable Score: Start at 100 and subtract a fixed amount for each issue found.
+        score = max(30, 100 - (len(issues) * 10))
+        
+        return {"passed_checks": passed, "issues_to_fix": issues, "score": score}
+    except Exception as e:
+        logger.error(f"[ERROR in generate_stable_ats_report]: {e}")
+        return {"score": 0, "passed_checks": [], "issues_to_fix": ["❌ AI analysis failed."]}
+
+def generate_targeted_fix(suggestion, full_text):
+    """
+    NEW STABLE VERSION: This function ONLY generates the fixed text for a single issue.
+    It does NOT re-analyze the whole resume.
+    """
+    if not client: return {"error": "OpenAI API key not set."}
+    logger.info(f"Generating TARGETED fix for suggestion: {suggestion}")
+    
+    prompt = f"""
+    You are an AI resume expert. Your task is to fix ONE specific issue in a resume based on the given suggestion.
+
+    SUGGESTION:
+    {suggestion}
+
+    FULL RESUME TEXT (for context):
+    {full_text[:8000]}
+
+    INSTRUCTIONS:
+    - Focus ONLY on the suggestion. Do not fix anything else.
+    - Based on the suggestion, identify which section of the resume needs to be changed (e.g., "skills", "work_experience", "projects").
+    - Generate the improved content for that section.
+    - If the suggestion is to ADD a missing section, create content for it.
+    
+    Respond with a single JSON object with two keys:
+    1. "section": The name of the section you fixed (e.g., "skills", "projects").
+    2. "fixedContent": The new, improved text or list for that section.
+    
+    Example Response: {{"section": "skills", "fixedContent": ["Python", "JavaScript", "Project Management"]}}
+    """
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "system", "content": "You are a resume fixing assistant that responds in perfect JSON."}, {"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        fix_result = json.loads(response.choices[0].message.content)
+        
+        # Ensure the response has the correct format
+        if "section" not in fix_result or "fixedContent" not in fix_result:
+            raise ValueError("AI response did not contain 'section' or 'fixedContent'.")
+            
+        return fix_result
+    except Exception as e:
+        logger.error(f"[ERROR in generate_targeted_fix]: {e}")
+        return {"error": "AI failed to generate the targeted fix."}
 
 def calculate_new_score(current_score, issue_text):
     """
