@@ -15,5 +15,3 @@ PyPDF2
 pytesseract
 Pillow
 html2docx
-pyspellchecker
-language-tool-python

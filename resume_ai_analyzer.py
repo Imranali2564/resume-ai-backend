@@ -956,41 +956,34 @@ def extract_resume_sections_safely(text):
 
 def generate_stable_ats_report(resume_text, extracted_data):
     """
-    NEW STABLE VERSION (v2): Generates a predictable ATS report by checking for specific, fixed criteria.
-    Now includes programmatic spelling and grammar checks.
+    NEW STABLE VERSION (v3): Generates a predictable ATS report using only the main AI.
+    This version asks the AI to handle spelling and grammar checks to avoid memory issues.
     """
-    if not client: return {"score": 0, "issues_to_fix": ["❌ OpenAI API key not configured."], "passed_checks": []}
-    logger.info("Generating STABLE ATS report (v2) with spelling/grammar checks...")
+    if not client: 
+        return {
+            "score": 0, 
+            "issues_to_fix": ["❌ OpenAI API key not configured."], 
+            "passed_checks": []
+        }
+    logger.info("Generating STABLE ATS report (v3) using main AI for all checks...")
     
-    # --- [नया] प्रोग्रामेटिक रूप से स्पेलिंग और ग्रामर की जाँच करें ---
-    spelling_result = _check_spelling(resume_text)
-    grammar_result = _check_grammar(resume_text)
-    
-    pre_checked_info = f"""
-    - Spelling Mistakes Found: {spelling_result['count']}
-    - Grammar Mistakes Found: {grammar_result['count']}
-    """
-    
-    # --- [बदला हुआ] प्रॉम्प्ट में प्री-चेक्ड जानकारी जोड़ें ---
+    # [बदला हुआ] प्रॉम्प्ट अब AI को स्पेलिंग और ग्रामर की जाँच करने के लिए भी कहता है।
     prompt = f"""
-    You are a very strict and consistent ATS reviewer. Your task is to generate a JSON report based on pre-checked data and a list of other criteria.
+    You are a very strict and consistent ATS reviewer. Your task is to generate a JSON report by analyzing a resume based on a list of criteria.
 
-    PRE-CHECKED DATA (Use this information to create the report):
-    {pre_checked_info}
-
-    CRITERIA TO CHECK (Analyze the resume text for these):
+    CRITERIA TO CHECK:
     1.  **Contact Information**: Is there an email AND a phone number?
     2.  **Key Sections**: Are 'Education', 'Work Experience', and 'Skills' sections present?
     3.  **Missing Impactful Sections**: Are 'Projects' or 'Certifications' sections missing? Suggest adding them if so.
     4.  **Quantifiable Achievements**: Does the 'Work Experience' section lack numbers, percentages, or metrics?
-    5.  **Wordiness**: Is the 'Skills' section a long paragraph instead of a list?
-    6.  **Professional Summary**: Is a summary/objective missing at the top?
-    7.  **Poor Formatting**: Is there inconsistent formatting within sections (e.g., dates on separate lines in 'Education')?
+    5.  **Spelling Check**: Scan for spelling mistakes. If any are found, report it with an approximate count (e.g., "Found approximately 2-3 spelling mistakes"). If none, state that it passed.
+    6.  **Grammar Check**: Scan for significant grammatical errors. If any are found, report it with an approximate count. If none, state that it passed.
+    7.  **Professional Summary**: Is a summary or objective missing at the top?
+    8.  **Poor Formatting**: Is there inconsistent formatting within sections (e.g., dates on separate lines in 'Education')?
 
     INSTRUCTIONS:
     - Create a JSON object with two keys: "passed_checks" (a list of strings) and "issues_to_fix" (a list of strings).
-    - For Spelling and Grammar, use the exact counts from the PRE-CHECKED DATA. If a count is 0, create a "passed" check. If greater than 0, create an "issue".
-    - For all other criteria, analyze the resume text and create ONE "passed" or "issue" statement for each.
+    - For EACH of the 8 criteria above, create EXACTLY ONE "passed" or "issue" statement.
     - Every item in the lists MUST start with an emoji (✅ for passed, ❌ for issue).
 
     Resume Text to Analyze:
@@ -1014,7 +1007,7 @@ def generate_stable_ats_report(resume_text, extracted_data):
         
         return {"passed_checks": passed, "issues_to_fix": issues, "score": score}
     except Exception as e:
-        logger.error(f"[ERROR in generate_stable_ats_report_v2]: {e}")
+        logger.error(f"[ERROR in generate_stable_ats_report_v3]: {e}")
         return {"score": 0, "passed_checks": [], "issues_to_fix": ["❌ AI analysis failed."]}
 
 def generate_targeted_fix(suggestion, full_text):
