@@ -27,7 +27,16 @@ else:
     except Exception as e:
         logger.error(f"Failed to initialize OpenAI client: {str(e)}")
         client = None
-
+        
+def get_ai_response(prompt, response_format={"type": "json_object"}):
+        if not client: return None
+        try:
+            response = client.chat.completions.create(model="gpt-4o", messages=[{"role": "user", "content": prompt}], response_format=response_format)
+            return json.loads(response.choices[0].message.content)
+        except Exception as e:
+            logger.error(f"AI call failed: {e}")
+            return None
+        
 def extract_text_from_pdf(file_path):
     try:
         # First, try to extract text directly using PyMuPDF
@@ -820,15 +829,7 @@ def extract_and_structure_data(full_text):
     # --- PASS 2: AI Structuring (Targeted & Controlled) ---
     structured_data = {}
     
-    def get_ai_response(prompt, response_format={"type": "json_object"}):
-        if not client: return None
-        try:
-            response = client.chat.completions.create(model="gpt-4o", messages=[{"role": "user", "content": prompt}], response_format=response_format)
-            return json.loads(response.choices[0].message.content)
-        except Exception as e:
-            logger.error(f"AI call failed: {e}")
-            return None
-
+    
     # Structure complex sections
     for section in ['work_experience', 'education']:
         if raw_data.get(section):
