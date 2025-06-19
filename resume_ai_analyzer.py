@@ -1004,48 +1004,66 @@ def generate_stable_ats_report(resume_text, extracted_data):
         logger.error(f"[ERROR in generate_stable_ats_report]: {e}")
         return {"score": 0, "passed_checks": [], "issues_to_fix": ["❌ AI analysis failed."]}
 
-def generate_targeted_fix(suggestion, full_text):
+def generate_targeted_fix(suggestion, section_name, section_content, full_resume_text):
     """
-    NEW STABLE VERSION: This function ONLY generates the fixed text for a single issue.
-    It does NOT re-analyze the whole resume.
+    Generates a surgical fix for a specific section, preventing AI from fabricating data.
+    It takes the specific section's content as direct input for a more controlled edit.
     """
     if not client: return {"error": "OpenAI API key not set."}
-    logger.info(f"Generating TARGETED fix for suggestion: {suggestion}")
     
+    # Convert the section content (which could be a list of objects) into a JSON string for the prompt
+    section_content_json = json.dumps(section_content, indent=2)
+
+    logger.info(f"Generating surgical fix for '{section_name}' based on suggestion: '{suggestion}'")
+    
+    # This is a much more constrained and precise prompt for the AI
     prompt = f"""
-    You are an AI resume expert. Your task is to fix ONE specific issue in a resume based on the given suggestion.
+    You are a precise resume editor. Your task is to perform a small, surgical edit on a specific section of a resume, based on a single suggestion.
 
-    SUGGESTION:
-    {suggestion}
-
-    FULL RESUME TEXT (for context):
-    {full_text[:8000]}
-
-    INSTRUCTIONS:
-    - Focus ONLY on the suggestion. Do not fix anything else.
-    - Based on the suggestion, identify which section of the resume needs to be changed (e.g., "skills", "work_experience", "projects").
-    - Generate the improved content for that section.
-    - If the suggestion is to ADD a missing section, create content for it.
+    **Suggestion to fix:** "{suggestion}"
     
-    Respond with a single JSON object with two keys:
-    1. "section": The name of the section you fixed (e.g., "skills", "projects").
-    2. "fixedContent": The new, improved text or list for that section.
+    **Section to modify:** "{section_name}"
     
-    Example Response: {{"section": "skills", "fixedContent": ["Python", "JavaScript", "Project Management"]}}
+    **Current content of this section (in JSON format):**
+    ```json
+    {section_content_json}
+    ```
+
+    **Your Task & Rules:**
+    1.  **Be Surgical:** Make the smallest possible change to fix the issue. Do NOT rewrite the entire section.
+    2.  **Quantifiable Achievements:** If the suggestion is to add achievements, modify ONLY ONE existing bullet point to include a realistic metric. DO NOT change other bullet points or invent new job duties.
+    3.  **Formatting:** If the suggestion is about formatting, correct the structure but keep the original text exactly as it is.
+    4.  **Add Missing Section:** If the suggestion is to ADD a missing section (e.g., 'Projects'), use the full resume text for context to create 1-2 relevant examples.
+    5.  **Safety Fallback:** If you cannot make a meaningful improvement that follows these rules, you MUST return the original content unchanged.
+
+    **Full resume (for high-level context ONLY, do not use to fabricate data):**
+    ---
+    {full_resume_text[:4000]}
+    ---
+
+    Respond with a single JSON object containing the updated content for ONLY the "{section_name}" section.
+    The key in your JSON response must be "{section_name}" and its value should be the fixed list or text.
     """
     try:
         response = client.chat.completions.create(
             model="gpt-4o",
-            messages=[{"role": "system", "content": "You are a resume fixing assistant that responds in perfect JSON."}, {"role": "user", "content": prompt}],
+            messages=[{"role": "system", "content": "You are a precise resume editor that follows rules strictly and responds in JSON."}, {"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
         fix_result = json.loads(response.choices[0].message.content)
         
-        # Ensure the response has the correct format
-        if "section" not in fix_result or "fixedContent" not in fix_result:
-            raise ValueError("AI response did not contain 'section' or 'fixedContent'.")
-            
-        return fix_result
+        # The AI should respond with a dict like {"work_experience": [...]}. We extract the key and value.
+        if not isinstance(fix_result, dict) or not fix_result:
+             raise ValueError("AI response was not a valid dictionary.")
+
+        fixed_section_key = list(fix_result.keys())[0]
+        fixed_content_value = fix_result[fixed_section_key]
+
+        return {
+            "section": fixed_section_key,
+            "fixedContent": fixed_content_value
+        }
+        
     except Exception as e:
         logger.error(f"[ERROR in generate_targeted_fix]: {e}")
         return {"error": "AI failed to generate the targeted fix."}
