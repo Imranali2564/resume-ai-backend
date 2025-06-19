@@ -954,35 +954,33 @@ def extract_resume_sections_safely(text):
 
 def generate_stable_ats_report(resume_text, extracted_data):
     """
-    FINAL EXPERT VERSION: This prompt gives the AI the persona of a world-class resume expert,
-    allowing it to use its full knowledge base to provide comprehensive feedback beyond a simple checklist.
+    NEW STABLE VERSION: Generates a predictable ATS report by checking for specific, fixed criteria.
+    This reduces the chances of random, new issues appearing.
     """
     if not client: return {"score": 0, "issues": ["❌ OpenAI API key not configured."]}
-    logger.info("Generating expert-level ATS report...")
+    logger.info("Generating STABLE ATS report...")
     
-    # Provide context about the resume to the AI
-    resume_context = f"The resume has the following identified sections: {list(k for k, v in extracted_data.items() if v)}."
-
-    # The new "Expert Persona" prompt
+    resume_context = f"The user's resume has the following sections: {list(extracted_data.keys())}."
     prompt = f"""
-    You are 'ResuBot', a world-class career coach and professional resume reviewer with expertise in global hiring standards and ATS optimization. Your goal is to provide a comprehensive, expert-level critique of the following resume.
+    You are a very strict and consistent ATS reviewer. Analyze the resume text based ONLY on the following criteria.
+    Context: {resume_context}
 
-    CONTEXT: {resume_context}
-
-    Analyze the resume across these key areas:
-    1.  **ATS Compatibility & Formatting**: Check for standard section headings (e.g., 'Work Experience', not 'My Jobs'). Look for formatting issues like inconsistent dates, dense paragraphs that should be bullet points, or unprofessional fonts/colors if detectable.
-    2.  **Content Impact & Achievements**: Are the bullet points results-oriented? Do they use the STAR method (Situation, Task, Action, Result)? Are there quantifiable metrics (e.g., increased sales by 15%, managed a team of 5)? Flag any weak or passive language.
-    3.  **Structure & Completeness**: Does the resume have all critical sections (Contact, Experience, Education, Skills)? Are there any missing but highly recommended sections like 'Projects' or 'Certifications'?
-    4.  **Professionalism**: Are there any unprofessional or unnecessary sections like 'Hobbies', 'Marital Status', 'Date of Birth', or 'Religion'? Suggest removing them. If there are non-standard but relevant sections like 'Additional Courses', suggest merging them into a standard section like 'Certifications'.
+    CRITERIA TO CHECK:
+    1.  **Contact Information**: Is there an email and phone number?
+    2.  **Key Sections**: Are 'Education', 'Work Experience', and 'Skills' sections present?
+    3.  **Missing Impactful Sections**: Are 'Projects' or 'Certifications' sections missing? Suggest adding them if they are.
+    4.  **Quantifiable Achievements**: Does the 'Work Experience' section lack numbers, percentages, or metrics (e.g., "managed a team of 5", "increased sales by 15%")?
+    5.  **Wordiness**: Is the 'Skills' section written as a long paragraph instead of a list?
+    6.  **Professional Summary**: Is a summary or objective missing at the top?
+    7.  **Poor Formatting**: Check for inconsistent or awkward formatting within sections, especially 'Education'. For example, are dates, percentages, or GPAs on separate, misaligned lines? Flag this as a formatting issue.
 
     Instructions:
-    - Provide a balanced report. Identify both strengths and weaknesses.
-    - All feedback must be specific, actionable, and professional.
-    - Respond with a single JSON object containing two keys: "passed_checks" and "issues_to_fix".
-    - Every item in the lists MUST start with an appropriate emoji (✅ for passed checks, ❌ for issues to fix).
-    - Prioritize the most critical issues first in the "issues_to_fix" list.
+    - For each criterion, provide ONE clear "passed" or "issue" statement.
+    - Respond with a JSON object containing "passed_checks" and "issues_to_fix" lists.
+    - Every item in the lists MUST start with an emoji (✅ for passed, ❌ for issue).
+    - Be consistent. Do not invent new types of issues.
 
-    Now, perform your expert review of this resume:
+    Analyze the resume and generate the JSON object based ONLY on the criteria above:
     ---
     {resume_text[:7000]}
     ---
@@ -990,7 +988,7 @@ def generate_stable_ats_report(resume_text, extracted_data):
     try:
         response = client.chat.completions.create(
             model="gpt-4o",
-            messages=[{"role": "system", "content": "You are ResuBot, a world-class resume expert responding in perfect JSON."}, {"role": "user", "content": prompt}],
+            messages=[{"role": "system", "content": "You are a helpful and consistent ATS reviewer responding in JSON."}, {"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
         report_data = json.loads(response.choices[0].message.content)
@@ -998,13 +996,13 @@ def generate_stable_ats_report(resume_text, extracted_data):
         passed = report_data.get("passed_checks", [])
         issues = report_data.get("issues_to_fix", [])
         
-        # The score is more heavily penalized for more issues, reflecting a more detailed review.
-        score = max(30, 100 - (len(issues) * 9))
+        # Predictable Score: Start at 100 and subtract a fixed amount for each issue found.
+        score = max(30, 100 - (len(issues) * 10))
         
         return {"passed_checks": passed, "issues_to_fix": issues, "score": score}
     except Exception as e:
         logger.error(f"[ERROR in generate_stable_ats_report]: {e}")
-        return {"score": 0, "passed_checks": [], "issues_to_fix": ["❌ AI analysis failed. Please try again."]}
+        return {"score": 0, "passed_checks": [], "issues_to_fix": ["❌ AI analysis failed."]}
 
 def generate_targeted_fix(suggestion, full_text):
     """
