@@ -311,38 +311,30 @@ def fix_suggestion():
             return jsonify({"success": False, "error": "Missing payload in request form"}), 400
             
         data = json.loads(request.form.get('payload'))
-        
-        # Get all the necessary data from the frontend payload
         suggestion = data.get("suggestion")
-        current_score = data.get("current_score")
-        section_name_to_fix = data.get("section_name")
-        section_content = data.get("section_content")
-        full_resume_text = data.get("full_resume_text")
+        full_text = data.get("full_text")
+        current_score = data.get("current_score") # <<< हमें JS से वर्तमान स्कोर चाहिए
 
-        # Check if all required data is present
-        if not all([suggestion, isinstance(current_score, int), section_name_to_fix, section_content, full_resume_text]):
-            logger.error(f"Incomplete payload received in /fix-suggestion: {data}")
-            return jsonify({"success": False, "error": "Incomplete data sent from the client."}), 400
+        if not all([suggestion, full_text, isinstance(current_score, int)]):
+            return jsonify({"success": False, "error": "Missing suggestion, text, or current_score."}), 400
 
-        # Call the AI to get a targeted fix for the specific section
-        fix_result = generate_targeted_fix(suggestion, section_name_to_fix, section_content, full_resume_text)
+        # STEP 1: Get the targeted fix from the AI.
+        fix_result = generate_targeted_fix(suggestion, full_text) # <<< बदला हुआ
         
-        # --- NEW SAFETY CHECK ---
-        # This is the most important change. It checks if the AI returned a valid, non-empty fix.
-        if 'error' in fix_result or not fix_result.get("fixedContent"):
-            logger.error(f"AI returned empty or invalid content for the fix: {fix_result}")
-            return jsonify({"success": False, "error": "AI could not generate a valid improvement. Please try again or skip."}), 500
+        if 'error' in fix_result:
+            return jsonify({"success": False, "error": fix_result["error"]}), 500
 
-        # Calculate the new score based on predictable rules
-        new_score = calculate_new_score(current_score, suggestion)
+        # STEP 2: Calculate the new score predictably.
+        new_score = calculate_new_score(current_score, suggestion) # <<< बदला हुआ
         
-        # Combine the successful results into the final response
+        # Combine results into the final response
         final_response = {
             "section": fix_result["section"],
             "fixedContent": fix_result["fixedContent"],
             "newScore": new_score
         }
-        
+
+        # NOTE: We no longer return 'updatedAnalysis'. The frontend will handle the UI state.
         return jsonify({"success": True, "data": final_response})
 
     except Exception as e:
