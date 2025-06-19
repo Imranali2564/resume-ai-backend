@@ -1,3 +1,5 @@
+# PASTE THIS ENTIRE CODE INTO YOUR resume_ai_analyzer.py FILE
+
 import os
 import logging
 import docx
