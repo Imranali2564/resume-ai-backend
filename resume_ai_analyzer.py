@@ -954,33 +954,44 @@ def extract_resume_sections_safely(text):
 
 def generate_stable_ats_report(resume_text, extracted_data):
     """
-    NEW STABLE VERSION: Generates a predictable ATS report by checking for specific, fixed criteria.
-    This reduces the chances of random, new issues appearing.
+    NEW STABLE VERSION (v2): Generates a predictable ATS report by checking for specific, fixed criteria.
+    Now includes programmatic spelling and grammar checks.
     """
-    if not client: return {"score": 0, "issues": ["❌ OpenAI API key not configured."]}
-    logger.info("Generating STABLE ATS report...")
+    if not client: return {"score": 0, "issues_to_fix": ["❌ OpenAI API key not configured."], "passed_checks": []}
+    logger.info("Generating STABLE ATS report (v2) with spelling/grammar checks...")
     
-    resume_context = f"The user's resume has the following sections: {list(extracted_data.keys())}."
+    # --- [नया] प्रोग्रामेटिक रूप से स्पेलिंग और ग्रामर की जाँच करें ---
+    spelling_result = _check_spelling(resume_text)
+    grammar_result = _check_grammar(resume_text)
+    
+    pre_checked_info = f"""
+    - Spelling Mistakes Found: {spelling_result['count']}
+    - Grammar Mistakes Found: {grammar_result['count']}
+    """
+    
+    # --- [बदला हुआ] प्रॉम्प्ट में प्री-चेक्ड जानकारी जोड़ें ---
     prompt = f"""
-    You are a very strict and consistent ATS reviewer. Analyze the resume text based ONLY on the following criteria.
-    Context: {resume_context}
+    You are a very strict and consistent ATS reviewer. Your task is to generate a JSON report based on pre-checked data and a list of other criteria.
 
-    CRITERIA TO CHECK:
-    1.  **Contact Information**: Is there an email and phone number?
+    PRE-CHECKED DATA (Use this information to create the report):
+    {pre_checked_info}
+
+    CRITERIA TO CHECK (Analyze the resume text for these):
+    1.  **Contact Information**: Is there an email AND a phone number?
     2.  **Key Sections**: Are 'Education', 'Work Experience', and 'Skills' sections present?
-    3.  **Missing Impactful Sections**: Are 'Projects' or 'Certifications' sections missing? Suggest adding them if they are.
-    4.  **Quantifiable Achievements**: Does the 'Work Experience' section lack numbers, percentages, or metrics (e.g., "managed a team of 5", "increased sales by 15%")?
-    5.  **Wordiness**: Is the 'Skills' section written as a long paragraph instead of a list?
-    6.  **Professional Summary**: Is a summary or objective missing at the top?
-    7.  **Poor Formatting**: Check for inconsistent or awkward formatting within sections, especially 'Education'. For example, are dates, percentages, or GPAs on separate, misaligned lines? Flag this as a formatting issue.
+    3.  **Missing Impactful Sections**: Are 'Projects' or 'Certifications' sections missing? Suggest adding them if so.
+    4.  **Quantifiable Achievements**: Does the 'Work Experience' section lack numbers, percentages, or metrics?
+    5.  **Wordiness**: Is the 'Skills' section a long paragraph instead of a list?
+    6.  **Professional Summary**: Is a summary/objective missing at the top?
+    7.  **Poor Formatting**: Is there inconsistent formatting within sections (e.g., dates on separate lines in 'Education')?
 
-    Instructions:
-    - For each criterion, provide ONE clear "passed" or "issue" statement.
-    - Respond with a JSON object containing "passed_checks" and "issues_to_fix" lists.
+    INSTRUCTIONS:
+    - Create a JSON object with two keys: "passed_checks" (a list of strings) and "issues_to_fix" (a list of strings).
+    - For Spelling and Grammar, use the exact counts from the PRE-CHECKED DATA. If a count is 0, create a "passed" check. If greater than 0, create an "issue".
+    - For all other criteria, analyze the resume text and create ONE "passed" or "issue" statement for each.
     - Every item in the lists MUST start with an emoji (✅ for passed, ❌ for issue).
-    - Be consistent. Do not invent new types of issues.
 
-    Analyze the resume and generate the JSON object based ONLY on the criteria above:
+    Resume Text to Analyze:
     ---
     {resume_text[:7000]}
     ---
@@ -1001,7 +1012,7 @@ def generate_stable_ats_report(resume_text, extracted_data):
         
         return {"passed_checks": passed, "issues_to_fix": issues, "score": score}
     except Exception as e:
-        logger.error(f"[ERROR in generate_stable_ats_report]: {e}")
+        logger.error(f"[ERROR in generate_stable_ats_report_v2]: {e}")
         return {"score": 0, "passed_checks": [], "issues_to_fix": ["❌ AI analysis failed."]}
 
 def generate_targeted_fix(suggestion, full_text):
