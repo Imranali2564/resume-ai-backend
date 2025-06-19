@@ -771,6 +771,43 @@ def fix_ats_issue(resume_text, issue_text):
 # NEW STABLE AI FUNCTIONS
 # =====================================================================
 
+def refine_list_section(section_name, section_text):
+    """
+    AI HELPER: Cleans up list-based sections like 'Languages' to ensure only relevant items are included.
+    """
+    if not section_text or not client: return [line.strip() for line in section_text.split('\n') if line.strip()]
+    
+    logger.info(f"Refining list section: '{section_name}'...")
+    prompt = f"""
+    You are a data cleaning expert. The following text is from the "{section_name}" section of a resume.
+    Your job is to clean this text and return only the relevant items as a JSON list of strings.
+
+    For example, if the section is "Languages", only return actual languages.
+    If the section is "Skills", only return actual skills.
+    
+    Remove any items that do not belong.
+
+    Text to clean:
+    ---
+    {section_text}
+    ---
+    
+    Return a single JSON object with one key, "cleaned_list", containing the list of strings.
+    Example: {{"cleaned_list": ["Hindi", "English"]}}
+    """
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        result = json.loads(response.choices[0].message.content)
+        return result.get("cleaned_list", [])
+    except Exception as e:
+        logger.error(f"Could not refine section {section_name}: {e}")
+        # Fallback to simple split if AI fails
+        return [line.strip() for line in section_text.split('\n') if line.strip()]
+
 def extract_resume_sections_safely(text):
     """
     FINAL RELIABLE VERSION: This function uses a more robust "step-by-step" strategy.
@@ -829,8 +866,8 @@ def extract_resume_sections_safely(text):
         # Split by newlines and remove empty lines or bullet points
         return [re.sub(r'^[•*-]\s*', '', line).strip() for line in raw_text.split('\n') if line.strip()]
 
-    final_data['skills'] = clean_list_section(extracted_sections_raw.get('skills'))
-    final_data['languages'] = clean_list_section(extracted_sections_raw.get('languages'))
+    final_data['skills'] = refine_list_section('Skills', extracted_sections_raw.get('skills', ''))
+    final_data['languages'] = refine_list_section('Languages', extracted_sections_raw.get('languages', ''))
     final_data['projects'] = clean_list_section(extracted_sections_raw.get('projects'))
     final_data['certifications'] = clean_list_section(extracted_sections_raw.get('certifications'))
 
@@ -935,6 +972,7 @@ def generate_stable_ats_report(resume_text, extracted_data):
     4.  **Quantifiable Achievements**: Does the 'Work Experience' section lack numbers, percentages, or metrics (e.g., "managed a team of 5", "increased sales by 15%")?
     5.  **Wordiness**: Is the 'Skills' section written as a long paragraph instead of a list?
     6.  **Professional Summary**: Is a summary or objective missing at the top?
+    7.  **Poor Formatting**: Check for inconsistent or awkward formatting within sections, especially 'Education'. For example, are dates, percentages, or GPAs on separate, misaligned lines? Flag this as a formatting issue.
 
     Instructions:
     - For each criterion, provide ONE clear "passed" or "issue" statement.
