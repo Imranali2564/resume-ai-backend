@@ -1168,6 +1168,89 @@ def generate_docx_from_html():
         import traceback
         traceback.print_exc()
         return jsonify({"success": False, "error": "Failed to generate DOCX file"}), 500
+
+    
+# Use a try-except block for reportlab import for robustness
+try:
+    from reportlab.lib.pagesizes import letter
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import inch
+except ImportError:
+    logging.error("reportlab is not installed. PDF generation from text will fail.")
+    # Assign None to names so the app can still run
+    SimpleDocTemplate, Paragraph, Spacer, getSampleStyleSheet, letter, inch = (None,) * 6
+
+
+@app.route('/api/v1/generate-pdf-from-text', methods=['POST'])
+def generate_pdf_from_text():
+    if not SimpleDocTemplate:
+        return jsonify({"success": False, "error": "Server is missing required libraries for PDF generation."}), 500
+        
+    try:
+        data = json.loads(request.form.get('payload'))
+        text_content = data.get("text_content")
+        if not text_content:
+            return jsonify({"success": False, "error": "No text content provided"}), 400
+
+        file_stream = io.BytesIO()
+        doc = SimpleDocTemplate(file_stream, pagesize=letter, rightMargin=inch, leftMargin=inch, topMargin=inch, bottomMargin=inch)
+        
+        styles = getSampleStyleSheet()
+        story = []
+        
+        # Split text into paragraphs and add them to the story
+        paragraphs = text_content.split('\n')
+        for para_text in paragraphs:
+            if para_text.strip():
+                p = Paragraph(para_text.replace('\n', '<br/>'), styles['Normal'])
+                story.append(p)
+                story.append(Spacer(1, 0.1 * inch)) # Add a little space between paragraphs
+
+        doc.build(story)
+        file_stream.seek(0)
+
+        return send_file(
+            file_stream,
+            as_attachment=True,
+            download_name='improved-resume.pdf',
+            mimetype='application/pdf'
+        )
+    except Exception as e:
+        logger.error(f"Error in /api/v1/generate-pdf-from-text: {str(e)}")
+        return jsonify({"success": False, "error": "Failed to generate PDF file from text"}), 500
+
+
+@app.route('/api/v1/generate-docx-from-text', methods=['POST'])
+def generate_docx_from_text():
+    if not Document:
+        return jsonify({"success": False, "error": "Server is missing required libraries for DOCX generation."}), 500
+        
+    try:
+        data = json.loads(request.form.get('payload'))
+        text_content = data.get("text_content")
+        if not text_content:
+            return jsonify({"success": False, "error": "No text content provided"}), 400
+        
+        doc = Document()
+        # Add paragraphs to the document
+        for para_text in text_content.split('\n'):
+            doc.add_paragraph(para_text)
+            
+        file_stream = io.BytesIO()
+        doc.save(file_stream)
+        file_stream.seek(0)
+        
+        return send_file(
+            file_stream,
+            as_attachment=True,
+            download_name='improved-resume.docx',
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+
+    except Exception as e:
+        logger.error(f"Error in /api/v1/generate-docx-from-text: {str(e)}")
+        return jsonify({"success": False, "error": "Failed to generate DOCX file from text"}), 500    
     
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
