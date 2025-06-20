@@ -954,20 +954,11 @@ def extract_resume_sections_safely(text):
     logger.info("Successfully extracted sections using 'Step-by-Step' strategy.")
     return final_data
 
-def generate_stable_ats_report(resume_text, extracted_data):
-    """
-    NEW STABLE VERSION (v3): Generates a predictable ATS report using only the main AI.
-    This version asks the AI to handle spelling and grammar checks to avoid memory issues.
-    """
+def generate_stable_ats_report(resume_text):
     if not client: 
-        return {
-            "score": 0, 
-            "issues_to_fix": ["❌ OpenAI API key not configured."], 
-            "passed_checks": []
-        }
-    logger.info("Generating STABLE ATS report (v3) using main AI for all checks...")
+        return {"score": 0, "issues_to_fix": ["❌ OpenAI API key not configured."], "passed_checks": []}
     
-    # [बदला हुआ] प्रॉम्प्ट अब AI को स्पेलिंग और ग्रामर की जाँच करने के लिए भी कहता है।
+    logger.info("Generating STABLE ATS report...")
     prompt = f"""
     You are a very strict and consistent ATS reviewer. Your task is to generate a JSON report by analyzing a resume based on a list of criteria.
 
@@ -976,19 +967,17 @@ def generate_stable_ats_report(resume_text, extracted_data):
     2.  **Key Sections**: Are 'Education', 'Work Experience', and 'Skills' sections present?
     3.  **Missing Impactful Sections**: Are 'Projects' or 'Certifications' sections missing? Suggest adding them if so.
     4.  **Quantifiable Achievements**: Does the 'Work Experience' section lack numbers, percentages, or metrics?
-    5.  **Spelling Check**: Scan for spelling mistakes. If any are found, report it with an approximate count (e.g., "Found approximately 2-3 spelling mistakes"). If none, state that it passed.
-    6.  **Grammar Check**: Scan for significant grammatical errors. If any are found, report it with an approximate count. If none, state that it passed.
-    7.  **Professional Summary**: Is a summary or objective missing at the top?
-    8.  **Poor Formatting**: Is there inconsistent formatting within sections (e.g., dates on separate lines in 'Education')?
+    5.  **Spelling & Grammar Check**: Scan for significant spelling or grammar mistakes. If any are found, report it as one issue. If none, state that it passed.
+    6.  **Professional Summary**: Is a summary or objective missing at the top?
 
     INSTRUCTIONS:
     - Create a JSON object with two keys: "passed_checks" (a list of strings) and "issues_to_fix" (a list of strings).
-    - For EACH of the 8 criteria above, create EXACTLY ONE "passed" or "issue" statement.
+    - For EACH of the criteria above, create EXACTLY ONE "passed" or "issue" statement.
     - Every item in the lists MUST start with an emoji (✅ for passed, ❌ for issue).
 
     Resume Text to Analyze:
     ---
-    {resume_text[:7000]}
+    {resume_text[:8000]}
     ---
     """
     try:
@@ -1007,37 +996,39 @@ def generate_stable_ats_report(resume_text, extracted_data):
         
         return {"passed_checks": passed, "issues_to_fix": issues, "score": score}
     except Exception as e:
-        logger.error(f"[ERROR in generate_stable_ats_report_v3]: {e}")
+        logger.error(f"[ERROR in generate_stable_ats_report]: {e}")
         return {"score": 0, "passed_checks": [], "issues_to_fix": ["❌ AI analysis failed."]}
 
 def generate_targeted_fix(suggestion, full_text):
-    """
-    NEW STABLE VERSION: This function ONLY generates the fixed text for a single issue.
-    It does NOT re-analyze the whole resume.
-    """
     if not client: return {"error": "OpenAI API key not set."}
     logger.info(f"Generating TARGETED fix for suggestion: {suggestion}")
     
     prompt = f"""
-    You are an AI resume expert. Your task is to fix ONE specific issue in a resume based on the given suggestion.
+    You are an AI resume editor. Your task is to fix ONE specific issue in a resume.
 
-    SUGGESTION:
+    ISSUE TO FIX:
     {suggestion}
 
     FULL RESUME TEXT (for context):
+    ---
     {full_text[:8000]}
+    ---
 
     INSTRUCTIONS:
-    - Focus ONLY on the suggestion. Do not fix anything else.
-    - Based on the suggestion, identify which section of the resume needs to be changed (e.g., "skills", "work_experience", "projects").
-    - Generate the improved content for that section.
-    - If the suggestion is to ADD a missing section, create content for it.
+    1. Identify the specific sentence, phrase, or section in the "FULL RESUME TEXT" that needs to be changed to resolve the "ISSUE TO FIX".
+    2. Generate the new, improved text for that part.
+    3. Respond with a single JSON object containing two keys:
+       - "find_text": The original text snippet to be replaced.
+       - "replace_with": The new, improved text snippet.
+
+    EXAMPLE:
+    If the issue is "Missing quantifiable achievements" and the original text is "- Managed a team and handled project delivery.", your response should be:
+    {{
+      "find_text": "Managed a team and handled project delivery.",
+      "replace_with": "Managed a team of 5 engineers and successfully delivered 3 projects ahead of schedule, improving team efficiency by 15%."
+    }}
     
-    Respond with a single JSON object with two keys:
-    1. "section": The name of the section you fixed (e.g., "skills", "projects").
-    2. "fixedContent": The new, improved text or list for that section.
-    
-    Example Response: {{"section": "skills", "fixedContent": ["Python", "JavaScript", "Project Management"]}}
+    If the issue is to ADD a missing section (like a Summary), "find_text" should be the person's name or title (the line where the new section should be inserted after), and "replace_with" should be the original text PLUS the new section.
     """
     try:
         response = client.chat.completions.create(
@@ -1047,9 +1038,8 @@ def generate_targeted_fix(suggestion, full_text):
         )
         fix_result = json.loads(response.choices[0].message.content)
         
-        # Ensure the response has the correct format
-        if "section" not in fix_result or "fixedContent" not in fix_result:
-            raise ValueError("AI response did not contain 'section' or 'fixedContent'.")
+        if "find_text" not in fix_result or "replace_with" not in fix_result:
+            raise ValueError("AI response did not contain 'find_text' or 'replace_with'.")
             
         return fix_result
     except Exception as e:
@@ -1057,22 +1047,8 @@ def generate_targeted_fix(suggestion, full_text):
         return {"error": "AI failed to generate the targeted fix."}
 
 def calculate_new_score(current_score, issue_text):
-    """
-    NEW: A predictable, rule-based function to update the score.
-    """
     logger.info(f"Calculating new score. Current: {current_score}")
-    increment = 0
-    issue_text = issue_text.lower()
-    
-    if "missing" in issue_text:
-        increment = 10  # Critical fix
-    elif "achievements" in issue_text or "quantifiable" in issue_text:
-        increment = 8   # Major fix
-    elif "wordiness" in issue_text or "formatting" in issue_text:
-        increment = 6   # Medium fix
-    else:
-        increment = 5   # Minor fix
-        
+    increment = 10 if "missing" in issue_text.lower() else 7
     new_score = min(100, current_score + increment)
     logger.info(f"Score incremented by {increment}. New score: {new_score}")
     return new_score

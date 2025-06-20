@@ -304,7 +304,7 @@ def analyze_resume():
         logger.error(f"Error in /analyze: {str(e)}")
         return jsonify({"error": f"Failed to analyze resume: {str(e)}"}), 500
 
-@app.route('/fix-suggestion', methods=['POST'])
+@app.route('/api/v1/fix-suggestion', methods=['POST'])
 def fix_suggestion():
     try:
         if 'payload' not in request.form:
@@ -312,29 +312,28 @@ def fix_suggestion():
             
         data = json.loads(request.form.get('payload'))
         suggestion = data.get("suggestion")
-        full_text = data.get("full_text")
-        current_score = data.get("current_score") # <<< हमें JS से वर्तमान स्कोर चाहिए
+        full_text = data.get("full_text") # This is the HTML content from the editable div
+        current_score = data.get("current_score")
 
         if not all([suggestion, full_text, isinstance(current_score, int)]):
             return jsonify({"success": False, "error": "Missing suggestion, text, or current_score."}), 400
 
         # STEP 1: Get the targeted fix from the AI.
-        fix_result = generate_targeted_fix(suggestion, full_text) # <<< बदला हुआ
+        fix_result = generate_targeted_fix(suggestion, full_text)
         
         if 'error' in fix_result:
             return jsonify({"success": False, "error": fix_result["error"]}), 500
 
         # STEP 2: Calculate the new score predictably.
-        new_score = calculate_new_score(current_score, suggestion) # <<< बदला हुआ
+        new_score = calculate_new_score(current_score, suggestion)
         
         # Combine results into the final response
         final_response = {
-            "section": fix_result["section"],
-            "fixedContent": fix_result["fixedContent"],
+            "find_text": fix_result["find_text"],
+            "replace_with": fix_result["replace_with"],
             "newScore": new_score
         }
 
-        # NOTE: We no longer return 'updatedAnalysis'. The frontend will handle the UI state.
         return jsonify({"success": True, "data": final_response})
 
     except Exception as e:
@@ -1106,35 +1105,24 @@ def analyze_resume_for_frontend():
         if file.filename == '':
             return jsonify({"success": False, "error": "No file selected."}), 400
 
-        text = extract_text_from_resume(file) # This helper function is still valid
+        text = extract_text_from_resume(file)
         if not text:
             return jsonify({"success": False, "error": "Could not extract text from the resume."}), 500
 
-        # STEP 1: Extract sections SAFELY without any changes.
-        extracted_sections = extract_resume_sections_safely(text) # <<< बदला हुआ
-        if not extracted_sections or extracted_sections.get("error"):
-             return jsonify({"success": False, "error": extracted_sections.get("error", "Failed to parse resume sections.")}), 500
-
-        # STEP 2: Generate a STABLE ATS report.
-        ats_result = generate_stable_ats_report(text, extracted_sections) # <<< बदला हुआ
+        # Generate a STABLE ATS report.
+        ats_result = generate_stable_ats_report(text)
 
         # Format the data for the frontend
-        passed_checks = ats_result.get("passed_checks", [])
         issues_to_fix = []
-        raw_issues = ats_result.get("issues_to_fix", [])
-        for i, issue_text in enumerate(raw_issues):
-            issues_to_fix.append({
-                "issue_id": f"err_{i+1}",
-                "issue_text": issue_text
-            })
+        for i, issue_text in enumerate(ats_result.get("issues_to_fix", [])):
+            issues_to_fix.append({"issue_id": f"err_{i+1}", "issue_text": issue_text})
 
         formatted_data = {
             "score": ats_result.get('score', 0),
             "analysis": {
-                "passed_checks": passed_checks,
+                "passed_checks": ats_result.get("passed_checks", []),
                 "issues_to_fix": issues_to_fix
             },
-            "extracted_data": extracted_sections 
         }
         
         return jsonify({"success": True, "data": formatted_data})
@@ -1143,8 +1131,6 @@ def analyze_resume_for_frontend():
         import traceback
         logger.error(f"Error in /api/v1/analyze-resume: {traceback.format_exc()}")
         return jsonify({"success": False, "error": "An unexpected server error occurred."}), 500
-from docx import Document
-import html2text
 
 @app.route('/api/v1/generate-docx', methods=['POST'])
 def generate_docx_from_html():
