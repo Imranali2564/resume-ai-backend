@@ -810,6 +810,7 @@ def refine_list_section(section_name, section_text):
         # Fallback to simple split if AI fails
         return [line.strip() for line in section_text.split('\n') if line.strip()]
 
+# 'resume_ai_analyzer.py' में इस फंक्शन को बदलें
 def extract_resume_sections_safely(text):
     """
     FINAL RELIABLE VERSION: This function uses a more robust "step-by-step" strategy.
@@ -824,32 +825,25 @@ def extract_resume_sections_safely(text):
         'summary': ['summary', 'profile', 'objective'],
         'skills': ['skills', 'technical skills', 'core competencies'],
         'work_experience': ['experience', 'work experience', 'professional experience', 'employment history'],
-        'education': ['education', 'academic background'],
+        'education': ['education', 'academic background', 'educational background'],
         'projects': ['projects', 'personal projects'],
-        'certifications': ['certifications', 'licenses & certifications'],
-        'languages': ['languages']
-        # Contact, Name, and Title are handled separately
+        'certifications': ['certifications', 'licenses & certifications', 'certification/short courses'],
+        'languages': ['languages'],
+        'contact': ['contact'],
+        'awards': ['awards', 'honors', 'awards & honors', 'additional information']
     }
 
-    # Create a regex pattern to split the text by any of the known headings
     all_headings = [item for sublist in section_map.values() for item in sublist]
-    # Regex to split by headings, case-insensitive, must be at the start of a line
     pattern = re.compile(r'^\s*(' + '|'.join(all_headings) + r')\s*[:\n]', re.IGNORECASE | re.MULTILINE)
     
-    # Split the resume text into chunks based on the headings
     text_chunks = pattern.split(text)
-    
-    # The first chunk is everything before the first heading (often contains name, title, contact)
     header_chunk = text_chunks[0].strip()
     
-    # Process the rest of the chunks
     extracted_sections_raw = {}
-    # Iterate through the chunks, taking them two at a time (heading, content)
     for i in range(1, len(text_chunks), 2):
         heading = text_chunks[i].lower().strip()
         content = text_chunks[i+1].strip()
         
-        # Find which standard section this heading belongs to
         for standard_name, variations in section_map.items():
             if heading in variations:
                 extracted_sections_raw[standard_name] = content
@@ -857,21 +851,83 @@ def extract_resume_sections_safely(text):
     
     final_data = {}
 
-    # --- Use AI ONLY where absolutely necessary ---
-
-    # For simple text sections, just use the raw extracted text to ensure it's original
+    # For simple text sections, just use the raw extracted text
     final_data['summary'] = extracted_sections_raw.get('summary', '')
+    final_data['contact'] = extracted_sections_raw.get('contact', '')
 
-    # For list-based sections, clean them up slightly
     def clean_list_section(raw_text):
         if not raw_text: return []
-        # Split by newlines and remove empty lines or bullet points
         return [re.sub(r'^[•*-]\s*', '', line).strip() for line in raw_text.split('\n') if line.strip()]
 
-    final_data['skills'] = refine_list_section('Skills', extracted_sections_raw.get('skills', ''))
-    final_data['languages'] = refine_list_section('Languages', extracted_sections_raw.get('languages', ''))
-    final_data['projects'] = clean_list_section(extracted_sections_raw.get('projects'))
+    final_data['skills'] = clean_list_section(extracted_sections_raw.get('skills'))
+    final_data['languages'] = clean_list_section(extracted_sections_raw.get('languages'))
     final_data['certifications'] = clean_list_section(extracted_sections_raw.get('certifications'))
+    final_data['awards'] = clean_list_section(extracted_sections_raw.get('awards'))
+
+    # Targeted AI call for complex sections (Experience, Education, Projects)
+    def parse_complex_section(section_name, section_text, json_structure):
+        if not section_text or not client: return []
+        logger.info(f"Making targeted AI call to parse '{section_name}' section...")
+        prompt = f"""
+        You are a data parsing machine. Your only job is to convert the following text from a resume's "{section_name}" section into a structured JSON list.
+        Extract the text VERBATIM without changing any words. Desired JSON structure: {json_structure}. Parse this text:
+        ---
+        {section_text}
+        ---
+        """
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+            parsed_json = json.loads(response.choices[0].message.content)
+            for key, value in parsed_json.items():
+                if isinstance(value, list): return value
+            return []
+        except Exception as e:
+            logger.error(f"Targeted AI parsing failed for {section_name}: {e}")
+            return [{"error": f"AI failed to parse this section. Original text: {section_text}"}]
+
+    final_data['work_experience'] = parse_complex_section('work_experience', extracted_sections_raw.get('work_experience'), '[{"title": "...", "company": "...", "duration": "...", "details": ["..."]}]')
+    final_data['education'] = parse_complex_section('education', extracted_sections_raw.get('education'), '[{"degree": "...", "school": "...", "duration": "..."}]')
+    final_data['projects'] = parse_complex_section('projects', extracted_sections_raw.get('projects'), '[{"title": "...", "description": "..."}]')
+
+    # AI call just for the header info (Name, Title, and missing Contact)
+    def parse_header(header_text, existing_contact):
+        if not header_text or not client: return {}
+        logger.info("Making targeted AI call to parse header...")
+        contact_instruction = "Also extract all contact information (email, phone, address, links) into a single string."
+        if existing_contact:
+            contact_instruction = f"The contact section was already found, so you don't need to extract it from here."
+
+        prompt = f"""
+        From the text below, extract the person's full name and their most recent job title.
+        {contact_instruction}
+        Desired JSON: {{"name": "...", "job_title": "...", "contact": "..."}}
+        If a value isn't found, make it null.
+        Parse this text: --- {header_text} ---
+        """
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+            parsed_header = json.loads(response.choices[0].message.content)
+            # Do not overwrite contact info if it was already found in its own section
+            if existing_contact and 'contact' in parsed_header:
+                del parsed_header['contact']
+            return parsed_header
+        except Exception as e:
+            logger.error(f"Header AI parsing failed: {e}")
+            return {"name": "Error", "job_title": "Error"}
+
+    header_data = parse_header(header_chunk, final_data.get('contact'))
+    final_data.update(header_data)
+
+    logger.info("Successfully extracted sections using 'Step-by-Step' strategy.")
+    return final_data
 
     # --- Targeted AI call for complex sections (Experience & Education) ---
     def parse_complex_section(section_name, section_text):
