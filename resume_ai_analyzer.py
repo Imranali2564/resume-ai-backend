@@ -812,32 +812,32 @@ def refine_list_section(section_name, section_text):
 
 # 'resume_ai_analyzer.py' में इस फंक्शन को बदलें
 def extract_resume_sections_safely(text):
-    logger.info("Extracting resume sections with FINAL v4 AI prompt...")
+    logger.info("Extracting resume sections with FINAL v8 (Comprehensive Schema) AI prompt...")
     if not client:
         return {"error": "OpenAI client not initialized."}
 
-    # This is the most comprehensive prompt yet.
+    # ### PROMPT IMPROVEMENT ###
+    # The JSON structure is now more detailed to capture everything from the PDF.
+    # Added "details" to education and "additional_information" as a catch-all.
     prompt = f"""
-    You are a world-class resume parsing system. Your task is to meticulously parse the following resume text and convert it into a structured JSON object. The resume can be in any format, including multi-column.
+    You are a world-class resume parsing system. Your task is to meticulously parse the following resume text and convert it into a structured JSON object. The resume can be in any format.
 
-    You MUST look for all of the following sections. If a section is not found, its value should be null or an empty list [].
-    Pay special attention to "Certifications" and "Additional Information" which might contain awards.
+    You MUST look for all of the following sections. If a section is not found, its value should be null.
 
-    JSON STRUCTURE:
+    **CRITICAL JSON STRUCTURE TO FOLLOW:**
     - "name": string
-    - "job_title": string
-    - "contact": string (combine email, phone, address, website links)
-    - "summary": string (The professional summary or objective)
-    - "work_experience": list of objects [{{"title": string, "company": string, "duration": string, "details": list of strings}}]
-    - "education": list of objects [{{"degree": string, "school": string, "duration": string}}]
-    - "skills": list of strings
-    - "certifications": list of strings
-    - "awards": list of strings (Look for this within "Additional Information" or its own section)
-    - "volunteer_experience": list of strings (Look for this within "Additional Information" or its own section)
-    - "languages": list of strings
-    - "projects": list of objects [{{"title": string, "description": string}}]
+    - "job_title": string (The job title right under the name, e.g., "Accounting Executive")
+    - "contact": string (Combine email, phone, address, website links into ONE text block)
+    - "summary": string (The professional summary, profile, or objective text block)
+    - "work_experience": list of objects [{{"title": "string", "company": "string", "duration": "string", "details": ["list of strings for bullet points"]}}]
+    - "education": list of objects [{{"degree": "string", "school": "string", "duration": "string", "details": ["list of strings for extra details like specialization or coursework"]}}]
+    - "skills": "string" (Extract the entire skills section as a single block of text, preserving its original formatting)
+    - "certifications": ["list of strings"]
+    - "languages": ["list of strings"]
+    - "additional_information": "string" (A catch-all for any other sections like 'Awards', 'Volunteer Work', etc.)
+    - "projects": list of objects [{{"title": "string", "description": "string"}}]
 
-    The text to parse is provided below. Do not mix sections. For example, the summary should not be in the contact details.
+    The text to parse is below. Do not mix sections. For example, the summary text should not go into the contact field.
     ---
     {text[:8000]}
     ---
@@ -854,7 +854,7 @@ def extract_resume_sections_safely(text):
         # Ensure all primary keys exist to prevent frontend errors
         all_possible_keys = [
             "name", "job_title", "contact", "summary", "work_experience", "education",
-            "skills", "certifications", "languages", "projects", "awards", "volunteer_experience"
+            "skills", "certifications", "languages", "projects", "additional_information"
         ]
         for key in all_possible_keys:
             if key not in extracted_data:
@@ -862,7 +862,7 @@ def extract_resume_sections_safely(text):
         
         return extracted_data
     except Exception as e:
-        logger.error(f"Failed to extract resume sections with final prompt: {e}")
+        logger.error(f"Failed to extract resume sections with comprehensive schema: {e}")
         return {"error": f"AI failed to parse the resume structure."}
 
     # --- Targeted AI call for complex sections (Experience & Education) ---
@@ -996,14 +996,13 @@ def generate_stable_ats_report(text, extracted_data):
         logger.error(f"[ERROR in generate_stable_ats_report]: {e}")
         return {"score": 0, "passed_checks": [], "issues_to_fix": ["❌ AI analysis failed."]}
 
+# 'resume_ai_analyzer.py' में इस फंक्शन को भी बदलें
 def generate_targeted_fix(suggestion, full_text):
-    """
-    NEW STABLE VERSION: This function ONLY generates the fixed text for a single issue.
-    It does NOT re-analyze the whole resume.
-    """
     if not client: return {"error": "OpenAI API key not set."}
     logger.info(f"Generating TARGETED fix for suggestion: {suggestion}")
     
+    # ### PROMPT IMPROVEMENT ###
+    # Added explicit instruction to match the original data structure for the section being fixed.
     prompt = f"""
     You are an AI resume expert. Your task is to fix ONE specific issue in a resume based on the given suggestion.
 
@@ -1017,13 +1016,16 @@ def generate_targeted_fix(suggestion, full_text):
     - Focus ONLY on the suggestion. Do not fix anything else.
     - Based on the suggestion, identify which section of the resume needs to be changed (e.g., "skills", "work_experience", "projects").
     - Generate the improved content for that section.
-    - If the suggestion is to ADD a missing section, create content for it.
+    - **CRITICAL:** The format of your "fixedContent" MUST match the likely original format of that section. For example:
+        - If fixing 'skills', 'languages', or 'certifications', 'fixedContent' should be a list of strings.
+        - If fixing 'work_experience', 'fixedContent' should be a list of objects.
+        - If fixing 'summary', 'fixedContent' should be a single string.
     
     Respond with a single JSON object with two keys:
     1. "section": The name of the section you fixed (e.g., "skills", "projects").
-    2. "fixedContent": The new, improved text or list for that section.
+    2. "fixedContent": The new, improved text or list for that section, in the correct format.
     
-    Example Response: {{"section": "skills", "fixedContent": ["Python", "JavaScript", "Project Management"]}}
+    Example Response for a skills fix: {{"section": "skills", "fixedContent": ["Python", "JavaScript", "Project Management", "QuickBooks", "SAP"]}}
     """
     try:
         response = client.chat.completions.create(
@@ -1033,7 +1035,6 @@ def generate_targeted_fix(suggestion, full_text):
         )
         fix_result = json.loads(response.choices[0].message.content)
         
-        # Ensure the response has the correct format
         if "section" not in fix_result or "fixedContent" not in fix_result:
             raise ValueError("AI response did not contain 'section' or 'fixedContent'.")
             
