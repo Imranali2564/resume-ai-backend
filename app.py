@@ -13,6 +13,7 @@ from resume_ai_analyzer import (
     generate_stable_ats_report,
     generate_targeted_fix,
     calculate_new_score,
+    get_field_suggestions,
 
     # Existing Utility and Other Functions
     analyze_resume_with_openai,
