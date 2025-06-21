@@ -811,34 +811,59 @@ def refine_list_section(section_name, section_text):
         return [line.strip() for line in section_text.split('\n') if line.strip()]
 
 # 'resume_ai_analyzer.py' में इस फंक्शन को बदलें
-# 'resume_ai_analyzer.py' में इस फंक्शन को बदलें
+# 'resume_ai_analyzer.py' में सिर्फ इस फंक्शन को बदलें
 def extract_resume_sections_safely(text):
-    logger.info("Extracting resume sections with IMPROVED v5 VERBATIM prompt...")
+    logger.info("Extracting sections with FINAL v6 STRUCTURED + VERBATIM prompt...")
     if not client:
         return {"error": "OpenAI client not initialized."}
 
-    # ### PROMPT IMPROVEMENT ###
-    # This new prompt instructs the AI to extract text VERBATIM without changing it.
+    # ### FINAL PROMPT ###
+    # This prompt asks for a detailed structure BUT strictly instructs the AI to use the original text.
     prompt = f"""
-    You are a world-class resume parsing system. Your only task is to identify standard resume sections and extract the text within them exactly as it appears.
+    You are a world-class resume parsing AI. Your task is to meticulously parse the following resume text and convert it into a structured JSON object.
 
     **CRITICAL INSTRUCTIONS:**
-    1.  **Extract VERBATIM:** You MUST extract the original, unchanged text for each section.
-    2.  **DO NOT Summarize or Rephrase:** Do not shorten, rewrite, or change any wording.
-    3.  **Preserve Original Formatting:** If a section's content is a paragraph, extract it as a paragraph. If it has bullet points, keep them. Do not add or remove bullet points.
-    4.  **Structure:** Return a single JSON object where each key is a standard section name (in snake_case, e.g., "work_experience") and the value is the single string of original text from that section.
+    1.  **Extract VERBATIM:** All text content (like job titles, company names, and the text within bullet points) MUST be extracted exactly as it appears in the original resume. **DO NOT REPHRASE, REWRITE, OR SUMMARIZE THE TEXT CONTENT.**
+    2.  **Follow the JSON Structure:** Adhere strictly to the JSON structure defined below. The frontend depends on this exact structure.
+    3.  **Handle Missing Sections:** If a section is not found in the resume, its value in the JSON should be null or an empty list [].
 
-    Standard sections to look for are:
-    "name", "job_title", "contact", "summary", "work_experience", "education", "skills", "certifications", "languages", "projects".
+    **JSON STRUCTURE TO USE:**
+    {{
+        "name": "string (verbatim)",
+        "job_title": "string (verbatim)",
+        "contact": "string (verbatim, combine all contact info into one text block)",
+        "summary": "string (verbatim)",
+        "work_experience": [
+            {{
+                "title": "string (verbatim)",
+                "company": "string (verbatim)",
+                "duration": "string (verbatim)",
+                "details": ["string (verbatim)", "string (verbatim)"]
+            }}
+        ],
+        "education": [
+            {{
+                "degree": "string (verbatim)",
+                "school": "string (verbatim)",
+                "duration": "string (verbatim)"
+            }}
+        ],
+        "skills": ["string (verbatim)"],
+        "certifications": ["string (verbatim)"],
+        "languages": ["string (verbatim)"],
+        "projects": [
+            {{
+                "title": "string (verbatim)",
+                "description": "string (verbatim)"
+            }}
+        ]
+    }}
 
-    If a section is not found, its value in the JSON should be null.
-
-    Resume text to parse:
+    The resume text to parse is provided below.
     ---
     {text[:8000]}
     ---
-    
-    Return ONLY the raw JSON object.
+    Return ONLY the raw JSON object. Do not add any extra text or explanations.
     """
     try:
         response = client.chat.completions.create(
@@ -848,19 +873,18 @@ def extract_resume_sections_safely(text):
         )
         extracted_data = json.loads(response.choices[0].message.content)
         
-        # Ensure all primary keys exist to prevent frontend errors
         all_possible_keys = [
             "name", "job_title", "contact", "summary", "work_experience", "education",
             "skills", "certifications", "languages", "projects"
         ]
         for key in all_possible_keys:
             if key not in extracted_data:
-                extracted_data[key] = None # Use null for missing sections
+                extracted_data[key] = None
         
-        logger.info(f"Successfully extracted verbatim sections: {list(extracted_data.keys())}")
+        logger.info(f"Successfully extracted structured verbatim sections.")
         return extracted_data
     except Exception as e:
-        logger.error(f"Failed to extract resume sections with verbatim prompt: {e}")
+        logger.error(f"Failed to extract sections with structured verbatim prompt: {e}")
         return {"error": f"AI failed to parse the resume structure."}
 
     # --- Targeted AI call for complex sections (Experience & Education) ---
