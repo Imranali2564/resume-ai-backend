@@ -8,20 +8,15 @@ import json
 import re
 
 from resume_ai_analyzer import (
-    # New and Corrected Functions for the Stable Strategy
-    extract_resume_sections_safely,
-    generate_stable_ats_report,
-    generate_targeted_fix,
-    calculate_new_score,
-    generate_field_aware_ats_report,
-    extract_resume_data_dynamically,
+    # --- New Field-Aware Pipeline Functions ---
     detect_resume_field,
-
-    # Existing Utility and Other Functions
-    analyze_resume_with_openai,
-    extract_text_from_pdf,
-    extract_text_from_docx,
+    extract_resume_data_dynamically,
+    generate_field_aware_ats_report,
+    generate_targeted_fix,
+    
+    # --- Your Existing Utility Functions ---
     extract_text_from_resume,
+    analyze_resume_with_openai,
     check_ats_compatibility,
     check_ats_compatibility_fast,
     check_ats_compatibility_deep,
@@ -30,9 +25,11 @@ from resume_ai_analyzer import (
     analyze_job_description,
     fix_resume_formatting,
     generate_resume_summary,
-    generate_michelle_template_html
+    generate_michelle_template_html,
+    calculate_new_score, # यह फंक्शन भी ज़रूरी है
+    extract_text_from_pdf,
+    extract_text_from_docx
 )
-
 try:
     from docx import Document
     from docx.shared import Pt, Inches, RGBColor
