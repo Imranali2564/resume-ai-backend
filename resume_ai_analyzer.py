@@ -812,32 +812,30 @@ def refine_list_section(section_name, section_text):
 
 # 'resume_ai_analyzer.py' में इस फंक्शन को बदलें
 def extract_resume_sections_safely(text):
-    logger.info("Extracting resume sections with FINAL v8 (Comprehensive Schema) AI prompt...")
+    logger.info("Extracting resume sections with FINAL v9 (References added) AI prompt...")
     if not client:
         return {"error": "OpenAI client not initialized."}
 
     # ### PROMPT IMPROVEMENT ###
-    # The JSON structure is now more detailed to capture everything from the PDF.
-    # Added "details" to education and "additional_information" as a catch-all.
+    # Added "references" to the JSON structure.
     prompt = f"""
-    You are a world-class resume parsing system. Your task is to meticulously parse the following resume text and convert it into a structured JSON object. The resume can be in any format.
-
-    You MUST look for all of the following sections. If a section is not found, its value should be null.
+    You are a world-class resume parsing system. Your task is to meticulously parse the following resume text and convert it into a structured JSON object.
 
     **CRITICAL JSON STRUCTURE TO FOLLOW:**
     - "name": string
-    - "job_title": string (The job title right under the name, e.g., "Accounting Executive")
-    - "contact": string (Combine email, phone, address, website links into ONE text block)
-    - "summary": string (The professional summary, profile, or objective text block)
-    - "work_experience": list of objects [{{"title": "string", "company": "string", "duration": "string", "details": ["list of strings for bullet points"]}}]
-    - "education": list of objects [{{"degree": "string", "school": "string", "duration": "string", "details": ["list of strings for extra details like specialization or coursework"]}}]
-    - "skills": "string" (Extract the entire skills section as a single block of text, preserving its original formatting)
+    - "job_title": string
+    - "contact": string (Combine all contact info into ONE text block)
+    - "summary": string (The professional summary, profile, or objective)
+    - "work_experience": list of objects [{{"title": ..., "company": ..., "duration": ..., "details": [...]}}]
+    - "education": list of objects [{{"degree": ..., "school": ..., "duration": ..., "details": [...]}}]
+    - "skills": "string" (Extract the entire skills section as a single block of text)
     - "certifications": ["list of strings"]
     - "languages": ["list of strings"]
-    - "additional_information": "string" (A catch-all for any other sections like 'Awards', 'Volunteer Work', etc.)
-    - "projects": list of objects [{{"title": "string", "description": "string"}}]
+    - "additional_information": "string" (Catch-all for 'Awards', 'Volunteer Work', etc.)
+    - "references": "string" (Extract text under a 'References' heading)
+    - "projects": list of objects [{{"title": ..., "description": ...}}]
 
-    The text to parse is below. Do not mix sections. For example, the summary text should not go into the contact field.
+    If a section is not found, its value should be null.
     ---
     {text[:8000]}
     ---
@@ -851,10 +849,9 @@ def extract_resume_sections_safely(text):
         )
         extracted_data = json.loads(response.choices[0].message.content)
         
-        # Ensure all primary keys exist to prevent frontend errors
         all_possible_keys = [
             "name", "job_title", "contact", "summary", "work_experience", "education",
-            "skills", "certifications", "languages", "projects", "additional_information"
+            "skills", "certifications", "languages", "projects", "additional_information", "references"
         ]
         for key in all_possible_keys:
             if key not in extracted_data:
@@ -862,7 +859,7 @@ def extract_resume_sections_safely(text):
         
         return extracted_data
     except Exception as e:
-        logger.error(f"Failed to extract resume sections with comprehensive schema: {e}")
+        logger.error(f"Failed to extract resume sections with final schema: {e}")
         return {"error": f"AI failed to parse the resume structure."}
 
     # --- Targeted AI call for complex sections (Experience & Education) ---
@@ -946,50 +943,44 @@ def extract_resume_sections_safely(text):
     logger.info("Successfully extracted sections using 'Step-by-Step' strategy.")
     return final_data
 
+# 'resume_ai_analyzer.py' में इस फंक्शन को भी बदलें
 def generate_stable_ats_report(text, extracted_data):
-    logger.info("Generating FINAL v4 ATS report with nuanced suggestions...")
+    logger.info("Generating FINAL v9 ATS report with References check...")
     if not client: 
         return {"error": "OpenAI client not initialized."}
     
     found_sections_summary = "For your reference, the following sections were successfully extracted: " + ", ".join([key for key, value in extracted_data.items() if value])
     
+    # ### PROMPT IMPROVEMENT ###
+    # Added a specific check for the 'References' section.
     prompt = f"""
-    You are a world-class, strict but fair ATS reviewer. Analyze the resume text provided. 
+    You are a world-class ATS reviewer. Analyze the resume based on the criteria below.
     {found_sections_summary}.
-    Use this information to avoid making mistakes, like saying a section is missing when it was actually found.
 
-    CRITERIA TO CHECK:
+    **CRITERIA TO CHECK:**
     1.  **Contact Info**: Are email AND phone number present?
-    2.  **Key Sections**: Are 'work_experience', 'education', AND 'skills' all present and filled?
-    3.  **Quantifiable Achievements**: Does the 'work_experience' section use strong metrics (e.g., %, $, improved by X)?
-    4.  **Clarity & Formatting**: Is the resume easy to read with consistent formatting?
-    5.  **Professional Summary**: Is the 'summary' section present and impactful?
+    2.  **Key Sections**: Are 'work_experience', 'education', AND 'skills' present and filled?
+    3.  **Quantifiable Achievements**: Does 'work_experience' use metrics (e.g., %, $)?
+    4.  **Use of Bullet Points**: Is 'work_experience' using bullet points instead of paragraphs?
+    5.  **Conciseness**: Are bullet points in 'work_experience' concise (not overly long)?
+    6.  **Skills Section Formatting**: Is the 'skills' section a list, not a long paragraph?
+    7.  **Professional Summary**: Is the 'summary' section present and impactful?
+    8.  **References**: Is a 'references' section present? (It's okay if not, but suggest preparing them separately as good practice).
     
-    INSTRUCTIONS:
+    **INSTRUCTIONS:**
     - Create a JSON object with "passed_checks" and "issues_to_fix".
-    - For the 5 main criteria, create ONE "passed" or "issue" statement for each.
-    - **Crucially, even if the resume is excellent, find AT LEAST ONE "issue_to_fix"**. This issue can be a minor, optional suggestion for improvement to make the feedback more valuable. For example, suggest adding a 'Projects' section, or rephrasing a bullet point for more impact.
-    - Never give a perfect report with zero issues.
+    - For each criterion, create ONE "passed" or "issue" statement.
     - Start every item with an emoji (✅ for passed, ❌ for issue).
-
-    Resume Text to Analyze:
-    ---
-    {text[:7000]}
-    ---
     """
     try:
         response = client.chat.completions.create(
             model="gpt-4o",
-            messages=[{"role": "system", "content": "You are a helpful and nuanced ATS reviewer responding in JSON."}, {"role": "user", "content": prompt}],
+            messages=[{"role": "system", "content": "You are a helpful ATS reviewer responding in JSON."}, {"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
         report_data = json.loads(response.choices[0].message.content)
-        
-        # Make sure there's at least one issue, as requested in the prompt
-        if not report_data.get("issues_to_fix"):
-            report_data["issues_to_fix"] = ["❌ Consider adding a 'Projects' section to showcase practical application of your skills."]
             
-        score = max(30, 100 - (len(report_data.get("issues_to_fix", [])) * 8)) # Adjusted scoring
+        score = max(30, 100 - (len(report_data.get("issues_to_fix", [])) * 7))
         
         return {"passed_checks": report_data.get("passed_checks", []), "issues_to_fix": report_data.get("issues_to_fix", []), "score": score}
     except Exception as e:
