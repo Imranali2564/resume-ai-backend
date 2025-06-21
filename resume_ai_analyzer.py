@@ -1063,4 +1063,89 @@ def calculate_new_score(current_score, issue_text):
     logger.info(f"Score incremented by {increment}. New score: {new_score}")
     return new_score
 
+# resume_ai_analyzer.py
 
+# ... (बाकी सभी फंक्शन वैसे ही रहेंगे)
+
+def get_field_suggestions(extracted_data):
+    """
+    Analyzes extracted data to identify the professional field and suggest missing relevant sections.
+    """
+    if not client:
+        return {"field": "Unknown", "suggestions": []}
+
+    # A dictionary mapping fields to their key sections based on your DOCX file
+    field_specific_sections = {
+        "Technology / IT": {
+            "required": ["technical_stack", "programming_languages", "github_projects"],
+            "optional": ["devops_tools", "system_design_experience", "cloud_certifications"]
+        },
+        "Design / UI-UX": {
+            "required": ["portfolio_link", "design_tools"],
+            "optional": ["design_principles", "user_research_projects"]
+        },
+        "Legal / Law": {
+            "required": ["bar_membership", "legal_specializations"],
+            "optional": ["case_portfolio", "legal_publications"]
+        },
+        "Healthcare / Medical": {
+            "required": ["medical_license_number", "certifications"],
+            "optional": ["clinical_rotations", "research_experience", "procedures_handled"]
+        },
+        "Business / Marketing": {
+            "required": ["kpis_achieved", "campaigns_handled", "marketing_tools"],
+            "optional": ["budget_handled", "seo_sem_metrics"]
+        },
+        "Academia / Education": {
+            "required": ["publications", "research_interests", "teaching_experience"],
+            "optional": ["thesis_dissertation_title", "conferences_attended"]
+        },
+        # Add other fields here from your docx
+    }
+
+    # Step 1: Ask AI to identify the field
+    try:
+        # Create a text summary of the resume for context
+        resume_summary_text = f"""
+        Title: {extracted_data.get('job_title', 'N/A')}
+        Summary: {extracted_data.get('summary', 'N/A')}
+        Skills: {', '.join(extracted_data.get('skills', []))}
+        Experience: {' '.join([exp.get('title', '') for exp in extracted_data.get('work_experience', [])])}
+        """
+
+        prompt_field_detection = f"""
+        Based on the following resume summary, identify the single most likely professional field from this list:
+        {list(field_specific_sections.keys())}
+        Respond with a single JSON object with one key, "field". Example: {{"field": "Technology / IT"}}
+        
+        Resume Summary:
+        ---
+        {resume_summary_text}
+        ---
+        """
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt_field_detection}],
+            response_format={"type": "json_object"}
+        )
+        result = json.loads(response.choices[0].message.content)
+        detected_field = result.get("field", "General")
+    except Exception as e:
+        logger.error(f"Could not detect resume field: {e}")
+        detected_field = "General"
+
+    # Step 2: Find missing sections for the detected field
+    suggestions = []
+    if detected_field in field_specific_sections:
+        field_rules = field_specific_sections[detected_field]
+        existing_keys = extracted_data.keys()
+
+        for section in field_rules.get("required", []):
+            if section not in existing_keys or not extracted_data.get(section):
+                suggestions.append({"type": "Required", "section": section.replace('_', ' ').title()})
+
+        for section in field_rules.get("optional", []):
+             if section not in existing_keys or not extracted_data.get(section):
+                suggestions.append({"type": "Optional", "section": section.replace('_', ' ').title()})
+
+    return {"field": detected_field, "suggestions": suggestions}

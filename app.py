@@ -1106,14 +1106,47 @@ def analyze_resume_for_frontend():
         if file.filename == '':
             return jsonify({"success": False, "error": "No file selected."}), 400
 
-        text = extract_text_from_resume(file) # This helper function is still valid
+        text = extract_text_from_resume(file)
         if not text:
             return jsonify({"success": False, "error": "Could not extract text from the resume."}), 500
 
-        # STEP 1: Extract sections SAFELY without any changes.
-        extracted_sections = extract_resume_sections_safely(text) # <<< बदला हुआ
+        # STEP 1: Extract sections SAFELY
+        extracted_sections = extract_resume_sections_safely(text)
         if not extracted_sections or extracted_sections.get("error"):
              return jsonify({"success": False, "error": extracted_sections.get("error", "Failed to parse resume sections.")}), 500
+
+        # STEP 2: Generate a STABLE ATS report
+        ats_result = generate_stable_ats_report(text, extracted_sections)
+        
+        # <<< --- NEW STEP 3: Get field-aware suggestions --- >>>
+        field_info = get_field_suggestions(extracted_sections)
+
+        # Format issues with unique IDs
+        issues_to_fix = []
+        raw_issues = ats_result.get("issues_to_fix", [])
+        for i, issue_text in enumerate(raw_issues):
+            issues_to_fix.append({
+                "issue_id": f"err_{i+1}",
+                "issue_text": issue_text
+            })
+
+        # Final data structure for frontend
+        formatted_data = {
+            "score": ats_result.get('score', 0),
+            "analysis": {
+                "passed_checks": ats_result.get("passed_checks", []),
+                "issues_to_fix": issues_to_fix
+            },
+            "extracted_data": extracted_sections,
+            "field_info": field_info # <<< --- नया डेटा यहाँ जोड़ा गया है
+        }
+        
+        return jsonify({"success": True, "data": formatted_data})
+
+    except Exception as e:
+        import traceback
+        logger.error(f"Error in /api/v1/analyze-resume: {traceback.format_exc()}")
+        return jsonify({"success": False, "error": "An unexpected server error occurred."}), 500
 
         # STEP 2: Generate a STABLE ATS report.
         ats_result = generate_stable_ats_report(text, extracted_sections) # <<< बदला हुआ
