@@ -1146,6 +1146,60 @@ def analyze_resume_for_frontend():
 from docx import Document
 import html2text
 
+@app.route('/api/v1/fix-issue', methods=['POST'])
+def fix_issue_for_frontend():
+    try:
+        # Check if the payload exists in the form data
+        if 'payload' not in request.form:
+            logger.error("Payload missing in /api/v1/fix-issue request.")
+            return jsonify({"success": False, "error": "Missing payload"}), 400
+
+        # Load the JSON data from the payload
+        payload = json.loads(request.form.get('payload'))
+        issue_text = payload.get('issue_text')
+        current_data = payload.get('current_data')
+
+        # Validate that we have the necessary data
+        if not issue_text or not current_data:
+            logger.error("Missing 'issue_text' or 'current_data' in payload.")
+            return jsonify({"success": False, "error": "Missing 'issue_text' or 'current_data' in payload"}), 400
+
+        # Reconstruct a simplified full text from the structured data for better AI context
+        full_text_for_context = "\n\n".join(
+            f"{key.replace('_', ' ').upper()}\n{str(value)}"
+            for key, value in current_data.items() if value
+        )
+
+        # Call the AI function from resume_ai_analyzer.py to get the fix
+        logger.info(f"Calling generate_targeted_fix for issue: {issue_text[:80]}...")
+        fix_result = generate_targeted_fix(issue_text, full_text_for_context)
+
+        # Handle potential errors from the AI function
+        if 'error' in fix_result:
+            logger.error(f"generate_targeted_fix failed: {fix_result['error']}")
+            return jsonify({"success": False, "error": fix_result['error']}), 500
+
+        # Apply the generated fix to the current resume data
+        section_to_fix = fix_result.get('section')
+        fixed_content = fix_result.get('fixedContent')
+
+        if section_to_fix:
+            logger.info(f"Applying AI fix to section: '{section_to_fix}'")
+            current_data[section_to_fix] = fixed_content
+        else:
+            logger.warning("AI did not return a section to fix.")
+            # Even if the section is not specified, we can't apply the fix. Return an error.
+            return jsonify({"success": False, "error": "AI could not determine which section to fix."}), 500
+
+        # Return the entire updated resume data object
+        return jsonify({"success": True, "data": {"updated_resume_data": current_data}})
+
+    except Exception as e:
+        # Log the full error for debugging
+        import traceback
+        logger.error(f"Critical error in /api/v1/fix-issue: {traceback.format_exc()}")
+        return jsonify({"success": False, "error": "An unexpected server error occurred."}), 500
+
 @app.route('/api/v1/generate-docx', methods=['POST'])
 def generate_docx_from_html():
     try:
