@@ -811,165 +811,141 @@ def refine_list_section(section_name, section_text):
         return [line.strip() for line in section_text.split('\n') if line.strip()]
 
 # 'resume_ai_analyzer.py' में इस फंक्शन को पूरी तरह से बदलें
+# 'resume_ai_analyzer.py' में पुराने extract_resume_sections_safely को हटाकर यह नया संस्करण डालें
+
 def extract_resume_sections_safely(text):
-    logger.info("Extracting resume sections with FINAL v10 (Hardened & Bulletproof) prompt...")
-    if not client:
-        return {"error": "OpenAI client not initialized."}
-
-    # ### FINAL HARDENED PROMPT ###
-    # This prompt uses an authoritative tone and extreme constraints to prevent the AI from being "creative".
-    prompt = f"""
-    You are a precise data extraction machine. Your ONLY function is to parse the following resume text into a structured JSON object.
-
-    **ABSOLUTE RULES:**
-    1.  **EXTRACT VERBATIM:** You will extract all text content (job titles, company names, bullet points, etc.) EXACTLY as it appears.
-    2.  **NO CHANGES ALLOWED:** You MUST NOT summarize, rephrase, rewrite, interpret, or change the source text in any way. Any deviation from the original text is a failure.
-    3.  **NEVER INVENT CONTENT:** If a section does not exist in the resume, its value MUST be null. NEVER generate placeholder or example text.
-    4.  **ADHERE TO THE SCHEMA:** You must follow the JSON structure provided below precisely. Do not add or remove keys.
-
-    **PRECISE JSON STRUCTURE TO USE:**
-    {{
-        "name": "string (verbatim, only the person's name)",
-        "job_title": "string (verbatim, the professional title directly under the name)",
-        "contact": "string (verbatim, all contact info combined into one text block)",
-        "summary": "string (verbatim, the entire professional summary, profile, or objective paragraph)",
-        "work_experience": [
-            {{
-                "title": "string (verbatim)",
-                "company": "string (verbatim)",
-                "duration": "string (verbatim)",
-                "details": ["list of strings (verbatim for each bullet point)"]
-            }}
-        ],
-        "education": [
-            {{
-                "degree": "string (verbatim)",
-                "school": "string (verbatim)",
-                "duration": "string (verbatim)",
-                "details": ["list of strings for extra details (verbatim)"]
-            }}
-        ],
-        "skills": "string (verbatim, extract the entire skills section as a single block of text)",
-        "certifications": ["list of strings (verbatim)"],
-        "languages": ["list of strings (verbatim)"],
-        "additional_information": "string (verbatim, a catch-all for 'Awards', 'Volunteer Work', etc.)",
-        "references": "string (verbatim, extract text under a 'References' heading if it exists)",
-        "projects": [
-            {{
-                "title": "string (verbatim)",
-                "description": "string (verbatim)"
-            }}
-        ]
-    }}
-
-    The text to parse is below. Follow all rules exactly.
-    ---
-    {text[:8000]}
-    ---
-    Return ONLY the raw JSON object.
     """
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "system", "content": "You are a data extraction robot that follows instructions perfectly and only outputs JSON."},
-                      {"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
-        )
-        extracted_data = json.loads(response.choices[0].message.content)
-        
-        all_possible_keys = [
-            "name", "job_title", "contact", "summary", "work_experience", "education",
-            "skills", "certifications", "languages", "projects", "additional_information", "references"
-        ]
-        for key in all_possible_keys:
-            if key not in extracted_data:
-                extracted_data[key] = None
-        
-        logger.info("Data extraction complete with hardened prompt.")
-        return extracted_data
-    except Exception as e:
-        logger.error(f"FATAL ERROR in hardened extraction: {e}")
-        return {"error": f"AI failed to parse the resume reliably. The resume format may be too complex."}
+    Extracts resume sections using a more reliable, multi-step process.
+    This single function contains all the necessary logic and helper functions inside it.
+    """
+    logger.info("Extracting sections with FINAL v12 (Self-Contained Step-by-Step)...")
+    if not client: return {"error": "OpenAI client not initialized."}
 
-    # --- Targeted AI call for complex sections (Experience & Education) ---
-    def parse_complex_section(section_name, section_text):
-        if not section_text or not client: return []
-        logger.info(f"Making targeted AI call to parse '{section_name}' section...")
-        
-        # Determine the expected structure based on the section
-        if section_name == 'work_experience':
-            json_structure = '[{"title": "...", "company": "...", "duration": "...", "details": ["..."]}]'
-        elif section_name == 'education':
-            json_structure = '[{"degree": "...", "school": "...", "duration": "...", "details": ["..."]}]'
-        else:
-            return []
+    # --- Helper functions are now defined inside for simplicity ---
 
+    def _split_resume_into_raw_sections(text_to_split):
         prompt = f"""
-        You are a data parsing machine. Your only job is to convert the following text from a resume's "{section_name}" section into a structured JSON list.
-        Extract the text VERBATIM without changing any words.
+        You are a document layout analyzer. Your only job is to split the following resume text into a JSON object based on its section headings.
+        The keys should be the section headings (e.g., "PROFILE", "WORK EXPERIENCE").
+        The values should be the raw text content under each heading.
+        Include a special key "header" for all text BEFORE the first major section heading.
 
-        Desired JSON structure:
-        {json_structure}
-
-        Parse this text:
-        ---
-        {section_text}
-        ---
+        Resume Text: --- {text_to_split[:8000]} ---
+        Return ONLY the JSON object.
         """
         try:
             response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"}
-            )
-            # The AI might return the data inside a key, so we find the first list in the response.
-            parsed_json = json.loads(response.choices[0].message.content)
-            for key, value in parsed_json.items():
-                if isinstance(value, list):
-                    return value
-            return [] # Return empty if no list is found
-        except Exception as e:
-            logger.error(f"Targeted AI parsing failed for {section_name}: {e}")
-            return [f"AI failed to parse this section. Original text: {section_text}"]
-
-    final_data['work_experience'] = parse_complex_section('work_experience', extracted_sections_raw.get('work_experience'))
-    final_data['education'] = parse_complex_section('education', extracted_sections_raw.get('education'))
-
-    # --- AI call just for the header info (Name, Title, Contact) ---
-    def parse_header(header_text):
-        if not header_text or not client: return {}, ""
-        logger.info("Making targeted AI call to parse header...")
-        prompt = f"""
-        From the text below, extract the person's full name, job title, and combine all contact information (email, phone, address, links) into a single string.
-        
-        Desired JSON: {{"name": "...", "job_title": "...", "contact": "..."}}
-        
-        Parse this text:
-        ---
-        {header_text}
-        ---
-        """
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"}
+                model="gpt-4o", messages=[{"role": "user", "content": prompt}], response_format={"type": "json_object"}
             )
             return json.loads(response.choices[0].message.content)
         except Exception as e:
-            logger.error(f"Header AI parsing failed: {e}")
-            return {"name": "Error", "job_title": "Error", "contact": header_text}
+            logger.error(f"Helper function _split_resume_into_raw_sections FAILED: {e}")
+            return None
 
-    header_data = parse_header(header_chunk)
-    final_data.update(header_data)
+    def _parse_resume_header(header_text_to_parse):
+        prompt = f"""
+        From the following text block, extract these details into a JSON object:
+        1. "name": The person's full name.
+        2. "job_title": The professional title (e.g., "Accounting Executive").
+        3. "contact": All contact info (email, phone, address, links) as a single string.
+        4. "summary": The professional summary or profile text as a single string.
+        Extract text VERBATIM.
+        
+        Text to parse: --- {header_text_to_parse} ---
+        Return ONLY the JSON object.
+        """
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o", messages=[{"role": "user", "content": prompt}], response_format={"type": "json_object"}
+            )
+            return json.loads(response.choices[0].message.content)
+        except Exception as e:
+            logger.error(f"Helper function _parse_resume_header FAILED: {e}")
+            return {}
 
-    # Ensure all required keys exist, even if they are empty or null
-    all_keys = ["name", "job_title", "contact", "summary", "skills", "languages", "work_experience", "education", "projects", "certifications"]
-    for key in all_keys:
+    def _parse_structured_list_section(section_name, section_text):
+        if not section_text: return []
+        structure_map = {
+            'work_experience': '[{"title": "string", "company": "string", "duration": "string", "details": ["list of strings"]}]',
+            'education': '[{"degree": "string", "school": "string", "duration": "string", "details": ["list of strings"]}]',
+            'projects': '[{"title": "string", "description": "string"}]'
+        }
+        json_structure = structure_map.get(section_name, '[]')
+        prompt = f"""
+        Parse the following text from a "{section_name}" section into a JSON list using this format: {json_structure}.
+        Extract all text VERBATIM.
+        
+        Text to parse: --- {section_text} ---
+        Return a JSON object with one key "{section_name}" containing the list.
+        """
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o", messages=[{"role": "user", "content": prompt}], response_format={"type": "json_object"}
+            )
+            return json.loads(response.choices[0].message.content).get(section_name, [])
+        except Exception as e:
+            logger.error(f"Helper function _parse_structured_list_section for '{section_name}' FAILED: {e}")
+            return []
+
+    def _parse_simple_list_section(section_name, section_text):
+        if not section_text: return []
+        prompt = f"""
+        Parse the text from the '{section_name}' section into a simple JSON list of strings. Extract each item VERBATIM.
+        Text to parse: --- {section_text} ---
+        Return a JSON object with one key "{section_name}" containing the list of strings.
+        """
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o", messages=[{"role": "user", "content": prompt}], response_format={"type": "json_object"}
+            )
+            # Handle both string and list outputs for skills gracefully
+            result = json.loads(response.choices[0].message.content).get(section_name)
+            if isinstance(result, str):
+                return result.split('\n')
+            return result or []
+        except Exception as e:
+            logger.error(f"Helper function _parse_simple_list_section for '{section_name}' FAILED: {e}")
+            return []
+
+    # --- Main Logic Starts Here ---
+
+    # Step 1: Split resume into raw sections
+    raw_sections = _split_resume_into_raw_sections(text)
+    if not raw_sections:
+        return {"error": "AI failed to split the resume into sections."}
+
+    final_data = {}
+    normalized_sections = {key.strip().lower().replace(' ', '_'): value for key, value in raw_sections.items()}
+
+    # Step 2: Parse header and summary
+    header_text = normalized_sections.pop('header', '')
+    for key in ['summary', 'profile', 'objective']:
+        if key in normalized_sections:
+            header_text += "\n\n" + normalized_sections.pop(key, '')
+    if header_text:
+        final_data.update(_parse_resume_header(header_text))
+
+    # Step 3: Parse all other known sections
+    final_data['work_experience'] = _parse_structured_list_section('work_experience', normalized_sections.get('work_experience'))
+    final_data['education'] = _parse_structured_list_section('education', normalized_sections.get('education'))
+    final_data['projects'] = _parse_structured_list_section('projects', normalized_sections.get('projects'))
+    final_data['skills'] = _parse_simple_list_section('skills', normalized_sections.get('skills'))
+    final_data['languages'] = _parse_simple_list_section('languages', normalized_sections.get('languages'))
+    final_data['certifications'] = _parse_simple_list_section('certifications', normalized_sections.get('certification/short_courses') or normalized_sections.get('certifications'))
+
+    # Step 4: Combine remaining sections into 'additional_information'
+    processed_keys = {'header', 'summary', 'profile', 'objective', 'work_experience', 'education', 'projects', 'skills', 'languages', 'certifications', 'certification/short_courses', 'contact'}
+    remaining_keys = set(normalized_sections.keys()) - processed_keys
+    additional_info_list = [f"{key.replace('_', ' ').title()}:\n{normalized_sections[key]}" for key in remaining_keys if normalized_sections[key]]
+    final_data['additional_information'] = "\n\n".join(additional_info_list)
+
+    # Step 5: Ensure all expected keys exist for the frontend
+    all_expected_keys = ["name", "job_title", "contact", "summary", "work_experience", "education", "skills", "certifications", "languages", "projects", "additional_information", "references"]
+    for key in all_expected_keys:
         if key not in final_data:
             final_data[key] = None
-
-    logger.info("Successfully extracted sections using 'Step-by-Step' strategy.")
+    
+    logger.info("Step-by-step extraction completed successfully.")
     return final_data
 
 # 'resume_ai_analyzer.py' में इस फंक्शन को भी बदलें
