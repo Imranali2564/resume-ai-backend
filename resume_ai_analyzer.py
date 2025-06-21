@@ -949,50 +949,55 @@ def extract_resume_sections_safely(text):
     return final_data
 
 # 'resume_ai_analyzer.py' में इस फंक्शन को भी बदलें
-def generate_stable_ats_report(text, extracted_data):
-    logger.info("Generating FINAL v10 ATS report with all checks...")
-    if not client: 
-        return {"error": "OpenAI client not initialized."}
-    
-    found_sections_summary = "For context, the following sections were found in the resume: " + ", ".join([key for key, value in extracted_data.items() if value])
-    
-    # ### FINAL HARDENED PROMPT ###
-    # Added "Projects Section" and clarified the "References" check.
-    prompt = f"""
-    You are a world-class ATS reviewer. Analyze the resume based on ALL the criteria below.
-    {found_sections_summary}. Use this context to avoid errors like saying a section is missing when it was found.
+def generate_stable_ats_report(extracted_data, job_field):
+    """
+    REPLACEMENT: Generates suggestions based on the detected field and found sections.
+    """
+    logger.info(f"Generating field-aware ATS report for: {job_field}")
+    if not client: return {"error": "OpenAI client not initialized."}
 
-    **CRITERIA TO CHECK (You must evaluate all of them):**
-    1.  **Contact Info**: Are email AND phone number present?
-    2.  **Key Sections**: Are 'work_experience', 'education', AND 'skills' all present and filled?
-    3.  **Quantifiable Achievements**: Does 'work_experience' contain numbers, percentages, or dollar amounts (e.g., %, $, improved by X)?
-    4.  **Bullet Points**: Is 'work_experience' using bullet points instead of paragraphs for job details?
-    5.  **Conciseness**: Are the bullet points in 'work_experience' brief and to the point (not long paragraphs)?
-    6.  **Skills Formatting**: Is the 'skills' section formatted as a list or keywords, not a long paragraph?
-    7.  **Professional Summary**: Is the 'summary' section present and does it clearly state the candidate's professional profile?
-    8.  **Projects Section**: Is a 'Projects' section present? If not, suggest adding one as it's highly valuable.
-    9.  **References**: Is a 'references' section present? If not, simply suggest that "A list of references should be prepared and provided upon request."
-    
+    found_sections_str = ", ".join(extracted_data.keys())
+
+    field_specific_sections = {
+        'Technology / IT': 'GitHub Projects, Technical Stack, Cloud Certifications',
+        'Design / UI-UX': 'Portfolio Link, Design Tools, User Research Projects',
+        'Legal / Law': 'Bar Membership, Case Portfolio, Legal Publications',
+        'Healthcare / Medical': 'Medical License, Clinical Rotations, Procedures Handled',
+        'Business / Marketing': 'KPIs Achieved, Campaigns Handled, Marketing Tools',
+        'Academia / Education': 'Publications, Research Interests, Conferences Attended'
+    }
+    relevant_extra_sections = field_specific_sections.get(job_field, 'Projects, Certifications')
+
+    prompt = f"""
+    You are an expert career coach for the **{job_field}** field.
+    An AI has extracted the following sections from a candidate's resume: **{found_sections_str}**.
+
+    Based on the standards for a strong **{job_field}** resume, please provide feedback.
+
+    **TASKS:**
+    1.  **Check for Missing Field-Specific Sections:** For a **{job_field}** role, important sections include: **{relevant_extra_sections}**. Is the most critical of these missing from the found sections? If so, create an "issue_to_fix" suggesting to add it.
+    2.  **Check for Quantifiable Achievements:** Does the "Work Experience" section contain numbers, percentages, or dollar amounts? If not, this is an issue.
+    3.  **Check Formatting:** Briefly check if the resume seems to use bullet points for experience and has a clear format.
+    4.  **Provide General Feedback:** Generate a few "passed_checks" for things the resume does well.
+
     **INSTRUCTIONS:**
-    - Create a JSON object with two keys: "passed_checks" and "issues_to_fix".
-    - For each of the 9 criteria, you MUST generate ONE corresponding "passed" or "issue" statement.
-    - Start every statement with an emoji (✅ for passed, ❌ for issue).
+    - Return a JSON object with "passed_checks" and "issues_to_fix".
+    - Create a maximum of 3 "issues_to_fix".
+    - Start every item with an emoji (✅ for passed, ❌ for issue).
     """
     try:
         response = client.chat.completions.create(
             model="gpt-4o",
-            messages=[{"role": "system", "content": "You are a helpful and meticulous ATS reviewer responding in perfect JSON."}, 
-                      {"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
         report_data = json.loads(response.choices[0].message.content)
-            
-        score = max(30, 100 - (len(report_data.get("issues_to_fix", [])) * 7))
-        
-        return {"passed_checks": report_data.get("passed_checks", []), "issues_to_fix": report_data.get("issues_to_fix", []), "score": score}
+        score = max(40, 100 - (len(report_data.get("issues_to_fix", [])) * 7))
+        report_data["score"] = score
+        return report_data
     except Exception as e:
-        logger.error(f"[ERROR in generate_stable_ats_report]: {e}")
-        return {"score": 0, "passed_checks": [], "issues_to_fix": ["❌ AI analysis failed due to an unexpected error."]}
+        logger.error(f"Field-aware ATS report generation failed: {e}")
+        return {"score": 0, "passed_checks": [], "issues_to_fix": ["❌ AI analysis failed."]}
 
 # 'resume_ai_analyzer.py' में इस फंक्शन को भी बदलें
 def generate_targeted_fix(suggestion, full_text):
@@ -1061,3 +1066,68 @@ def calculate_new_score(current_score, issue_text):
     new_score = min(100, current_score + increment)
     logger.info(f"Score incremented by {increment}. New score: {new_score}")
     return new_score
+
+def detect_resume_field(text):
+    """
+    NEW: Detects the professional field from the resume text.
+    """
+    logger.info("Detecting resume's professional field...")
+    if not client: return "General"
+    
+    prompt = f"""
+    Based on the content of the following resume, identify the most likely professional field.
+    Choose from one of these options: 'Technology / IT', 'Design / UI-UX', 'Legal / Law', 'Healthcare / Medical', 'Business / Marketing', 'Academia / Education', 'Engineering', 'Hospitality / Travel', 'General'.
+    Respond with ONLY the name of the field.
+
+    Resume Text:
+    ---
+    {text[:2000]}
+    ---
+    """
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0
+        )
+        field = response.choices[0].message.content.strip()
+        logger.info(f"Detected Field: {field}")
+        return field
+    except Exception as e:
+        logger.error(f"Could not detect resume field: {e}")
+        return "General"
+
+def extract_resume_data_dynamically(text, job_field):
+    """
+    NEW: Dynamically extracts all sections based on the resume's content and detected field.
+    """
+    logger.info(f"Dynamically extracting all sections for field: {job_field}...")
+    if not client: return {"error": "OpenAI client not initialized."}
+
+    prompt = f"""
+    You are a resume parsing expert. Your task is to read the entire resume text and extract ALL sections you can find.
+    The resume is for the **{job_field}** field. Pay attention to field-specific sections (e.g., 'GitHub' for Tech, 'Portfolio' for Design).
+
+    **INSTRUCTIONS:**
+    1.  **Identify ALL Sections:** Find every section with a clear heading.
+    2.  **Extract VERBATIM:** Extract the content under each heading EXACTLY as it appears. DO NOT change or summarize the text.
+    3.  **Create JSON:** Return a single JSON object where each key is the section heading (e.g., "Work Experience", "Technical Skills") and the value is the text content of that section.
+    4.  **Header Info:** Group all text before the first main heading under a special key named "Header".
+
+    Resume Text:
+    ---
+    {text[:8000]}
+    ---
+    Return ONLY the raw JSON object.
+    """
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "system", "content": "You are a robot that perfectly converts resume text into a JSON object of its sections."},
+                      {"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        return json.loads(response.choices[0].message.content)
+    except Exception as e:
+        logger.error(f"Dynamic extraction failed: {e}")
+        return {"error": "AI failed to extract sections from this resume."}

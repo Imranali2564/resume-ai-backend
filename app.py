@@ -1099,6 +1099,7 @@ def extract_sections():
 @app.route('/api/v1/analyze-resume', methods=['POST'])
 def analyze_resume_for_frontend():
     try:
+        # Check for the file in the request
         if 'resume_file' not in request.files:
             return jsonify({"success": False, "error": "No 'resume_file' part in the request."}), 400
         
@@ -1106,14 +1107,42 @@ def analyze_resume_for_frontend():
         if file.filename == '':
             return jsonify({"success": False, "error": "No file selected."}), 400
 
-        text = extract_text_from_resume(file) # This helper function is still valid
+        # Extract text from the uploaded resume
+        text = extract_text_from_resume(file)
         if not text:
             return jsonify({"success": False, "error": "Could not extract text from the resume."}), 500
 
-        # STEP 1: Extract sections SAFELY without any changes.
-        extracted_sections = extract_resume_sections_safely(text) # <<< बदला हुआ
-        if not extracted_sections or extracted_sections.get("error"):
-             return jsonify({"success": False, "error": extracted_sections.get("error", "Failed to parse resume sections.")}), 500
+        # --- NEW FIELD-AWARE PIPELINE ---
+        # 1. Detect the professional field from the resume text
+        job_field = detect_resume_field(text)
+
+        # 2. Dynamically extract all sections based on the resume's content
+        # Note: We now pass the job_field for better context during extraction
+        extracted_data = extract_resume_data_dynamically(text, job_field)
+        if extracted_data.get("error"):
+             return jsonify({"success": False, "error": extracted_data["error"]}), 500
+
+        # 3. Generate an ATS report that is aware of the detected field
+        # Note: We pass the extracted_data and job_field
+        ats_result = generate_field_aware_ats_report(extracted_data, job_field)
+
+        # 4. Format the final data structure to be sent to the frontend
+        formatted_data = {
+            "score": ats_result.get('score', 0),
+            "analysis": {
+                "passed_checks": ats_result.get("passed_checks", []),
+                "issues_to_fix": [{"issue_id": f"err_{i}", "issue_text": issue_text} for i, issue_text in enumerate(ats_result.get("issues_to_fix", []))]
+            },
+            "extracted_data": extracted_data,
+            "detected_field": job_field # Also send the detected field to the frontend
+        }
+        
+        return jsonify({"success": True, "data": formatted_data})
+
+    except Exception as e:
+        import traceback
+        logger.error(f"Error in /api/v1/analyze-resume: {traceback.format_exc()}")
+        return jsonify({"success": False, "error": "An unexpected server error occurred."}), 500
 
         # STEP 2: Generate a STABLE ATS report.
         ats_result = generate_stable_ats_report(text, extracted_sections) # <<< बदला हुआ
