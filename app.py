@@ -1156,10 +1156,12 @@ def fix_issue_for_frontend():
         payload = json.loads(request.form.get('payload'))
         issue_text = payload.get('issue_text')
         current_data = payload.get('current_data')
+        # <<< STEP 1: फ्रंटएंड से वर्तमान स्कोर प्राप्त करें
+        current_score = payload.get('current_score') 
 
-        if not issue_text or not current_data:
-            logger.error("Missing 'issue_text' or 'current_data' in payload.")
-            return jsonify({"success": False, "error": "Missing 'issue_text' or 'current_data' in payload"}), 400
+        if not issue_text or not current_data or current_score is None:
+            logger.error("Missing 'issue_text', 'current_data', or 'current_score' in payload.")
+            return jsonify({"success": False, "error": "Missing required data in payload"}), 400
 
         full_text_for_context = "\n\n".join(
             f"{key.replace('_', ' ').upper()}\n{str(value)}"
@@ -1173,23 +1175,27 @@ def fix_issue_for_frontend():
             logger.error(f"generate_targeted_fix failed: {fix_result['error']}")
             return jsonify({"success": False, "error": fix_result['error']}), 500
 
-        # ### FIX ###: Normalize the section key returned by the AI
         section_to_fix_raw = fix_result.get('section')
         fixed_content = fix_result.get('fixedContent')
-
+        
         if section_to_fix_raw:
-            # Convert to lowercase and replace spaces with underscores (e.g., "Work Experience" -> "work_experience")
-            normalized_section_key = section_to_fix_raw.strip().lower().replace(' ', '_')
-            
+            normalized_section_key = section_to_fix_raw.strip().lower().replace(' ', '_').replace('-', '_')
             logger.info(f"AI identified section '{section_to_fix_raw}'. Applying fix to normalized key: '{normalized_section_key}'")
-            
-            # Update the data using the predictable, normalized key
             current_data[normalized_section_key] = fixed_content
         else:
             logger.warning("AI did not return a section to fix.")
             return jsonify({"success": False, "error": "AI could not determine which section to fix."}), 500
 
-        return jsonify({"success": True, "data": {"updated_resume_data": current_data}})
+        # <<< STEP 2: नए स्कोर की गणना करें
+        new_score = calculate_new_score(current_score, issue_text)
+
+        # <<< STEP 3: अंतिम प्रतिक्रिया में नया स्कोर और अपडेटेड डेटा शामिल करें
+        response_data = {
+            "updated_resume_data": current_data,
+            "new_score": new_score
+        }
+
+        return jsonify({"success": True, "data": response_data})
 
     except Exception as e:
         import traceback

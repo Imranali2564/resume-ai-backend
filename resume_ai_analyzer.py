@@ -1062,3 +1062,5 @@ def calculate_new_score(current_score, issue_text):
     new_score = min(100, current_score + increment)
     logger.info(f"Score incremented by {increment}. New score: {new_score}")
     return new_score
+
+
