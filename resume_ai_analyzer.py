@@ -949,15 +949,18 @@ def extract_resume_sections_safely(text):
     return final_data
 
 # 'resume_ai_analyzer.py' में इस फंक्शन को भी बदलें
-def generate_stable_ats_report(extracted_data, job_field):
+def generate_field_aware_ats_report(extracted_data, job_field="General"):
     """
-    REPLACEMENT: Generates suggestions based on the detected field and found sections.
+    Generates suggestions based on the detected field and found sections.
     """
     logger.info(f"Generating field-aware ATS report for: {job_field}")
-    if not client: return {"error": "OpenAI client not initialized."}
+    if not client: 
+        return {"error": "OpenAI client not initialized."}
 
+    # Create a summary of sections that were actually found in the resume
     found_sections_str = ", ".join(extracted_data.keys())
 
+    # Define which sections are important for which field, based on the user's document
     field_specific_sections = {
         'Technology / IT': 'GitHub Projects, Technical Stack, Cloud Certifications',
         'Design / UI-UX': 'Portfolio Link, Design Tools, User Research Projects',
@@ -966,6 +969,7 @@ def generate_stable_ats_report(extracted_data, job_field):
         'Business / Marketing': 'KPIs Achieved, Campaigns Handled, Marketing Tools',
         'Academia / Education': 'Publications, Research Interests, Conferences Attended'
     }
+    # Get the relevant sections for the detected field, or use a default
     relevant_extra_sections = field_specific_sections.get(job_field, 'Projects, Certifications')
 
     prompt = f"""
@@ -976,12 +980,12 @@ def generate_stable_ats_report(extracted_data, job_field):
 
     **TASKS:**
     1.  **Check for Missing Field-Specific Sections:** For a **{job_field}** role, important sections include: **{relevant_extra_sections}**. Is the most critical of these missing from the found sections? If so, create an "issue_to_fix" suggesting to add it.
-    2.  **Check for Quantifiable Achievements:** Does the "Work Experience" section contain numbers, percentages, or dollar amounts? If not, this is an issue.
+    2.  **Check for Quantifiable Achievements:** Does the "Work Experience" section contain numbers, percentages, or dollar amounts to show impact? If not, this is an issue.
     3.  **Check Formatting:** Briefly check if the resume seems to use bullet points for experience and has a clear format.
     4.  **Provide General Feedback:** Generate a few "passed_checks" for things the resume does well.
 
     **INSTRUCTIONS:**
-    - Return a JSON object with "passed_checks" and "issues_to_fix".
+    - Return a JSON object with two keys: "passed_checks" and "issues_to_fix".
     - Create a maximum of 3 "issues_to_fix".
     - Start every item with an emoji (✅ for passed, ❌ for issue).
     """
