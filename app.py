@@ -1097,8 +1097,6 @@ def extract_sections():
 # FINAL API ENDPOINT FOR THE NEW WORDPRESS FRONTEND (CORRECTED INDENTATION)
 # =====================================================================
 
-# In app.py, temporarily replace the analyze_resume_for_frontend function
-
 @app.route('/api/v1/analyze-resume', methods=['POST'])
 def analyze_resume_for_frontend():
     try:
@@ -1109,31 +1107,19 @@ def analyze_resume_for_frontend():
         if file.filename == '':
             return jsonify({"success": False, "error": "No file selected."}), 400
 
-        # --- TEMPORARY DEBUGGING STEP ---
-        # We will extract the text and return it directly to see what the AI sees.
         text = extract_text_from_resume(file)
         if not text:
             return jsonify({"success": False, "error": "Could not extract text from the resume."}), 500
-        
-        # Directly return the raw text for debugging purposes
-        # We are intentionally stopping before the AI analysis.
-        logger.info("DEBUGGING: Returning raw extracted text.")
-        return jsonify({"success": True, "raw_text_for_debugging": text})
 
-    except Exception as e:
-        import traceback
-        logger.error(f"Error in /api/v1/analyze-resume (DEBUG MODE): {traceback.format_exc()}")
-        return jsonify({"success": False, "error": "An unexpected server error occurred during debug."}), 500
-
-        # STEP 1: Extract sections SAFELY
+        # Step 1: Extract sections using the new, robust function
         extracted_sections = extract_resume_sections_safely(text)
         if not extracted_sections or extracted_sections.get("error"):
              return jsonify({"success": False, "error": extracted_sections.get("error", "Failed to parse resume sections.")}), 500
 
-        # STEP 2: Generate a STABLE ATS report
+        # Step 2: Generate ATS report
         ats_result = generate_stable_ats_report(text, extracted_sections)
         
-        # <<< --- NEW STEP 3: Get field-aware suggestions --- >>>
+        # Step 3: Get field-aware suggestions
         field_info = get_field_suggestions(extracted_sections)
 
         # Format issues with unique IDs
@@ -1153,36 +1139,7 @@ def analyze_resume_for_frontend():
                 "issues_to_fix": issues_to_fix
             },
             "extracted_data": extracted_sections,
-            "field_info": field_info # <<< --- नया डेटा यहाँ जोड़ा गया है
-        }
-        
-        return jsonify({"success": True, "data": formatted_data})
-
-    except Exception as e:
-        import traceback
-        logger.error(f"Error in /api/v1/analyze-resume: {traceback.format_exc()}")
-        return jsonify({"success": False, "error": "An unexpected server error occurred."}), 500
-
-        # STEP 2: Generate a STABLE ATS report.
-        ats_result = generate_stable_ats_report(text, extracted_sections) # <<< बदला हुआ
-
-        # Format the data for the frontend
-        passed_checks = ats_result.get("passed_checks", [])
-        issues_to_fix = []
-        raw_issues = ats_result.get("issues_to_fix", [])
-        for i, issue_text in enumerate(raw_issues):
-            issues_to_fix.append({
-                "issue_id": f"err_{i+1}",
-                "issue_text": issue_text
-            })
-
-        formatted_data = {
-            "score": ats_result.get('score', 0),
-            "analysis": {
-                "passed_checks": passed_checks,
-                "issues_to_fix": issues_to_fix
-            },
-            "extracted_data": extracted_sections 
+            "field_info": field_info
         }
         
         return jsonify({"success": True, "data": formatted_data})

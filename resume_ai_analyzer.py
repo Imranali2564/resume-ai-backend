@@ -812,32 +812,39 @@ def refine_list_section(section_name, section_text):
 
 # 'resume_ai_analyzer.py' में इस फंक्शन को बदलें
 def extract_resume_sections_safely(text):
-    logger.info("Extracting resume sections with FINAL v4 AI prompt...")
+    logger.info("Extracting resume sections with FINAL v6 (Context-Aware) AI strategy...")
     if not client:
         return {"error": "OpenAI client not initialized."}
 
-    # This is the most comprehensive prompt yet.
+    # --- FINAL, MOST ROBUST PROMPT ---
+    # This prompt tells the AI that the text might be jumbled from a multi-column layout
+    # and asks it to use contextual understanding to correctly place all details.
+    
     prompt = f"""
-    You are a world-class resume parsing system. Your task is to meticulously parse the following resume text and convert it into a structured JSON object. The resume can be in any format, including multi-column.
+    You are a world-class resume parsing system with exceptional contextual understanding.
+    The following resume text was extracted from a PDF, possibly with a multi-column layout, so lines from different sections might be mixed up.
+    Your task is to intelligently parse this text and reconstruct a perfectly structured JSON object.
 
-    You MUST look for all of the following sections. If a section is not found, its value should be null or an empty list [].
-    Pay special attention to "Certifications" and "Additional Information" which might contain awards.
+    **Crucial Instructions:**
+    1.  **Re-associate Details:** You MUST correctly associate all details with their parent items. For example, a bullet point like "• Specialization in Financial Management" must be placed in a "details" list under the correct degree in the "education" section, even if it appears far away in the raw text.
+    2.  **Complete Extraction:** Extract every possible detail for work experience, education, and projects into the 'details' array for each entry.
+    3.  **Clean Output:** If a section is not found, its value in the JSON should be null. Do not invent information.
 
-    JSON STRUCTURE:
-    - "name": string
-    - "job_title": string
-    - "contact": string (combine email, phone, address, website links)
+    **JSON STRUCTURE REQUIRED:**
+    - "name": string (Full Name)
+    - "job_title": string (Current or most recent professional title)
+    - "contact": string (Combine email, phone, address, website links into one block)
     - "summary": string (The professional summary or objective)
-    - "work_experience": list of objects [{{"title": string, "company": string, "duration": string, "details": list of strings}}]
-    - "education": list of objects [{{"degree": string, "school": string, "duration": string}}]
+    - "work_experience": list of objects `[{{"title": string, "company": string, "duration": string, "details": list of strings}}]`
+    - "education": list of objects `[{{"degree": string, "school": "...", "duration": "...", "details": ["Detail 1", "Detail 2"]}}]`
     - "skills": list of strings
-    - "certifications": list of strings
-    - "awards": list of strings (Look for this within "Additional Information" or its own section)
-    - "volunteer_experience": list of strings (Look for this within "Additional Information" or its own section)
     - "languages": list of strings
-    - "projects": list of objects [{{"title": string, "description": string}}]
+    - "certifications": list of strings
+    - "awards": list of strings
+    - "projects": list of objects `[{{"title": string, "description": string, "details": list of strings}}]`
+    - "volunteer_experience": string or list of strings
 
-    The text to parse is provided below. Do not mix sections. For example, the summary should not be in the contact details.
+    **Resume Text to Parse:**
     ---
     {text[:8000]}
     ---
@@ -849,21 +856,22 @@ def extract_resume_sections_safely(text):
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
-        extracted_data = json.loads(response.choices[0].message.content)
+        final_data = json.loads(response.choices[0].message.content)
         
-        # Ensure all primary keys exist to prevent frontend errors
+        # Ensure all possible keys exist to prevent frontend errors
         all_possible_keys = [
             "name", "job_title", "contact", "summary", "work_experience", "education",
             "skills", "certifications", "languages", "projects", "awards", "volunteer_experience"
         ]
         for key in all_possible_keys:
-            if key not in extracted_data:
-                extracted_data[key] = None
-        
-        return extracted_data
+            if key not in final_data:
+                final_data[key] = None
+
+        logger.info(f"Final data extracted successfully using context-aware prompt. Keys: {list(final_data.keys())}")
+        return final_data
     except Exception as e:
-        logger.error(f"Failed to extract resume sections with final prompt: {e}")
-        return {"error": f"AI failed to parse the resume structure."}
+        logger.error(f"Context-aware AI parsing failed: {e}")
+        return {"error": "The AI failed to parse the resume. The document format might be too complex."}
 
     # --- Targeted AI call for complex sections (Experience & Education) ---
     # in resume_ai_analyzer.py, inside extract_resume_sections_safely
