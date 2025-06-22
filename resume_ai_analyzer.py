@@ -866,29 +866,38 @@ def extract_resume_sections_safely(text):
         return {"error": f"AI failed to parse the resume structure."}
 
     # --- Targeted AI call for complex sections (Experience & Education) ---
-    def parse_complex_section(section_name, section_text):
-        if not section_text or not client: return []
-        logger.info(f"Making targeted AI call to parse '{section_name}' section...")
+    # in resume_ai_analyzer.py, inside extract_resume_sections_safely
+
+    # Function to parse complex sections like work experience and education
+    def parse_complex_section(section_key, section_text):
+        if not section_text: return []
         
-        # Determine the expected structure based on the section
-        if section_name == 'work_experience':
-            json_structure = '[{"title": "...", "company": "...", "duration": "...", "details": ["..."]}]'
-        elif section_name == 'education':
-            json_structure = '[{"degree": "...", "school": "...", "duration": "...", "details": ["..."]}]'
+        logger.info(f"Performing targeted parsing for '{section_key}'...")
+        
+        # --- UPDATED: More detailed structure examples for the AI ---
+        if section_key == 'work_experience':
+            structure_example = '[{"title": "Job Title", "company": "Company Name", "duration": "Dates", "details": ["Responsibility 1", "Responsibility 2"]}]'
+        elif section_key == 'education':
+            # We are adding the "details" key here to capture bullet points
+            structure_example = '[{"degree": "Degree Name", "school": "School/University Name", "duration": "Dates", "details": ["Coursework or Specialization detail 1", "Detail 2"]}]'
+        elif section_key == 'projects':
+            # We are making the project parsing more robust as well
+            structure_example = '[{"title": "Project Title", "description": "A brief one-line description.", "details": ["Technical detail or achievement 1", "Detail 2"]}]'
         else:
             return []
 
         prompt = f"""
-        You are a data parsing machine. Your only job is to convert the following text from a resume's "{section_name}" section into a structured JSON list.
-        Extract the text VERBATIM without changing any words.
+        You are a data extraction specialist. Convert the following text from a resume's '{section_key}' section into a structured JSON list.
+        Extract every detail, including bullet points, into the correct fields. Do not summarize or change the text.
 
         Desired JSON structure:
-        {json_structure}
+        {structure_example}
 
-        Parse this text:
+        Text to parse:
         ---
         {section_text}
         ---
+        Return a single JSON object with one key, "data", containing the list.
         """
         try:
             response = client.chat.completions.create(
@@ -896,15 +905,11 @@ def extract_resume_sections_safely(text):
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}
             )
-            # The AI might return the data inside a key, so we find the first list in the response.
             parsed_json = json.loads(response.choices[0].message.content)
-            for key, value in parsed_json.items():
-                if isinstance(value, list):
-                    return value
-            return [] # Return empty if no list is found
+            return parsed_json.get("data", [])
         except Exception as e:
-            logger.error(f"Targeted AI parsing failed for {section_name}: {e}")
-            return [f"AI failed to parse this section. Original text: {section_text}"]
+            logger.error(f"Targeted parsing failed for {section_key}: {e}")
+            return [{"error": f"AI failed to parse this section. Original text: {section_text}"}]
 
     final_data['work_experience'] = parse_complex_section('work_experience', extracted_sections_raw.get('work_experience'))
     final_data['education'] = parse_complex_section('education', extracted_sections_raw.get('education'))
