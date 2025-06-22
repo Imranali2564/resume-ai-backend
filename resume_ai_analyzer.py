@@ -812,14 +812,11 @@ def refine_list_section(section_name, section_text):
 
 # 'resume_ai_analyzer.py' में इस फंक्शन को बदलें
 def extract_resume_sections_safely(text):
-    logger.info("Extracting resume sections with FINAL v6 (Context-Aware) AI strategy...")
+    logger.info("Extracting resume sections with FINAL v7 (Context-Aware) AI strategy...")
     if not client:
         return {"error": "OpenAI client not initialized."}
 
-    # --- FINAL, MOST ROBUST PROMPT ---
-    # This prompt tells the AI that the text might be jumbled from a multi-column layout
-    # and asks it to use contextual understanding to correctly place all details.
-    
+    # This prompt is robust enough to handle jumbled text from multi-column PDFs.
     prompt = f"""
     You are a world-class resume parsing system with exceptional contextual understanding.
     The following resume text was extracted from a PDF, possibly with a multi-column layout, so lines from different sections might be mixed up.
@@ -831,12 +828,12 @@ def extract_resume_sections_safely(text):
     3.  **Clean Output:** If a section is not found, its value in the JSON should be null. Do not invent information.
 
     **JSON STRUCTURE REQUIRED:**
-    - "name": string (Full Name)
-    - "job_title": string (Current or most recent professional title)
-    - "contact": string (Combine email, phone, address, website links into one block)
-    - "summary": string (The professional summary or objective)
+    - "name": string
+    - "job_title": string
+    - "contact": string
+    - "summary": string
     - "work_experience": list of objects `[{{"title": string, "company": string, "duration": string, "details": list of strings}}]`
-    - "education": list of objects `[{{"degree": string, "school": "...", "duration": "...", "details": ["Detail 1", "Detail 2"]}}]`
+    - "education": list of objects `[{{"degree": string, "school": string, "duration": string, "details": list of strings}}]`
     - "skills": list of strings
     - "languages": list of strings
     - "certifications": list of strings
@@ -858,11 +855,7 @@ def extract_resume_sections_safely(text):
         )
         final_data = json.loads(response.choices[0].message.content)
         
-        # Ensure all possible keys exist to prevent frontend errors
-        all_possible_keys = [
-            "name", "job_title", "contact", "summary", "work_experience", "education",
-            "skills", "certifications", "languages", "projects", "awards", "volunteer_experience"
-        ]
+        all_possible_keys = ["name", "job_title", "contact", "summary", "work_experience", "education", "skills", "certifications", "languages", "projects", "awards", "volunteer_experience"]
         for key in all_possible_keys:
             if key not in final_data:
                 final_data[key] = None
