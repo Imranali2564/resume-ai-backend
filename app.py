@@ -1097,6 +1097,8 @@ def extract_sections():
 # FINAL API ENDPOINT FOR THE NEW WORDPRESS FRONTEND (CORRECTED INDENTATION)
 # =====================================================================
 
+# In app.py, temporarily replace the analyze_resume_for_frontend function
+
 @app.route('/api/v1/analyze-resume', methods=['POST'])
 def analyze_resume_for_frontend():
     try:
@@ -1107,9 +1109,21 @@ def analyze_resume_for_frontend():
         if file.filename == '':
             return jsonify({"success": False, "error": "No file selected."}), 400
 
+        # --- TEMPORARY DEBUGGING STEP ---
+        # We will extract the text and return it directly to see what the AI sees.
         text = extract_text_from_resume(file)
         if not text:
             return jsonify({"success": False, "error": "Could not extract text from the resume."}), 500
+        
+        # Directly return the raw text for debugging purposes
+        # We are intentionally stopping before the AI analysis.
+        logger.info("DEBUGGING: Returning raw extracted text.")
+        return jsonify({"success": True, "raw_text_for_debugging": text})
+
+    except Exception as e:
+        import traceback
+        logger.error(f"Error in /api/v1/analyze-resume (DEBUG MODE): {traceback.format_exc()}")
+        return jsonify({"success": False, "error": "An unexpected server error occurred during debug."}), 500
 
         # STEP 1: Extract sections SAFELY
         extracted_sections = extract_resume_sections_safely(text)
