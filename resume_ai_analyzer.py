@@ -815,6 +815,12 @@ def extract_resume_sections_safely(text):
     logger.info("Extracting resume sections with FINAL v7 (Context-Aware) AI strategy...")
     if not client:
         return {"error": "OpenAI client not initialized."}
+    # --- THIS IS THE FIX ---
+    # Truncate the text to a safe limit to avoid context length errors with gpt-3.5-turbo.
+    TOKEN_LIMIT_IN_CHARS = 40000 
+    if len(text) > TOKEN_LIMIT_IN_CHARS:
+        logger.warning(f"Resume text is too long, truncating to {TOKEN_LIMIT_IN_CHARS} characters to fit context window.")
+        text = text[:TOKEN_LIMIT_IN_CHARS]
 
     # This prompt is robust enough to handle jumbled text from multi-column PDFs.
     prompt = f"""
