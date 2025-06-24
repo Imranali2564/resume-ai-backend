@@ -799,7 +799,7 @@ def refine_list_section(section_name, section_text):
     """
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
@@ -849,7 +849,7 @@ def extract_resume_sections_safely(text):
     """
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
@@ -902,7 +902,7 @@ def extract_resume_sections_safely(text):
         """
         try:
             response = client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}
             )
@@ -931,7 +931,7 @@ def extract_resume_sections_safely(text):
         """
         try:
             response = client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}
             )
@@ -985,7 +985,7 @@ def generate_stable_ats_report(text, extracted_data):
     """
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-3.5-turbo",
             messages=[{"role": "system", "content": "You are a helpful and nuanced ATS reviewer responding in JSON."}, {"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
@@ -1033,7 +1033,7 @@ def generate_targeted_fix(suggestion, full_text):
     """
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-3.5-turbo",
             messages=[{"role": "system", "content": "You are a resume fixing assistant that responds in perfect JSON."}, {"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
@@ -1130,7 +1130,7 @@ def get_field_suggestions(extracted_data):
         ---
         """
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt_field_detection}],
             response_format={"type": "json_object"}
         )
