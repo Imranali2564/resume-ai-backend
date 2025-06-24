@@ -958,12 +958,15 @@ def extract_resume_sections_safely(text):
     logger.info("Successfully extracted sections using 'Step-by-Step' strategy.")
     return final_data
 
+# FILE: resume_ai_analyzer.py
+# REPLACE the existing generate_stable_ats_report function with this one.
+
 def generate_stable_ats_report(text, extracted_data):
-    logger.info("Generating FINAL v4 ATS report with nuanced suggestions...")
+    logger.info("Generating FINAL v5 ATS report with robust parsing...")
     if not client: 
         return {"error": "OpenAI client not initialized."}
     
-    found_sections_summary = "For your reference, the following sections were successfully extracted: " + ", ".join([key for key, value in extracted_data.items() if value])
+    found_sections_summary = "For context, the following sections were found in the resume: " + ", ".join([key for key, value in extracted_data.items() if value])
     
     prompt = f"""
     You are a world-class, strict but fair ATS reviewer. Analyze the resume text provided. 
@@ -978,9 +981,9 @@ def generate_stable_ats_report(text, extracted_data):
     5.  **Professional Summary**: Is the 'summary' section present and impactful?
     
     INSTRUCTIONS:
-    - Create a JSON object with "passed_checks" and "issues_to_fix".
+    - Create a JSON object with two keys: "passed_checks" (a list of strings for positive points) and "issues_to_fix" (a list of strings for negative points).
     - For the 5 main criteria, create ONE "passed" or "issue" statement for each.
-    - **Crucially, even if the resume is excellent, find AT LEAST ONE "issue_to_fix"**. This issue can be a minor, optional suggestion for improvement to make the feedback more valuable. For example, suggest adding a 'Projects' section, or rephrasing a bullet point for more impact.
+    - **Crucially, find AT LEAST ONE "issue_to_fix"**. This issue can be a minor, optional suggestion for improvement.
     - Never give a perfect report with zero issues.
     - Start every item with an emoji (✅ for passed, ❌ for issue).
 
@@ -988,25 +991,48 @@ def generate_stable_ats_report(text, extracted_data):
     ---
     {text[:7000]}
     ---
+    Return ONLY the raw JSON object.
     """
     try:
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "system", "content": "You are a helpful and nuanced ATS reviewer responding in JSON."}, {"role": "user", "content": prompt}],
+            model="gpt-3.5-turbo", # Or "gpt-4o"
+            messages=[{"role": "system", "content": "You are a helpful and nuanced ATS reviewer responding in perfect JSON."}, {"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
-        report_data = json.loads(response.choices[0].message.content)
+        content = response.choices[0].message.content
         
-        # Make sure there's at least one issue, as requested in the prompt
-        if not report_data.get("issues_to_fix"):
-            report_data["issues_to_fix"] = ["❌ Consider adding a 'Projects' section to showcase practical application of your skills."]
+        # --- NEW ROBUST PARSING LOGIC ---
+        passed_checks = []
+        issues_to_fix = []
+
+        try:
+            # First, try to parse it as perfect JSON
+            report_data = json.loads(content)
+            passed_checks = report_data.get("passed_checks", [])
+            issues_to_fix = report_data.get("issues_to_fix", [])
+        except (json.JSONDecodeError, AttributeError):
+            # If AI fails to return JSON and returns a string instead, parse the string line by line
+            logger.warning("AI did not return valid JSON for ATS report. Parsing string response.")
+            lines = content.split('\n')
+            for line in lines:
+                cleaned_line = line.strip()
+                if cleaned_line.startswith('✅') or "passed:" in cleaned_line.lower():
+                    passed_checks.append(cleaned_line)
+                elif cleaned_line.startswith('❌') or "issue:" in cleaned_line.lower():
+                    issues_to_fix.append(cleaned_line)
+
+        # Ensure there's always at least one issue, as per prompt instructions
+        if not issues_to_fix:
+            issues_to_fix.append("❌ Minor Suggestion: Consider adding a 'Projects' section to further highlight your skills.")
             
-        score = max(30, 100 - (len(report_data.get("issues_to_fix", [])) * 8)) # Adjusted scoring
+        score = max(30, 100 - (len(issues_to_fix) * 8))
         
-        return {"passed_checks": report_data.get("passed_checks", []), "issues_to_fix": report_data.get("issues_to_fix", []), "score": score}
+        # Return a guaranteed correct structure
+        return {"passed_checks": passed_checks, "issues_to_fix": issues_to_fix, "score": score}
+
     except Exception as e:
         logger.error(f"[ERROR in generate_stable_ats_report]: {e}")
-        return {"score": 0, "passed_checks": [], "issues_to_fix": ["❌ AI analysis failed."]}
+        return {"score": 0, "passed_checks": [], "issues_to_fix": ["❌ AI analysis failed due to a server error."]}
 
 def generate_targeted_fix(suggestion, full_text):
     """
