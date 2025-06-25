@@ -812,7 +812,7 @@ def refine_list_section(section_name, section_text):
 
 # 'resume_ai_analyzer.py' में इस फंक्शन को बदलें
 def extract_resume_sections_safely(text):
-    logger.info("Extracting resume sections with FINAL v8 (Context-Aware & Multi-Key) AI strategy...")
+    logger.info("Extracting resume sections with FINAL v9 (Simplified & Robust) AI strategy...")
     if not client:
         return {"error": "OpenAI client not initialized."}
     
@@ -821,16 +821,17 @@ def extract_resume_sections_safely(text):
         logger.warning(f"Resume text is too long, truncating to {TOKEN_LIMIT_IN_CHARS} characters.")
         text = text[:TOKEN_LIMIT_IN_CHARS]
 
-    # This prompt is more robust for jumbled text and has more keys to find all data.
+    # --- THIS IS THE FIX ---
+    # The prompt for "skills" is now simplified to ALWAYS be a list of strings.
+    # This ensures consistency for the frontend.
     prompt = f"""
-    You are a world-class resume parsing system with exceptional contextual understanding.
-    The following resume text was extracted from a PDF, possibly with a multi-column layout, so lines from different sections might be mixed up.
+    You are a world-class resume parsing system. The following text was extracted from a resume, and might be jumbled.
     Your task is to intelligently parse this text and reconstruct a perfectly structured JSON object.
 
     **Crucial Instructions:**
-    1.  **Re-associate Details:** You MUST correctly associate all details with their parent items. For example, a bullet point like "• Specialization in Financial Management" must be placed in a "details" list under the correct degree in the "education" section, even if it appears far away in the raw text.
-    2.  **Complete Extraction:** Extract every possible detail. Do not miss any section.
-    3.  **Clean Output:** If a section is not found, its value in the JSON should be null. Do not invent information.
+    1.  **Associate Details:** You MUST correctly associate all details with their parent items, even if they appear far away in the raw text.
+    2.  **Extract Everything:** Do not miss any section mentioned in the resume.
+    3.  **Clean Output:** If a section is not found, its value must be null. Do not invent information.
 
     **JSON STRUCTURE REQUIRED (Use these exact keys):**
     - "name": string
@@ -839,7 +840,7 @@ def extract_resume_sections_safely(text):
     - "summary": string
     - "work_experience": list of objects `[{{"title": string, "company": string, "duration": string, "details": list of strings}}]`
     - "education": list of objects `[{{"degree": string, "school": string, "duration": string, "details": list of strings}}]`
-    - "skills": list of strings OR an object with skill categories like {{"technical": [], "soft_skills": []}}
+    - "skills": list of strings  <-- THIS IS THE FIX. It is no longer an object, just a simple list.
     - "languages": list of strings
     - "certifications": list of strings (Look for headings like "Certifications", "Additional Courses", "Training")
     - "awards": list of strings
