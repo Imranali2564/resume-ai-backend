@@ -961,59 +961,89 @@ def extract_resume_sections_safely(text):
 # REPLACE the existing generate_stable_ats_report function with this one.
 
 def generate_stable_ats_report(text, extracted_data):
-    logger.info("Generating FINAL v12 ATS report with Guaranteed Issues...")
-    if not client: 
+    logger.info("Generating FINAL v14 ATS report with Multi-Call Strategy for GPT-3.5...")
+    if not client:
         return {"error": "OpenAI client not initialized."}
-    
-    prompt = f"""
-    You are a helpful but thorough ATS resume reviewer. Your goal is to help the user improve their resume.
 
-    **Instructions:**
-    1.  **Find Strengths (Passed Checks):** Identify 2-3 positive aspects of the resume. Examples: "Contact information is clear," "Layout is clean," "Uses standard section headings."
-    2.  **Find Areas for Improvement (Issues to Fix):** You MUST find at least 3-4 specific, actionable points for improvement, even if the resume is good. Look for things like:
-        -   **Quantifiable Achievements:** "Work experience is good, but could be stronger with metrics. For example, instead of 'Contacted customers', write 'Contacted 100+ customers daily'."
-        -   **Impactful Language:** "The summary is okay, but could be more impactful by mentioning a key skill."
-        -   **Missing Sections:** "Consider adding a 'Projects' section to showcase practical skills." (Check if sections like Projects, Certifications, or a detailed Skills breakdown are missing).
-        -   **Spelling/Grammar:** Briefly mention if there are any errors. If not, don't mention it in the issues list.
-    
-    **Required Output Format (JSON Object):**
-    Return a single JSON object with two keys: "passed_checks" and "issues_to_fix". Both must be lists of strings.
-    {{
-      "passed_checks": ["✅ Strength 1...", "✅ Strength 2..."],
-      "issues_to_fix": ["❌ Improvement area 1...", "❌ Improvement area 2...", "❌ Improvement area 3..."]
-    }}
-    
-    **Resume Text to Analyze:**
+    # --- NAYI STRATEGY: HAR CHEEZ KE LIYE ALAG AI CALL ---
+
+    def call_ai_for_task(prompt, error_message="AI failed"):
+        try:
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+            )
+            # Response ko seedha list of strings mein convert karein
+            content = response.choices[0].message.content.strip()
+            # Split by newline and filter out empty lines or non-starters
+            items = [line.strip().lstrip('-* ').strip() for line in content.split('\n') if line.strip()]
+            return items
+        except Exception as e:
+            logger.error(f"AI call failed: {e}")
+            return [error_message]
+
+    # Call 1: Passed Checks (Strengths) ke liye
+    passed_checks_prompt = f"""
+    Analyze the following resume text and list at least 3-4 clear strengths or positive points.
+    - Start each point on a new line.
+    - Do not add any other text or explanation.
+    Examples of strengths:
+    - Contact information is present and well-formatted.
+    - The resume uses standard, professional sections like Experience and Education.
+    - The layout is clean and easy to read.
+    - The summary statement is concise.
+    Resume Text:
     ---
-    {text[:7000]}
+    {text[:4000]}
     ---
     """
-    try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo", # <-- MODEL KA NAAM THEEK KAR DIYA GAYA HAI
-            messages=[{"role": "system", "content": "You are a helpful ATS reviewer responding in perfect JSON."}, {"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
-        )
-        report_data = json.loads(response.choices[0].message.content)
-        
-        passed_checks = report_data.get("passed_checks", ["✅ AI check: Basic structure is okay."])
-        issues_to_fix = report_data.get("issues_to_fix", ["❌ AI check: Review summary for impact."])
+    passed_checks = call_ai_for_task(passed_checks_prompt, "Could not analyze strengths.")
 
-        score = max(40, 100 - (len(issues_to_fix) * 10))
-        
-        return {
-            "score": score,
-            "passed_checks": passed_checks,
-            "issues_to_fix": issues_to_fix
-        }
+    # Call 2: Issues to Fix (Content ki Galtiyan) ke liye
+    issues_to_fix_prompt = f"""
+    Analyze the EXISTING text of the following resume and list 3-4 specific issues that need fixing.
+    - Focus ONLY on problems within the written text like grammar, passive voice, or lack of metrics.
+    - Do NOT suggest adding new sections.
+    - Start each issue on a new line.
+    Examples of issues:
+    - The work experience bullet points lack quantifiable results (e.g., numbers, percentages).
+    - Some sentences use passive voice like "Was responsible for...". They should start with action verbs.
+    - The summary could be more impactful and tailored to a specific role.
+    Resume Text:
+    ---
+    {text[:4000]}
+    ---
+    """
+    issues_to_fix = call_ai_for_task(issues_to_fix_prompt, "Could not analyze content issues.")
 
-    except Exception as e:
-        logger.error(f"[ERROR in generate_stable_ats_report]: {e}")
-        return {
-            "score": 0,
-            "passed_checks": [],
-            "issues_to_fix": ["❌ AI analysis failed due to a server error."]
-        }
+    # Call 3: Missing Sections (Jo Sections Maujood Nahi Hain) ke liye
+    present_sections = [key for key, value in extracted_data.items() if value]
+    missing_sections_prompt = f"""
+    The following sections are already present in a resume: {present_sections}.
+    Based on the resume text below, what 1-2 important sections are missing that would add value? (e.g., Projects, Certifications, Awards, Volunteer Experience).
+    - List only the names of the missing sections.
+    - Start each section name on a new line.
+    - If no important sections are missing, return 'No critical sections are missing'.
+    Resume Text:
+    ---
+    {text[:4000]}
+    ---
+    """
+    missing_sections = call_ai_for_task(missing_sections_prompt, "Could not check for missing sections.")
+    
+    # Final response tayyar karein
+    final_report = {
+        "passed_checks": [f"✅ {item}" for item in passed_checks],
+        "issues_to_fix": [f"❌ {item}" for item in issues_to_fix],
+        "missing_sections": missing_sections # Isko alag se bhejenge
+    }
+
+    # Score calculate karein
+    score = max(40, 100 - (len(issues_to_fix) * 10))
+    final_report["score"] = score
+    
+    return final_report
 
 # REPLACE this function in resume_ai_analyzer.py
 def fix_resume_issue(issue_text, extracted_data):
