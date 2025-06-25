@@ -962,26 +962,33 @@ def extract_resume_sections_safely(text):
 # REPLACE the existing generate_stable_ats_report function with this one.
 
 def generate_stable_ats_report(text, extracted_data):
-    logger.info("Generating FINAL v9 ATS report with Stricter HR Persona...")
+    logger.info("Generating FINAL v10 ATS report with Balanced Review...")
     if not client: 
         return {"error": "OpenAI client not initialized."}
     
-    # --- UPDATED: Stricter, more detailed prompt for deeper analysis ---
+    # --- THIS IS THE FIX ---
+    # The prompt now explicitly asks the AI to find positive points and never leave the list empty.
     prompt = f"""
-    You are an extremely strict and experienced HR Manager from a top Indian MNC. Your task is to provide a brutally honest and highly specific ATS review of the following resume.
+    You are a balanced but professional ATS reviewer. Your task is to provide a helpful review, highlighting both strengths and weaknesses.
 
-    **CRITERIA FOR REVIEW (Evaluate ALL points and find at least 4-5 specific issues):**
-    1.  **Contact Information**: Is there a professional email (not 'coolboy@...') AND a 10-digit Indian phone number? Is the City/State present? Missing any of these is an issue.
-    2.  **Quantifiable Achievements (Metrics)**: THIS IS NON-NEGOTIABLE. The 'Work Experience' section MUST contain numbers. Find bullet points that lack metrics and explicitly call them out. Examples of good metrics: "Increased efficiency by 30%", "Managed a budget of ₹2 Lakhs", "Reduced resolution time by 15%", "Led a team of 8".
-    3.  **Action Verbs & Passive Language**: Scan every bullet point in the 'Work Experience' section. Do they start with strong action verbs (e.g., Spearheaded, Orchestrated, Executed, Analyzed, Developed)? Or do they use weak/passive phrases like "Responsible for", "Involved in", "Handled tasks related to"? Flag every instance of passive language.
-    4.  **Summary/Objective Statement**: Is it generic and full of buzzwords ("hard-working, dedicated professional") or is it a powerful, concise summary (2-3 lines) that clearly states years of experience, key skills, and career goals?
-    5.  **Skills Section**: Is it a messy, unorganized "keyword dump"? A good skills section should be categorized (e.g., Technical Skills, Functional Skills, Tools).
-    6.  **Formatting & Consistency**: Are date formats IDENTICAL everywhere? Is there inconsistent use of bolding, italics, or fonts? Is the resume cluttered or hard to read in 10 seconds?
-    7.  **Unnecessary Personal Information**: Does the resume contain a 'Personal Details' section with Date of Birth, Marital Status, Father's Name, or Nationality? These are outdated and should be removed. This is a critical issue to flag.
+    **CRITERIA FOR REVIEW:**
+    1.  **Strengths (Passed Checks):** Actively look for positive aspects. You MUST identify at least 2-3 strengths. Examples include:
+        - "The resume is well-organized into standard sections."
+        - "Contact information (email/phone) is clearly mentioned."
+        - "No major spelling or grammatical errors were found."
+        - "The summary is concise and to the point."
+        - "Uses a clean and professional layout."
+        NEVER leave the 'passed_checks' list empty.
+
+    2.  **Weaknesses (Issues to Fix):** Identify the most critical areas for improvement. Look for:
+        - **Lack of Quantifiable Achievements:** Are there numbers, percentages, or metrics in the work experience?
+        - **Passive Language:** Are bullet points starting with weak phrases like "Responsible for"? They should start with action verbs.
+        - **Generic Skills Section:** Is the skills section just a list of words without context?
+        - **Outdated Information:** Are there personal details like DOB, marital status, etc.?
     
     **INSTRUCTIONS:**
-    - Create a JSON object with "passed_checks" (for good points) and "issues_to_fix" (for problems).
-    - Be very critical. Provide at least 2 "passed_checks" and 4-5 detailed, actionable "issues_to_fix".
+    - Create a JSON object with two keys: "passed_checks" (a list of strings for strengths) and "issues_to_fix" (a list of strings for weaknesses).
+    - Ensure the "passed_checks" list always has at least two items.
     - Start every item with an emoji (✅ for passed, ❌ for issue).
 
     Resume Text to Analyze:
@@ -993,73 +1000,81 @@ def generate_stable_ats_report(text, extracted_data):
     try:
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "system", "content": "You are a very strict but helpful Indian HR Manager responding in perfect JSON."}, {"role": "user", "content": prompt}],
+            messages=[{"role": "system", "content": "You are a helpful and balanced ATS reviewer responding in perfect JSON."}, {"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
         report_data = json.loads(response.choices[0].message.content)
-        passed_checks = report_data.get("passed_checks", [])
+        passed_checks = report_data.get("passed_checks", ["✅ Basic format is acceptable."])
         issues_to_fix = report_data.get("issues_to_fix", [])
 
-        if not issues_to_fix and not passed_checks:
-             issues_to_fix.append("❌ AI could not analyze the resume content properly.")
-            
-        score = max(20, 100 - (len(issues_to_fix) * 12))
+        if not passed_checks:
+             passed_checks.append("✅ Resume has standard sections.")
+
+        score = max(20, 100 - (len(issues_to_fix) * 10))
         
         return {"passed_checks": passed_checks, "issues_to_fix": issues_to_fix, "score": score}
 
     except Exception as e:
         logger.error(f"[ERROR in generate_stable_ats_report]: {e}")
-        return {"score": 0, "passed_checks": [], "issues_to_fix": ["❌ AI analysis failed due to a server error."]}
+        return {"score": 0, "passed_checks": ["✅ Could not perform full analysis, but basic structure is okay."], "issues_to_fix": ["❌ AI analysis failed due to a server error."]}
 
 # REPLACE this function in resume_ai_analyzer.py
-def generate_targeted_fix(suggestion, full_text):
+def fix_resume_issue(issue_text, extracted_data):
     """
-    NEW STABLE VERSION: This function ONLY generates the fixed text for a single issue.
-    It does NOT re-analyze the whole resume.
+    FIXED: This new function takes the entire resume data object for better context,
+    making the AI's job easier and more reliable.
     """
-    if not client: return {"error": "OpenAI API key not set."}
-    logger.info(f"Generating TARGETED fix for suggestion: {suggestion}")
-    
+    if not client: 
+        logger.error("OpenAI client not configured.")
+        return {"error": "OpenAI API key not set."}
+        
+    logger.info(f"Generating fix for issue '{issue_text}' with full data context...")
+
+    # Convert the resume data to a JSON string for the prompt
+    resume_context = json.dumps(extracted_data, indent=2)
+
     prompt = f"""
-    You are an AI resume expert. Your task is to fix ONE specific issue in a resume based on the given suggestion.
+    You are an expert AI resume editor. Your task is to fix a specific issue in the provided resume JSON data.
 
-    SUGGESTION:
-    {suggestion}
+    **Resume Data (JSON format):**
+    ```json
+    {resume_context}
+    ```
 
-    FULL RESUME TEXT (for context):
-    ---
-    {full_text[:8000]}
-    ---
+    **Issue to Fix:**
+    "{issue_text}"
 
-    INSTRUCTIONS:
-    - Focus ONLY on the suggestion. Do not fix anything else.
-    - Based on the suggestion, identify which section of the resume needs to be changed (e.g., "skills", "work_experience", "summary").
-    - Generate the improved content for that section. For example, if the suggestion is about "quantifiable achievements", you MUST add metrics (numbers, percentages) to the bullet points in the 'work_experience' section.
-    
-    Respond with a single JSON object with two keys:
-    1. "section": The lowercase, snake_case name of the section you fixed (e.g., "skills", "work_experience").
-    2. "fixedContent": The new, improved text or list for that section, matching the original data structure.
-    
-    Example Response: {{"section": "skills", "fixedContent": ["Python", "JavaScript", "Project Management", "Team Leadership"]}}
+    **Instructions:**
+    1.  Analyze the 'Issue to Fix' and locate the relevant section within the 'Resume Data'.
+    2.  Modify ONLY the content of that specific section to resolve the issue. For example:
+        - If the issue is "lacks quantifiable_achievements", add numbers and percentages to the `details` of the `work_experience` section.
+        - If the issue is "action_verbs_passive_language", rewrite the sentences in `work_experience` to start with strong verbs.
+        - If the issue is "contact_information", ensure the `contact` string contains a clear email and phone number.
+    3.  Return a JSON object containing ONLY the name of the section you changed and its new, updated content.
+
+    **Required Output Format (JSON):**
+    {{"section": "key_of_the_changed_section", "fixedContent": "the_new_content_for_that_section"}}
+
+    Example Output:
+    {{"section": "work_experience", "fixedContent": [{{"title": "Tele Caller", "company": "Paisely Advisory Pvt, Ltd", "duration": "Having 6 Month Experience", "details": ["Contacted over 100 potential customers daily to promote products.", "Achieved a 15% higher customer satisfaction rate based on feedback.", "Maintained detailed records of over 2000 calls and interactions." ]}}]}}
     """
+
     try:
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4o-mini", # Using a slightly more advanced model for this complex task
             messages=[{"role": "system", "content": "You are a resume fixing assistant that responds in perfect JSON."}, {"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
         fix_result = json.loads(response.choices[0].message.content)
-        
-        # Ensure the response has the correct format, otherwise, it's an error
+
         if "section" not in fix_result or "fixedContent" not in fix_result:
-            logger.error(f"AI response was malformed: {fix_result}")
-            raise ValueError("AI response did not contain 'section' or 'fixedContent'.")
-            
+            raise ValueError("AI response was malformed.")
+        
         return fix_result
     except Exception as e:
-        logger.error(f"[ERROR in generate_targeted_fix]: {e}")
-        # Return a structured error that the frontend can understand
-        return {"error": "AI failed to generate the targeted fix.", "details": str(e)}
+        logger.error(f"[ERROR in fix_resume_issue]: {e}")
+        return {"error": "AI failed to generate a fix for this issue."}
+
 
 def calculate_new_score(current_score, issue_text):
     """

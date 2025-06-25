@@ -11,7 +11,7 @@ from resume_ai_analyzer import (
     # New and Corrected Functions for the Stable Strategy
     extract_resume_sections_safely,
     generate_stable_ats_report,
-    generate_targeted_fix,
+    fix_resume_issue,
     calculate_new_score,
     get_field_suggestions,
 
