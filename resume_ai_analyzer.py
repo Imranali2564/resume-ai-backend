@@ -961,31 +961,26 @@ def extract_resume_sections_safely(text):
 # REPLACE the existing generate_stable_ats_report function with this one.
 
 def generate_stable_ats_report(text, extracted_data):
-    logger.info("Generating FINAL v11 ATS report with Granular Details...")
+    logger.info("Generating FINAL v12 ATS report with Guaranteed Issues...")
     if not client: 
         return {"error": "OpenAI client not initialized."}
     
-    # Check for missing sections
-    present_sections = [key for key, value in extracted_data.items() if value]
-    all_possible_sections = ["summary", "work_experience", "education", "skills", "projects", "certifications", "languages"]
-    missing_sections = [section.replace('_', ' ').title() for section in all_possible_sections if section not in present_sections]
-
     prompt = f"""
-    You are a highly detailed, modular ATS analyzer. Your task is to provide a granular review of the resume.
+    You are a helpful but thorough ATS resume reviewer. Your goal is to help the user improve their resume.
 
     **Instructions:**
-    1.  **Passed Checks:** Identify at least 2-3 strengths of the resume. Examples: "Resume has a clean format", "Contact information is present".
-    2.  **Critical Issues:** Find major problems that would cause an ATS to reject the resume. Examples: "Work experience lacks quantifiable achievements (numbers/percentages)", "Bullet points use passive language like 'Responsible for'".
-    3.  **Spelling & Grammar:** Scan the entire text for any spelling or grammar mistakes. If none are found, state "No major spelling or grammatical errors were found."
-    4.  **Formatting & Style:** Comment on the formatting. Is it consistent? Is the summary effective or too generic?
+    1.  **Find Strengths (Passed Checks):** Identify 2-3 positive aspects of the resume. Examples: "Contact information is clear," "Layout is clean," "Uses standard section headings."
+    2.  **Find Areas for Improvement (Issues to Fix):** You MUST find at least 3-4 specific, actionable points for improvement, even if the resume is good. Look for things like:
+        -   **Quantifiable Achievements:** "Work experience is good, but could be stronger with metrics. For example, instead of 'Contacted customers', write 'Contacted 100+ customers daily'."
+        -   **Impactful Language:** "The summary is okay, but could be more impactful by mentioning a key skill."
+        -   **Missing Sections:** "Consider adding a 'Projects' section to showcase practical skills." (Check if sections like Projects, Certifications, or a detailed Skills breakdown are missing).
+        -   **Spelling/Grammar:** Briefly mention if there are any errors. If not, don't mention it in the issues list.
     
     **Required Output Format (JSON Object):**
-    Return a single JSON object with the following keys. Do not add any keys not listed here.
+    Return a single JSON object with two keys: "passed_checks" and "issues_to_fix". Both must be lists of strings.
     {{
-      "passed_checks": ["List of strengths"],
-      "critical_issues": ["List of major problems"],
-      "spelling_grammar": "A sentence about spelling and grammar status.",
-      "formatting_style": "A sentence about the resume's style and summary."
+      "passed_checks": ["✅ Strength 1...", "✅ Strength 2..."],
+      "issues_to_fix": ["❌ Improvement area 1...", "❌ Improvement area 2...", "❌ Improvement area 3..."]
     }}
     
     **Resume Text to Analyze:**
@@ -995,32 +990,29 @@ def generate_stable_ats_report(text, extracted_data):
     """
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "system", "content": "You are a detailed ATS reviewer responding in perfect JSON."}, {"role": "user", "content": prompt}],
+            model="gpt-3.5-turbo", # <-- MODEL KA NAAM THEEK KAR DIYA GAYA HAI
+            messages=[{"role": "system", "content": "You are a helpful ATS reviewer responding in perfect JSON."}, {"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
         report_data = json.loads(response.choices[0].message.content)
         
-        # Manually add the missing sections to the critical issues
-        if missing_sections:
-            if "critical_issues" not in report_data or not report_data["critical_issues"]:
-                report_data["critical_issues"] = []
-            report_data["critical_issues"].append(f"Important sections are missing: {', '.join(missing_sections)}")
+        passed_checks = report_data.get("passed_checks", ["✅ AI check: Basic structure is okay."])
+        issues_to_fix = report_data.get("issues_to_fix", ["❌ AI check: Review summary for impact."])
 
-        # Calculate score based on critical issues
-        score = max(30, 100 - (len(report_data.get("critical_issues", [])) * 15))
-        report_data["score"] = score
+        score = max(40, 100 - (len(issues_to_fix) * 10))
         
-        return report_data
+        return {
+            "score": score,
+            "passed_checks": passed_checks,
+            "issues_to_fix": issues_to_fix
+        }
 
     except Exception as e:
         logger.error(f"[ERROR in generate_stable_ats_report]: {e}")
         return {
+            "score": 0,
             "passed_checks": [],
-            "critical_issues": ["AI analysis failed due to a server error."],
-            "spelling_grammar": "Could not be checked.",
-            "formatting_style": "Could not be checked.",
-            "score": 0
+            "issues_to_fix": ["❌ AI analysis failed due to a server error."]
         }
 
 # REPLACE this function in resume_ai_analyzer.py
