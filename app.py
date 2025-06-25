@@ -1151,52 +1151,37 @@ def analyze_resume_for_frontend():
 from docx import Document
 import html2text
 
-@app.route('/api/v1/fix-issue', methods=['POST'])
-def fix_issue_for_frontend():
+@app.route('/api/v1/fix-issue-v2', methods=['POST'])
+def handle_fix_issue_v2():
     try:
         if 'payload' not in request.form:
-            logger.error("Payload missing in /api/v1/fix-issue request.")
+            logger.error("Payload missing in request for /api/v1/fix-issue-v2")
             return jsonify({"success": False, "error": "Missing payload"}), 400
 
         payload = json.loads(request.form.get('payload'))
         issue_text = payload.get('issue_text')
-        current_data = payload.get('current_data')
-        # <<< STEP 1: फ्रंटएंड से वर्तमान स्कोर प्राप्त करें
-        current_score = payload.get('current_score') 
+        extracted_data = payload.get('extracted_data')
+        current_score = payload.get('current_score', 60) # Get current score, with a default
 
-        if not issue_text or not current_data or current_score is None:
-            logger.error("Missing 'issue_text', 'current_data', or 'current_score' in payload.")
+        if not issue_text or not extracted_data:
+            logger.error("Missing 'issue_text' or 'extracted_data' in payload.")
             return jsonify({"success": False, "error": "Missing required data in payload"}), 400
 
-        full_text_for_context = "\n\n".join(
-            f"{key.replace('_', ' ').upper()}\n{str(value)}"
-            for key, value in current_data.items() if value
-        )
-
-        logger.info(f"Calling generate_targeted_fix for issue: {issue_text[:80]}...")
-        fix_result = generate_targeted_fix(issue_text, full_text_for_context)
+        # Naye, reliable function ko call karein
+        logger.info(f"Calling fix_resume_issue for: {issue_text[:80]}")
+        # Make sure you have imported fix_resume_issue at the top of app.py
+        fix_result = fix_resume_issue(issue_text, extracted_data) 
 
         if 'error' in fix_result:
-            logger.error(f"generate_targeted_fix failed: {fix_result['error']}")
+            logger.error(f"fix_resume_issue function failed: {fix_result['error']}")
             return jsonify({"success": False, "error": fix_result['error']}), 500
-
-        section_to_fix_raw = fix_result.get('section')
-        fixed_content = fix_result.get('fixedContent')
         
-        if section_to_fix_raw:
-            normalized_section_key = section_to_fix_raw.strip().lower().replace(' ', '_').replace('-', '_')
-            logger.info(f"AI identified section '{section_to_fix_raw}'. Applying fix to normalized key: '{normalized_section_key}'")
-            current_data[normalized_section_key] = fixed_content
-        else:
-            logger.warning("AI did not return a section to fix.")
-            return jsonify({"success": False, "error": "AI could not determine which section to fix."}), 500
+        # Ek simple score badhane ka logic
+        new_score = min(100, int(current_score) + 8)
 
-        # <<< STEP 2: नए स्कोर की गणना करें
-        new_score = calculate_new_score(current_score, issue_text)
-
-        # <<< STEP 3: अंतिम प्रतिक्रिया में नया स्कोर और अपडेटेड डेटा शामिल करें
+        # Frontend ke liye response tayyar karein
         response_data = {
-            "updated_resume_data": current_data,
+            "fix": fix_result,
             "new_score": new_score
         }
 
@@ -1204,7 +1189,7 @@ def fix_issue_for_frontend():
 
     except Exception as e:
         import traceback
-        logger.error(f"Critical error in /api/v1/fix-issue: {traceback.format_exc()}")
+        logger.error(f"Critical error in /api/v1/fix-issue-v2: {traceback.format_exc()}")
         return jsonify({"success": False, "error": "An unexpected server error occurred."}), 500
 
 @app.route('/api/v1/generate-docx', methods=['POST'])

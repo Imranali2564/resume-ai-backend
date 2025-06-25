@@ -824,28 +824,26 @@ def extract_resume_sections_safely(text):
     # --- THIS IS THE FIX ---
     # The prompt for "skills" is now simplified to ALWAYS be a list of strings.
     # This ensures consistency for the frontend.
-    prompt = f"""
-    You are a world-class resume parsing system. The following text was extracted from a resume, and might be jumbled.
+     prompt = f"""
+    You are a world-class resume parsing system. The following text may be jumbled.
     Your task is to intelligently parse this text and reconstruct a perfectly structured JSON object.
 
     **Crucial Instructions:**
-    1.  **Associate Details:** You MUST correctly associate all details with their parent items, even if they appear far away in the raw text.
-    2.  **Extract Everything:** Do not miss any section mentioned in the resume.
-    3.  **Clean Output:** If a section is not found, its value must be null. Do not invent information.
+    1.  **Associate Details:** Correctly associate all details with their parent items.
+    2.  **Map Certifications:** Look for headings like "Certifications", "Additional Courses", "Training", "Licenses", or "Professional Development" and map ALL of them to the `certifications` key. This is very important.
+    3.  **Clean Output:** If a section is not found, its value must be null.
 
-    **JSON STRUCTURE REQUIRED (Use these exact keys):**
+    **JSON STRUCTURE REQUIRED:**
     - "name": string
     - "job_title": string
-    - "contact": string (Combine email, phone, address, links into one string)
+    - "contact": string
     - "summary": string
     - "work_experience": list of objects `[{{"title": string, "company": string, "duration": string, "details": list of strings}}]`
     - "education": list of objects `[{{"degree": string, "school": string, "duration": string, "details": list of strings}}]`
-    - "skills": list of strings  <-- THIS IS THE FIX. It is no longer an object, just a simple list.
+    - "skills": list of strings
     - "languages": list of strings
-    - "certifications": list of strings (Look for headings like "Certifications", "Additional Courses", "Training")
-    - "awards": list of strings
+    - "certifications": list of strings  <-- All course-related info should come here.
     - "projects": list of objects `[{{"title": string, "description": string, "details": list of strings}}]`
-    - "volunteer_experience": string or list of strings
 
     **Resume Text to Parse:**
     ---
@@ -962,61 +960,67 @@ def extract_resume_sections_safely(text):
 # REPLACE the existing generate_stable_ats_report function with this one.
 
 def generate_stable_ats_report(text, extracted_data):
-    logger.info("Generating FINAL v10 ATS report with Balanced Review...")
+    logger.info("Generating FINAL v11 ATS report with Granular Details...")
     if not client: 
         return {"error": "OpenAI client not initialized."}
     
-    # --- THIS IS THE FIX ---
-    # The prompt now explicitly asks the AI to find positive points and never leave the list empty.
+    # Check for missing sections
+    present_sections = [key for key, value in extracted_data.items() if value]
+    all_possible_sections = ["summary", "work_experience", "education", "skills", "projects", "certifications", "languages"]
+    missing_sections = [section.replace('_', ' ').title() for section in all_possible_sections if section not in present_sections]
+
     prompt = f"""
-    You are a balanced but professional ATS reviewer. Your task is to provide a helpful review, highlighting both strengths and weaknesses.
+    You are a highly detailed, modular ATS analyzer. Your task is to provide a granular review of the resume.
 
-    **CRITERIA FOR REVIEW:**
-    1.  **Strengths (Passed Checks):** Actively look for positive aspects. You MUST identify at least 2-3 strengths. Examples include:
-        - "The resume is well-organized into standard sections."
-        - "Contact information (email/phone) is clearly mentioned."
-        - "No major spelling or grammatical errors were found."
-        - "The summary is concise and to the point."
-        - "Uses a clean and professional layout."
-        NEVER leave the 'passed_checks' list empty.
-
-    2.  **Weaknesses (Issues to Fix):** Identify the most critical areas for improvement. Look for:
-        - **Lack of Quantifiable Achievements:** Are there numbers, percentages, or metrics in the work experience?
-        - **Passive Language:** Are bullet points starting with weak phrases like "Responsible for"? They should start with action verbs.
-        - **Generic Skills Section:** Is the skills section just a list of words without context?
-        - **Outdated Information:** Are there personal details like DOB, marital status, etc.?
+    **Instructions:**
+    1.  **Passed Checks:** Identify at least 2-3 strengths of the resume. Examples: "Resume has a clean format", "Contact information is present".
+    2.  **Critical Issues:** Find major problems that would cause an ATS to reject the resume. Examples: "Work experience lacks quantifiable achievements (numbers/percentages)", "Bullet points use passive language like 'Responsible for'".
+    3.  **Spelling & Grammar:** Scan the entire text for any spelling or grammar mistakes. If none are found, state "No major spelling or grammatical errors were found."
+    4.  **Formatting & Style:** Comment on the formatting. Is it consistent? Is the summary effective or too generic?
     
-    **INSTRUCTIONS:**
-    - Create a JSON object with two keys: "passed_checks" (a list of strings for strengths) and "issues_to_fix" (a list of strings for weaknesses).
-    - Ensure the "passed_checks" list always has at least two items.
-    - Start every item with an emoji (✅ for passed, ❌ for issue).
-
-    Resume Text to Analyze:
+    **Required Output Format (JSON Object):**
+    Return a single JSON object with the following keys. Do not add any keys not listed here.
+    {{
+      "passed_checks": ["List of strengths"],
+      "critical_issues": ["List of major problems"],
+      "spelling_grammar": "A sentence about spelling and grammar status.",
+      "formatting_style": "A sentence about the resume's style and summary."
+    }}
+    
+    **Resume Text to Analyze:**
     ---
     {text[:7000]}
     ---
-    Return ONLY the raw JSON object.
     """
     try:
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "system", "content": "You are a helpful and balanced ATS reviewer responding in perfect JSON."}, {"role": "user", "content": prompt}],
+            model="gpt-4o-mini",
+            messages=[{"role": "system", "content": "You are a detailed ATS reviewer responding in perfect JSON."}, {"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
         report_data = json.loads(response.choices[0].message.content)
-        passed_checks = report_data.get("passed_checks", ["✅ Basic format is acceptable."])
-        issues_to_fix = report_data.get("issues_to_fix", [])
-
-        if not passed_checks:
-             passed_checks.append("✅ Resume has standard sections.")
-
-        score = max(20, 100 - (len(issues_to_fix) * 10))
         
-        return {"passed_checks": passed_checks, "issues_to_fix": issues_to_fix, "score": score}
+        # Manually add the missing sections to the critical issues
+        if missing_sections:
+            if "critical_issues" not in report_data or not report_data["critical_issues"]:
+                report_data["critical_issues"] = []
+            report_data["critical_issues"].append(f"Important sections are missing: {', '.join(missing_sections)}")
+
+        # Calculate score based on critical issues
+        score = max(30, 100 - (len(report_data.get("critical_issues", [])) * 15))
+        report_data["score"] = score
+        
+        return report_data
 
     except Exception as e:
         logger.error(f"[ERROR in generate_stable_ats_report]: {e}")
-        return {"score": 0, "passed_checks": ["✅ Could not perform full analysis, but basic structure is okay."], "issues_to_fix": ["❌ AI analysis failed due to a server error."]}
+        return {
+            "passed_checks": [],
+            "critical_issues": ["AI analysis failed due to a server error."],
+            "spelling_grammar": "Could not be checked.",
+            "formatting_style": "Could not be checked.",
+            "score": 0
+        }
 
 # REPLACE this function in resume_ai_analyzer.py
 def fix_resume_issue(issue_text, extracted_data):
