@@ -961,30 +961,27 @@ def extract_resume_sections_safely(text):
 # FILE: resume_ai_analyzer.py
 # REPLACE the existing generate_stable_ats_report function with this one.
 
+# REPLACE this function in resume_ai_analyzer.py
 def generate_stable_ats_report(text, extracted_data):
-    logger.info("Generating FINAL v5 ATS report with robust parsing...")
+    logger.info("Generating FINAL v7 ATS report with deep analysis prompt...")
     if not client: 
         return {"error": "OpenAI client not initialized."}
     
-    found_sections_summary = "For context, the following sections were found in the resume: " + ", ".join([key for key, value in extracted_data.items() if value])
-    
+    # --- UPDATED: More detailed and explicit prompt for deeper analysis ---
     prompt = f"""
-    You are a world-class, strict but fair ATS reviewer. Analyze the resume text provided. 
-    {found_sections_summary}.
-    Use this information to avoid making mistakes, like saying a section is missing when it was actually found.
+    You are a world-class, strict but fair ATS reviewer. Analyze the resume text provided.
+    Your task is to provide specific, actionable feedback.
 
-    CRITERIA TO CHECK:
-    1.  **Contact Info**: Are email AND phone number present?
-    2.  **Key Sections**: Are 'work_experience', 'education', AND 'skills' all present and filled?
-    3.  **Quantifiable Achievements**: Does the 'work_experience' section use strong metrics (e.g., %, $, improved by X)?
-    4.  **Clarity & Formatting**: Is the resume easy to read with consistent formatting?
-    5.  **Professional Summary**: Is the 'summary' section present and impactful?
+    **CRITERIA TO CHECK (Check all of them and provide feedback on at least 2-3 issues):**
+    1.  **Contact Info**: Are professional email AND phone number easily found?
+    2.  **Quantifiable Achievements**: Does the 'work_experience' section use strong metrics (e.g., "increased by 25%", "managed 5 projects", "reduced costs by $10k")? This is very important.
+    3.  **Clarity & Conciseness**: Is the language professional and concise? Or is it too wordy with long paragraphs instead of sharp bullet points? Flag any unnecessarily long sentences or sections.
+    4.  **Action Verbs**: Do the bullet points in the experience section start with strong action verbs (e.g., "Managed", "Developed", "Led", "Streamlined")? Or do they use passive language like "Responsible for..."?
+    5.  **Formatting Consistency**: Is the formatting consistent (e.g., same date format everywhere, consistent use of bolding)?
     
-    INSTRUCTIONS:
-    - Create a JSON object with two keys: "passed_checks" (a list of strings for positive points) and "issues_to_fix" (a list of strings for negative points).
-    - For the 5 main criteria, create ONE "passed" or "issue" statement for each.
-    - **Crucially, find AT LEAST ONE "issue_to_fix"**. This issue can be a minor, optional suggestion for improvement.
-    - Never give a perfect report with zero issues.
+    **INSTRUCTIONS:**
+    - Create a JSON object with two keys: "passed_checks" (a list of strings for positive points) and "issues_to_fix" (a list of strings for negative points or areas for improvement).
+    - Provide at least 2-3 "passed_checks" and 2-3 "issues_to_fix". Be critical and find real issues.
     - Start every item with an emoji (✅ for passed, ❌ for issue).
 
     Resume Text to Analyze:
@@ -995,39 +992,33 @@ def generate_stable_ats_report(text, extracted_data):
     """
     try:
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo", # Or "gpt-4o"
-            messages=[{"role": "system", "content": "You are a helpful and nuanced ATS reviewer responding in perfect JSON."}, {"role": "user", "content": prompt}],
+            model="gpt-3.5-turbo",
+            messages=[{"role": "system", "content": "You are a helpful and critical ATS reviewer responding in perfect JSON."}, {"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
         content = response.choices[0].message.content
         
-        # --- NEW ROBUST PARSING LOGIC ---
         passed_checks = []
         issues_to_fix = []
-
         try:
-            # First, try to parse it as perfect JSON
             report_data = json.loads(content)
             passed_checks = report_data.get("passed_checks", [])
             issues_to_fix = report_data.get("issues_to_fix", [])
         except (json.JSONDecodeError, AttributeError):
-            # If AI fails to return JSON and returns a string instead, parse the string line by line
             logger.warning("AI did not return valid JSON for ATS report. Parsing string response.")
             lines = content.split('\n')
             for line in lines:
                 cleaned_line = line.strip()
-                if cleaned_line.startswith('✅') or "passed:" in cleaned_line.lower():
+                if cleaned_line.startswith('✅'):
                     passed_checks.append(cleaned_line)
-                elif cleaned_line.startswith('❌') or "issue:" in cleaned_line.lower():
+                elif cleaned_line.startswith('❌'):
                     issues_to_fix.append(cleaned_line)
 
-        # Ensure there's always at least one issue, as per prompt instructions
-        if not issues_to_fix:
-            issues_to_fix.append("❌ Minor Suggestion: Consider adding a 'Projects' section to further highlight your skills.")
+        if not issues_to_fix and not passed_checks:
+             issues_to_fix.append("❌ AI could not analyze the resume content properly. Please check the resume format.")
             
         score = max(30, 100 - (len(issues_to_fix) * 8))
         
-        # Return a guaranteed correct structure
         return {"passed_checks": passed_checks, "issues_to_fix": issues_to_fix, "score": score}
 
     except Exception as e:
@@ -1101,64 +1092,35 @@ def calculate_new_score(current_score, issue_text):
     logger.info(f"Score incremented by {increment}. New score: {new_score}")
     return new_score
 
-# resume_ai_analyzer.py
-
-# ... (बाकी सभी फंक्शन वैसे ही रहेंगे)
-
-def get_field_suggestions(extracted_data):
+# REPLACE this function in resume_ai_analyzer.py
+def get_field_suggestions(extracted_data, resume_text):
     """
-    Analyzes extracted data to identify the professional field and suggest missing relevant sections.
+    Analyzes extracted data and FULL TEXT to identify the professional field and suggest missing sections.
     """
     if not client:
         return {"field": "Unknown", "suggestions": []}
 
-    # A dictionary mapping fields to their key sections based on your DOCX file
     field_specific_sections = {
-        "Technology / IT": {
-            "required": ["technical_stack", "programming_languages", "github_projects"],
-            "optional": ["devops_tools", "system_design_experience", "cloud_certifications"]
-        },
-        "Design / UI-UX": {
-            "required": ["portfolio_link", "design_tools"],
-            "optional": ["design_principles", "user_research_projects"]
-        },
-        "Legal / Law": {
-            "required": ["bar_membership", "legal_specializations"],
-            "optional": ["case_portfolio", "legal_publications"]
-        },
-        "Healthcare / Medical": {
-            "required": ["medical_license_number", "certifications"],
-            "optional": ["clinical_rotations", "research_experience", "procedures_handled"]
-        },
-        "Business / Marketing": {
-            "required": ["kpis_achieved", "campaigns_handled", "marketing_tools"],
-            "optional": ["budget_handled", "seo_sem_metrics"]
-        },
-        "Academia / Education": {
-            "required": ["publications", "research_interests", "teaching_experience"],
-            "optional": ["thesis_dissertation_title", "conferences_attended"]
-        },
-        # Add other fields here from your docx
+        "Technology / IT": {"required": ["technical_stack", "programming_languages", "github_projects"], "optional": ["devops_tools", "system_design_experience"]},
+        "Design / UI-UX": {"required": ["portfolio_link", "design_tools"], "optional": ["design_principles", "user_research_projects"]},
+        "Legal / Law": {"required": ["bar_membership", "legal_specializations"], "optional": ["case_portfolio", "legal_publications"]},
+        "Healthcare / Medical": {"required": ["medical_license_number", "certifications"], "optional": ["clinical_rotations", "research_experience"]},
+        "Business / Marketing": {"required": ["kpis_achieved", "campaigns_handled", "marketing_tools"], "optional": ["budget_handled", "seo_sem_metrics"]},
+        "Academia / Education": {"required": ["publications", "research_interests", "teaching_experience"], "optional": ["thesis_dissertation_title", "conferences_attended"]},
     }
 
-    # Step 1: Ask AI to identify the field
     try:
-        # Create a text summary of the resume for context
-        resume_summary_text = f"""
-        Title: {extracted_data.get('job_title', 'N/A')}
-        Summary: {extracted_data.get('summary', 'N/A')}
-        Skills: {', '.join(extracted_data.get('skills', []))}
-        Experience: {' '.join([exp.get('title', '') for exp in extracted_data.get('work_experience', [])])}
-        """
-
+        # --- UPDATED: Give the AI the FULL resume text for better context ---
         prompt_field_detection = f"""
-        Based on the following resume summary, identify the single most likely professional field from this list:
+        Based on the entire resume text below, identify the single most likely professional field from this list:
         {list(field_specific_sections.keys())}
+        
+        If no specific field matches, respond with "General".
         Respond with a single JSON object with one key, "field". Example: {{"field": "Technology / IT"}}
         
-        Resume Summary:
+        Resume Text:
         ---
-        {resume_summary_text}
+        {resume_text[:4000]} 
         ---
         """
         response = client.chat.completions.create(
@@ -1172,18 +1134,17 @@ def get_field_suggestions(extracted_data):
         logger.error(f"Could not detect resume field: {e}")
         detected_field = "General"
 
-    # Step 2: Find missing sections for the detected field
     suggestions = []
     if detected_field in field_specific_sections:
         field_rules = field_specific_sections[detected_field]
-        existing_keys = extracted_data.keys()
+        # Use a case-insensitive check for existing keys
+        existing_keys = [key.lower() for key, value in extracted_data.items() if value]
 
         for section in field_rules.get("required", []):
-            if section not in existing_keys or not extracted_data.get(section):
+            if section.lower() not in existing_keys:
                 suggestions.append({"type": "Required", "section": section.replace('_', ' ').title()})
-
         for section in field_rules.get("optional", []):
-             if section not in existing_keys or not extracted_data.get(section):
+             if section.lower() not in existing_keys:
                 suggestions.append({"type": "Optional", "section": section.replace('_', ' ').title()})
 
     return {"field": detected_field, "suggestions": suggestions}
