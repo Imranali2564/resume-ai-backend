@@ -1120,7 +1120,7 @@ def analyze_resume_for_frontend():
         ats_result = generate_stable_ats_report(text, extracted_sections)
         
         # Step 3: Get field-aware suggestions
-        field_info = get_field_suggestions(extracted_sections)
+        field_info = get_field_suggestions(extracted_sections, text)
 
         # Format issues with unique IDs
         issues_to_fix = []
