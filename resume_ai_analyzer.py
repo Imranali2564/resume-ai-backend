@@ -963,26 +963,28 @@ def extract_resume_sections_safely(text):
 
 # REPLACE this function in resume_ai_analyzer.py
 def generate_stable_ats_report(text, extracted_data):
-    logger.info("Generating FINAL v7 ATS report with deep analysis prompt...")
+    logger.info("Generating FINAL v8 ATS report with deep analysis prompt...")
     if not client: 
         return {"error": "OpenAI client not initialized."}
     
     # --- UPDATED: More detailed and explicit prompt for deeper analysis ---
     prompt = f"""
-    You are a world-class, strict but fair ATS reviewer. Analyze the resume text provided.
-    Your task is to provide specific, actionable feedback.
+    You are a world-class, strict but fair ATS (Applicant Tracking System) reviewer from India, analyzing a resume for a professional context. Your task is to provide specific, actionable feedback in English.
 
-    **CRITERIA TO CHECK (Check all of them and provide feedback on at least 2-3 issues):**
-    1.  **Contact Info**: Are professional email AND phone number easily found?
-    2.  **Quantifiable Achievements**: Does the 'work_experience' section use strong metrics (e.g., "increased by 25%", "managed 5 projects", "reduced costs by $10k")? This is very important.
-    3.  **Clarity & Conciseness**: Is the language professional and concise? Or is it too wordy with long paragraphs instead of sharp bullet points? Flag any unnecessarily long sentences or sections.
-    4.  **Action Verbs**: Do the bullet points in the experience section start with strong action verbs (e.g., "Managed", "Developed", "Led", "Streamlined")? Or do they use passive language like "Responsible for..."?
-    5.  **Formatting Consistency**: Is the formatting consistent (e.g., same date format everywhere, consistent use of bolding)?
+    **CRITERIA TO CHECK (Critically evaluate ALL of them and provide feedback on at least 3-4 issues):**
+    1.  **Contact Info**: Are a professional email AND a valid 10-digit phone number easily found? Is the location mentioned (e.g., City, State)?
+    2.  **Quantifiable Achievements (Metrics)**: This is CRITICAL. Does the 'work_experience' or 'projects' section use strong metrics? Look for numbers, percentages, or currency amounts (e.g., "increased sales by 25%", "managed a team of 5 people", "reduced costs by ₹50,000", "handled over 100 customer calls daily"). If missing, this is a major issue.
+    3.  **Clarity & Conciseness**: Is the language professional? Are there long, wordy paragraphs instead of sharp, concise bullet points? Flag any unnecessarily long sentences (over 20-25 words).
+    4.  **Action Verbs**: Do the bullet points in the experience section start with strong action verbs (e.g., "Managed", "Developed", "Led", "Streamlined", "Engineered", "Coordinated")? Or do they use passive language like "Was responsible for..." or "Duties included..."?
+    5.  **Formatting Consistency**: Is the formatting consistent? Check for a consistent date format (e.g., "May 2023 - Present" everywhere, not a mix of "05/23" and "May 2023"). Is the use of bolding and italics consistent?
+    6.  **Summary/Objective**: Is there a summary or objective? Is it generic ("Seeking a challenging role...") or is it tailored and impactful, highlighting key skills and years of experience?
+    7.  **Skills Section**: Is the skills section just a long list of words, or is it organized (e.g., Technical Skills, Soft Skills)? Is it easy to read?
     
     **INSTRUCTIONS:**
     - Create a JSON object with two keys: "passed_checks" (a list of strings for positive points) and "issues_to_fix" (a list of strings for negative points or areas for improvement).
-    - Provide at least 2-3 "passed_checks" and 2-3 "issues_to_fix". Be critical and find real issues.
-    - Start every item with an emoji (✅ for passed, ❌ for issue).
+    - Provide at least 2 "passed_checks" and 3-4 "issues_to_fix". Be very critical and find real, specific issues.
+    - Start every item with a relevant emoji (✅ for passed, ❌ for issue).
+    - Do not invent information. Base your feedback strictly on the provided text.
 
     Resume Text to Analyze:
     ---
@@ -993,7 +995,7 @@ def generate_stable_ats_report(text, extracted_data):
     try:
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "system", "content": "You are a helpful and critical ATS reviewer responding in perfect JSON."}, {"role": "user", "content": prompt}],
+            messages=[{"role": "system", "content": "You are a helpful and critical Indian ATS reviewer responding in perfect JSON."}, {"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
         content = response.choices[0].message.content
@@ -1017,7 +1019,7 @@ def generate_stable_ats_report(text, extracted_data):
         if not issues_to_fix and not passed_checks:
              issues_to_fix.append("❌ AI could not analyze the resume content properly. Please check the resume format.")
             
-        score = max(30, 100 - (len(issues_to_fix) * 8))
+        score = max(30, 100 - (len(issues_to_fix) * 10)) # Increased penalty per issue
         
         return {"passed_checks": passed_checks, "issues_to_fix": issues_to_fix, "score": score}
 
@@ -1095,32 +1097,33 @@ def calculate_new_score(current_score, issue_text):
 # REPLACE this function in resume_ai_analyzer.py
 
 def get_field_suggestions(extracted_data, resume_text):
-    logger.info("Running FINAL v8 Field & Suggestion analysis...")
+    logger.info("Running FINAL v9 Field & Suggestion analysis...")
     if not client:
         return {"field": "Unknown", "suggestions": []}
 
     # --- NEW, MORE INTELLIGENT PROMPT ---
-    # This prompt asks the AI to act like a career coach.
     prompt = f"""
-    You are an expert career coach and resume analyst. Your task is to analyze a resume to identify its professional field and suggest critical missing sections for improvement.
+    You are an expert Indian career coach and resume analyst. Your task is to analyze a resume to identify its professional field and suggest critical missing sections for improvement.
 
     **Step 1: Identify the Professional Field**
-    Based on the skills, job titles, and summary in the resume text below, determine the most accurate professional field (e.g., "Technology / IT", "Healthcare", "Design", "Marketing", "Legal", "General").
+    Based on the skills (e.g., "Tally", "Python", "AutoCAD"), job titles (e.g., "Accountant", "Software Developer", "Civil Engineer"), and summary in the resume text, determine the most accurate professional field. Use common Indian job market fields like: "IT / Software Development", "Finance & Accounting", "Mechanical/Civil/Electrical Engineering", "Sales & Marketing", "Human Resources (HR)", "Graphic Design", "Healthcare", or "General / Fresher".
 
     **Step 2: Suggest Important Missing Sections**
-    Here are the sections that were already found in the resume: {list(extracted_data.keys())}
+    Here are the sections that were already found in the resume: {list(k for k, v in extracted_data.items() if v)}
     
-    Now, as a career coach, analyze the FULL resume text. Based on the field you identified, suggest **only the most important and relevant sections** that are genuinely missing. For example:
-    - For an IT resume, if there's no link to a GitHub profile or a portfolio, you MUST suggest adding "GitHub Projects" or "Portfolio".
-    - For a Designer resume, if a portfolio link is missing, it's a critical issue. Suggest adding a "Portfolio Link".
-    - For a Marketing resume, if there are no mentions of specific KPIs or metrics, suggest adding a "Key Achievements" section with quantifiable results.
+    Now, as a career coach, analyze the FULL resume text. Based on the field you identified, suggest **only the most important and relevant sections** that are genuinely missing and would add significant value. For example:
+    - For an "IT / Software Development" resume, if there's no link to GitHub/GitLab or a Portfolio, you MUST suggest adding "Projects" or "Portfolio / GitHub".
+    - For a "Graphic Design" resume, a "Portfolio Link" (like Behance/Dribbble) is CRITICAL.
+    - For a "Finance & Accounting" resume, if not present, a "Certifications" section (like Tally, NISM) is very valuable.
+    - For any "Fresher" resume, a "Projects" or "Internships" section is highly recommended to showcase practical skills.
+    - For a "Sales" resume, a "Key Achievements" section with sales targets met or exceeded is very impactful.
     
     Do NOT suggest adding a section if its content is already mentioned somewhere else in the resume. Be smart and contextual.
 
     **Instructions:**
     Return a single JSON object with two keys:
-    1.  "detected_field": A string with the name of the field you identified.
-    2.  "suggestions": A list of objects. Each object should be {{"type": "Required" or "Optional", "section": "Section Name to Add"}}. Only suggest 2-3 of the MOST CRITICAL missing sections.
+    1.  "field": A string with the name of the Indian-context field you identified.
+    2.  "suggestions": A list of objects. Each object should be {{"type": "Required" or "Recommended", "section": "Section Name to Add"}}. Only suggest 2-3 of the MOST CRITICAL missing sections. "Required" is for must-haves (like a portfolio for a designer). "Recommended" is for strong value-adds.
 
     **Resume Text to Analyze:**
     ---
@@ -1132,22 +1135,20 @@ def get_field_suggestions(extracted_data, resume_text):
     
     try:
         response = client.chat.completions.create(
-            # Using gpt-4o for this task is highly recommended for accuracy, but gpt-3.5 will work.
             model="gpt-3.5-turbo", 
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
         result = json.loads(response.choices[0].message.content)
         
-        # Ensure the response has the correct structure, even if the AI fails
-        detected_field = result.get("field", "General")
+        detected_field = result.get("field", "General / Fresher")
         suggestions = result.get("suggestions", [])
         
         if not isinstance(suggestions, list):
-             suggestions = [] # Sanitize in case AI returns a non-list
+             suggestions = []
 
         return {"field": detected_field, "suggestions": suggestions}
     
     except Exception as e:
         logger.error(f"Could not get field suggestions: {e}")
-        return {"field": "General", "suggestions": []}
+        return {"field": "General / Fresher", "suggestions": [{"type": "Recommended", "section": "Projects"}]}
