@@ -1093,58 +1093,61 @@ def calculate_new_score(current_score, issue_text):
     return new_score
 
 # REPLACE this function in resume_ai_analyzer.py
+
 def get_field_suggestions(extracted_data, resume_text):
-    """
-    Analyzes extracted data and FULL TEXT to identify the professional field and suggest missing sections.
-    """
+    logger.info("Running FINAL v8 Field & Suggestion analysis...")
     if not client:
         return {"field": "Unknown", "suggestions": []}
 
-    field_specific_sections = {
-        "Technology / IT": {"required": ["technical_stack", "programming_languages", "github_projects"], "optional": ["devops_tools", "system_design_experience"]},
-        "Design / UI-UX": {"required": ["portfolio_link", "design_tools"], "optional": ["design_principles", "user_research_projects"]},
-        "Legal / Law": {"required": ["bar_membership", "legal_specializations"], "optional": ["case_portfolio", "legal_publications"]},
-        "Healthcare / Medical": {"required": ["medical_license_number", "certifications"], "optional": ["clinical_rotations", "research_experience"]},
-        "Business / Marketing": {"required": ["kpis_achieved", "campaigns_handled", "marketing_tools"], "optional": ["budget_handled", "seo_sem_metrics"]},
-        "Academia / Education": {"required": ["publications", "research_interests", "teaching_experience"], "optional": ["thesis_dissertation_title", "conferences_attended"]},
-    }
+    # --- NEW, MORE INTELLIGENT PROMPT ---
+    # This prompt asks the AI to act like a career coach.
+    prompt = f"""
+    You are an expert career coach and resume analyst. Your task is to analyze a resume to identify its professional field and suggest critical missing sections for improvement.
 
+    **Step 1: Identify the Professional Field**
+    Based on the skills, job titles, and summary in the resume text below, determine the most accurate professional field (e.g., "Technology / IT", "Healthcare", "Design", "Marketing", "Legal", "General").
+
+    **Step 2: Suggest Important Missing Sections**
+    Here are the sections that were already found in the resume: {list(extracted_data.keys())}
+    
+    Now, as a career coach, analyze the FULL resume text. Based on the field you identified, suggest **only the most important and relevant sections** that are genuinely missing. For example:
+    - For an IT resume, if there's no link to a GitHub profile or a portfolio, you MUST suggest adding "GitHub Projects" or "Portfolio".
+    - For a Designer resume, if a portfolio link is missing, it's a critical issue. Suggest adding a "Portfolio Link".
+    - For a Marketing resume, if there are no mentions of specific KPIs or metrics, suggest adding a "Key Achievements" section with quantifiable results.
+    
+    Do NOT suggest adding a section if its content is already mentioned somewhere else in the resume. Be smart and contextual.
+
+    **Instructions:**
+    Return a single JSON object with two keys:
+    1.  "detected_field": A string with the name of the field you identified.
+    2.  "suggestions": A list of objects. Each object should be {{"type": "Required" or "Optional", "section": "Section Name to Add"}}. Only suggest 2-3 of the MOST CRITICAL missing sections.
+
+    **Resume Text to Analyze:**
+    ---
+    {resume_text[:7000]} 
+    ---
+    
+    Return ONLY the JSON object.
+    """
+    
     try:
-        # --- UPDATED: Give the AI the FULL resume text for better context ---
-        prompt_field_detection = f"""
-        Based on the entire resume text below, identify the single most likely professional field from this list:
-        {list(field_specific_sections.keys())}
-        
-        If no specific field matches, respond with "General".
-        Respond with a single JSON object with one key, "field". Example: {{"field": "Technology / IT"}}
-        
-        Resume Text:
-        ---
-        {resume_text[:4000]} 
-        ---
-        """
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt_field_detection}],
+            # Using gpt-4o for this task is highly recommended for accuracy, but gpt-3.5 will work.
+            model="gpt-3.5-turbo", 
+            messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
         result = json.loads(response.choices[0].message.content)
+        
+        # Ensure the response has the correct structure, even if the AI fails
         detected_field = result.get("field", "General")
+        suggestions = result.get("suggestions", [])
+        
+        if not isinstance(suggestions, list):
+             suggestions = [] # Sanitize in case AI returns a non-list
+
+        return {"field": detected_field, "suggestions": suggestions}
+    
     except Exception as e:
-        logger.error(f"Could not detect resume field: {e}")
-        detected_field = "General"
-
-    suggestions = []
-    if detected_field in field_specific_sections:
-        field_rules = field_specific_sections[detected_field]
-        # Use a case-insensitive check for existing keys
-        existing_keys = [key.lower() for key, value in extracted_data.items() if value]
-
-        for section in field_rules.get("required", []):
-            if section.lower() not in existing_keys:
-                suggestions.append({"type": "Required", "section": section.replace('_', ' ').title()})
-        for section in field_rules.get("optional", []):
-             if section.lower() not in existing_keys:
-                suggestions.append({"type": "Optional", "section": section.replace('_', ' ').title()})
-
-    return {"field": detected_field, "suggestions": suggestions}
+        logger.error(f"Could not get field suggestions: {e}")
+        return {"field": "General", "suggestions": []}
