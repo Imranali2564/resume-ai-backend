@@ -960,90 +960,47 @@ def extract_resume_sections_safely(text):
 # FILE: resume_ai_analyzer.py
 # REPLACE the existing generate_stable_ats_report function with this one.
 
-def generate_stable_ats_report(text, extracted_data):
-    logger.info("Generating FINAL v14 ATS report with Multi-Call Strategy for GPT-3.5...")
+def generate_final_detailed_report(text, extracted_data):
+    logger.info("Generating FINAL v15 Detailed Audit Report for GPT-3.5...")
     if not client:
         return {"error": "OpenAI client not initialized."}
 
-    # --- NAYI STRATEGY: HAR CHEEZ KE LIYE ALAG AI CALL ---
+    prompt = f"""
+    You are a professional resume auditor. Analyze the provided resume text and return a detailed JSON report.
+    For each check, provide a "status" ('pass', 'fail', or 'improve') and a "comment".
 
-    def call_ai_for_task(prompt, error_message="AI failed"):
-        try:
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.2,
-            )
-            # Response ko seedha list of strings mein convert karein
-            content = response.choices[0].message.content.strip()
-            # Split by newline and filter out empty lines or non-starters
-            items = [line.strip().lstrip('-* ').strip() for line in content.split('\n') if line.strip()]
-            return items
-        except Exception as e:
-            logger.error(f"AI call failed: {e}")
-            return [error_message]
-
-    # Call 1: Passed Checks (Strengths) ke liye
-    passed_checks_prompt = f"""
-    Analyze the following resume text and list at least 3-4 clear strengths or positive points.
-    - Start each point on a new line.
-    - Do not add any other text or explanation.
-    Examples of strengths:
-    - Contact information is present and well-formatted.
-    - The resume uses standard, professional sections like Experience and Education.
-    - The layout is clean and easy to read.
-    - The summary statement is concise.
-    Resume Text:
-    ---
-    {text[:4000]}
-    ---
-    """
-    passed_checks = call_ai_for_task(passed_checks_prompt, "Could not analyze strengths.")
-
-    # Call 2: Issues to Fix (Content ki Galtiyan) ke liye
-    issues_to_fix_prompt = f"""
-    Analyze the EXISTING text of the following resume and list 3-4 specific issues that need fixing.
-    - Focus ONLY on problems within the written text like grammar, passive voice, or lack of metrics.
-    - Do NOT suggest adding new sections.
-    - Start each issue on a new line.
-    Examples of issues:
-    - The work experience bullet points lack quantifiable results (e.g., numbers, percentages).
-    - Some sentences use passive voice like "Was responsible for...". They should start with action verbs.
-    - The summary could be more impactful and tailored to a specific role.
-    Resume Text:
-    ---
-    {text[:4000]}
-    ---
-    """
-    issues_to_fix = call_ai_for_task(issues_to_fix_prompt, "Could not analyze content issues.")
-
-    # Call 3: Missing Sections (Jo Sections Maujood Nahi Hain) ke liye
-    present_sections = [key for key, value in extracted_data.items() if value]
-    missing_sections_prompt = f"""
-    The following sections are already present in a resume: {present_sections}.
-    Based on the resume text below, what 1-2 important sections are missing that would add value? (e.g., Projects, Certifications, Awards, Volunteer Experience).
-    - List only the names of the missing sections.
-    - Start each section name on a new line.
-    - If no important sections are missing, return 'No critical sections are missing'.
-    Resume Text:
-    ---
-    {text[:4000]}
-    ---
-    """
-    missing_sections = call_ai_for_task(missing_sections_prompt, "Could not check for missing sections.")
+    **Required JSON Output Structure:**
+    {{
+        "contact_info_check": {{"status": "pass/fail", "comment": "Your comment here."}},
+        "summary_check": {{"status": "pass/improve", "comment": "Your comment here."}},
+        "experience_metrics_check": {{"status": "pass/fail", "comment": "e.g., The work experience lacks quantifiable results."}},
+        "action_verbs_check": {{"status": "pass/fail", "comment": "e.g., Sentences use passive voice like 'Responsible for'."}},
+        "bullet_points_check": {{"status": "pass/fail", "comment": "e.g., The experience section should use bullet points, not paragraphs."}},
+        "spelling_check": {{"status": "pass/fail", "comment": "e.g., No major spelling errors found."}},
+        "grammar_check": {{"status": "pass/fail", "comment": "e.g., Found a minor grammatical error in the summary."}},
+        "missing_sections_check": {{"status": "pass/fail", "comment": "e.g., Consider adding a 'Projects' section."}}
+    }}
     
-    # Final response tayyar karein
-    final_report = {
-        "passed_checks": [f"✅ {item}" for item in passed_checks],
-        "issues_to_fix": [f"❌ {item}" for item in issues_to_fix],
-        "missing_sections": missing_sections # Isko alag se bhejenge
-    }
+    - A 'pass' status means the item is good.
+    - A 'fail' or 'improve' status means it's an issue.
+    - Be specific in your comments.
 
-    # Score calculate karein
-    score = max(40, 100 - (len(issues_to_fix) * 10))
-    final_report["score"] = score
-    
-    return final_report
+    **Resume Text to Analyze:**
+    ---
+    {text[:6000]}
+    ---
+    """
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "system", "content": "You are a resume auditor that responds in perfect, structured JSON."}, {"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        report_data = json.loads(response.choices[0].message.content)
+        return report_data
+    except Exception as e:
+        logger.error(f"Error in detailed report generation: {e}")
+        return {"error": "AI analysis failed to generate a detailed report."}
 
 # REPLACE this function in resume_ai_analyzer.py
 def fix_resume_issue(issue_text, extracted_data):

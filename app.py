@@ -10,7 +10,7 @@ import re
 from resume_ai_analyzer import (
     # New and Corrected Functions for the Stable Strategy
     extract_resume_sections_safely,
-    generate_stable_ats_report,
+    generate_final_detailed_report,
     fix_resume_issue,
     calculate_new_score,
     get_field_suggestions,
@@ -1111,36 +1111,32 @@ def analyze_resume_for_frontend():
         if not text:
             return jsonify({"success": False, "error": "Could not extract text from the resume."}), 500
 
-        # Step 1: Extract sections using the new, robust function
+        # Step 1: Extract sections using the robust function
         extracted_sections = extract_resume_sections_safely(text)
         if not extracted_sections or extracted_sections.get("error"):
-             return jsonify({"success": False, "error": extracted_sections.get("error", "Failed to parse resume sections.")}), 500
+            return jsonify({"success": False, "error": extracted_sections.get("error", "Failed to parse resume sections.")}), 500
 
-        # Step 2: Generate ATS report
-        ats_result = generate_stable_ats_report(text, extracted_sections)
+        # Step 2: Call the new, detailed report function
+        ats_result = generate_final_detailed_report(text, extracted_sections)
         
-        # Step 3: Get field-aware suggestions
+        # Step 3: Get field-aware suggestions for adding new sections
         field_info = get_field_suggestions(extracted_sections, text)
 
-        # Format issues with unique IDs
-        issues_to_fix = []
-        raw_issues = ats_result.get("issues_to_fix", [])
-        for i, issue_text in enumerate(raw_issues):
-            issues_to_fix.append({
-                "issue_id": f"err_{i+1}",
-                "issue_text": issue_text
-            })
-
-        # Final data structure for frontend
+        # Step 4: Prepare the final data structure for the frontend
         formatted_data = {
-            "score": ats_result.get('score', 0),
-            "analysis": {
-                "passed_checks": ats_result.get("passed_checks", []),
-                "issues_to_fix": issues_to_fix
-            },
+            "analysis": ats_result,
             "extracted_data": extracted_sections,
             "field_info": field_info
         }
+
+        # Step 5: Calculate the score based on the new detailed report
+        if 'analysis' in formatted_data and isinstance(formatted_data['analysis'], dict):
+            # Count the number of checks that have a "fail" or "improve" status
+            fail_count = sum(1 for check in formatted_data['analysis'].values() if isinstance(check, dict) and check.get('status') in ['fail', 'improve'])
+            formatted_data['score'] = max(40, 100 - (fail_count * 10))
+        else:
+            # Provide a fallback score if the analysis fails
+            formatted_data['score'] = 50 
         
         return jsonify({"success": True, "data": formatted_data})
 
