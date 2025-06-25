@@ -816,7 +816,7 @@ def extract_resume_sections_safely(text):
     if not client:
         return {"error": "OpenAI client not initialized."}
     
-    TOKEN_LIMIT_IN_CHARS = 40000 
+    TOKEN_LIMIT_IN_CHARS = 40000
     if len(text) > TOKEN_LIMIT_IN_CHARS:
         logger.warning(f"Resume text is too long, truncating to {TOKEN_LIMIT_IN_CHARS} characters.")
         text = text[:TOKEN_LIMIT_IN_CHARS]
@@ -824,7 +824,8 @@ def extract_resume_sections_safely(text):
     # --- THIS IS THE FIX ---
     # The prompt for "skills" is now simplified to ALWAYS be a list of strings.
     # This ensures consistency for the frontend.
-     prompt = f"""
+    # INDENTATION aagey-peeche tha, ab theek kar diya gaya hai.
+    prompt = f"""
     You are a world-class resume parsing system. The following text may be jumbled.
     Your task is to intelligently parse this text and reconstruct a perfectly structured JSON object.
 
