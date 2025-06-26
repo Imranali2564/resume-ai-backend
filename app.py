@@ -1111,10 +1111,47 @@ def analyze_resume_for_frontend():
         if not text:
             return jsonify({"success": False, "error": "Could not extract text from the resume."}), 500
 
-        # Step 1: Extract sections using the robust function
+        # Step 1: Extract sections
         extracted_sections = extract_resume_sections_safely(text)
+        # --- FIX: Check for errors immediately ---
         if not extracted_sections or extracted_sections.get("error"):
-            return jsonify({"success": False, "error": extracted_sections.get("error", "Failed to parse resume sections.")}), 500
+            error_message = extracted_sections.get("error", "Failed to parse resume sections.")
+            logger.error(f"Error from extract_resume_sections_safely: {error_message}")
+            return jsonify({"success": False, "error": error_message}), 500
+
+        # Step 2: Generate detailed ATS report
+        ats_result = generate_final_detailed_report(text, extracted_sections)
+        # --- FIX: Check for errors immediately ---
+        if not ats_result or ats_result.get("error"):
+            error_message = ats_result.get("error", "Failed to generate ATS report.")
+            logger.error(f"Error from generate_final_detailed_report: {error_message}")
+            return jsonify({"success": False, "error": error_message}), 500
+        
+        # Step 3: Get field-aware suggestions
+        field_info = get_field_suggestions(extracted_sections, text)
+        # --- FIX: Check for errors immediately ---
+        if not field_info or field_info.get("error"):
+            # This is less critical, so we can proceed with a default value
+            logger.warning("Could not get field suggestions, proceeding without them.")
+            field_info = {"field": "General", "suggestions": []}
+
+        # Step 4: Prepare the final data structure
+        formatted_data = {
+            "analysis": ats_result,
+            "extracted_data": extracted_sections,
+            "field_info": field_info
+        }
+
+        # Step 5: Calculate the score based on the detailed report
+        fail_count = sum(1 for check in formatted_data['analysis'].values() if isinstance(check, dict) and check.get('status') in ['fail', 'improve'])
+        formatted_data['score'] = max(40, 100 - (fail_count * 10))
+        
+        return jsonify({"success": True, "data": formatted_data})
+
+    except Exception as e:
+        import traceback
+        logger.error(f"Error in /api/v1/analyze-resume: {traceback.format_exc()}")
+        return jsonify({"success": False, "error": "An unexpected server error occurred."}), 500
 
         # Step 2: Call the new, detailed report function
         ats_result = generate_final_detailed_report(text, extracted_sections)
