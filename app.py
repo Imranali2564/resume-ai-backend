@@ -1241,85 +1241,60 @@ def handle_fix_issue_v2():
 @app.route('/api/v1/generate-docx', methods=['POST'])
 def generate_docx_from_html():
     try:
-        if 'payload' not in request.form:
-            logger.error("Payload missing in /api/v1/generate-docx request.")
-            return jsonify({"success": False, "error": "Missing payload"}), 400
-            
         data = json.loads(request.form.get('payload'))
         html_content = data.get("html_content")
 
         if not html_content:
             return jsonify({"success": False, "error": "No HTML content provided"}), 400
 
-        # --- YEH HAI FINAL AUR SABSE RELIABLE TareeKA ---
-        # HTML ko parse karein
         soup = BeautifulSoup(html_content, 'html.parser')
-        
-        # Ek naya Word document banayein
         doc = Document()
 
-        # Helper function to add content
-        def add_content_from_element(element, doc_obj):
-            if not element:
-                return
+        # --- YEH HAI FINAL AUR SABSE RELIABLE TareeKA ---
+        
+        # Helper function to add paragraphs safely
+        def add_para(text, style=None):
+            if text and text.strip():
+                doc.add_paragraph(text.strip(), style=style)
 
-            # Headings ke liye
-            for h3 in element.find_all('h3'):
-                title = h3.find('span')
-                if title:
-                    p = doc_obj.add_paragraph()
-                    p.add_run(title.text.strip()).bold = True
-            
-            # Content ke liye
-            content_div = element.find('div', class_='content-container')
-            if content_div:
-                # UL/LI (Bullet points) ke liye
-                for li in content_div.find_all('li'):
-                    # Complex list items (Work Experience, Education)
-                    h4 = li.find('h4')
-                    p_sub = li.find('p')
-                    details_ul = li.find('ul')
-                    
-                    if h4: # Agar item ke andar heading hai
-                        doc_obj.add_paragraph(h4.text.strip(), style='Intense Quote') # Style alag dikhane ke liye
-                        if p_sub:
-                           doc_obj.add_paragraph(p_sub.text.strip())
-                        if details_ul:
-                           for detail_li in details_ul.find_all('li'):
-                               doc_obj.add_paragraph(detail_li.text.strip(), style='List Bullet')
-                    else: # Simple list items (Skills, Languages)
-                        doc_obj.add_paragraph(li.text.strip(), style='List Bullet')
-                
-                # Agar list nahi hai, to plain text
-                if not content_div.find('ul'):
-                    doc_obj.add_paragraph(content_div.text.strip())
-
-        # --- Document ko banana shuru karein ---
+        # Helper function to add headings safely
+        def add_heading(text, level):
+            if text and text.strip():
+                doc.add_heading(text.strip(), level=level)
 
         # Naam aur Title
         name_el = soup.find(id='preview-name')
         title_el = soup.find(id='preview-title')
         if name_el:
-            doc.add_heading(name_el.text.strip(), level=1)
+            add_heading(name_el.text, 0) # Title style
         if title_el:
-            doc.add_paragraph(title_el.text.strip())
+            add_para(title_el.text)
         
-        doc.add_paragraph() # Ek line ka space
+        add_para("") # Space ke liye
 
-        # Main Panel ke sections
-        main_panel = soup.find(id='resume-main-panel')
-        if main_panel:
-            for section in main_panel.find_all('div', class_='preview-section'):
-                add_content_from_element(section, doc)
-                doc.add_paragraph() # Sections ke beech mein space
+        # Main Panel aur Sidebar ke content ko process karein
+        # Hum sabhi sections ko ek saath process karenge
+        all_sections = soup.find_all('div', class_='preview-section')
 
-        # Sidebar ke sections (ek simple approach)
-        sidebar = soup.find(id='sidebar-content-wrapper')
-        if sidebar:
-            doc.add_heading("Details", level=2) # Sidebar ke liye ek heading
-            for section in sidebar.find_all('div', class_='preview-section'):
-                add_content_from_element(section, doc)
-                doc.add_paragraph()
+        for section in all_sections:
+            title_span = section.find('h3').find('span')
+            if title_span:
+                add_heading(title_span.text.upper(), level=2)
+            
+            content_div = section.find('div', class_='content-container')
+            if content_div:
+                list_items = content_div.find_all('li')
+                if list_items:
+                    for li in list_items:
+                        # Hum har list item ke liye aage bullet (•) laga denge
+                        paragraph = doc.add_paragraph(f"• {li.text.strip()}")
+                        # Thoda sa indent add karein
+                        paragraph.paragraph_format.left_indent = Inches(0.25)
+                else:
+                    # Agar list nahi hai to plain text
+                    add_para(content_div.text)
+            
+            add_para("") # Sections ke beech mein space
 
         # File ko memory mein save karein
         file_stream = io.BytesIO()
