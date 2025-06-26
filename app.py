@@ -1241,60 +1241,76 @@ def handle_fix_issue_v2():
 @app.route('/api/v1/generate-docx', methods=['POST'])
 def generate_docx_from_html():
     try:
+        # Check if the payload is in the request form
+        if 'payload' not in request.form:
+            logger.error("Payload missing in /api/v1/generate-docx request.")
+            return jsonify({"success": False, "error": "Missing payload"}), 400
+            
         data = json.loads(request.form.get('payload'))
         html_content = data.get("html_content")
 
         if not html_content:
             return jsonify({"success": False, "error": "No HTML content provided"}), 400
 
+        # --- YEH HAI FINAL AUR SABSE RELIABLE TareeKA ---
+        
         soup = BeautifulSoup(html_content, 'html.parser')
         doc = Document()
 
-        # --- YEH HAI FINAL AUR SABSE RELIABLE TareeKA ---
-        
-        # Helper function to add paragraphs safely
-        def add_para(text, style=None):
+        # Helper function to add text safely
+        def add_text(text):
             if text and text.strip():
-                doc.add_paragraph(text.strip(), style=style)
+                return text.strip()
+            return ""
 
-        # Helper function to add headings safely
-        def add_heading(text, level):
-            if text and text.strip():
-                doc.add_heading(text.strip(), level=level)
+        # --- Document ko banana shuru karein ---
 
-        # Naam aur Title
+        # 1. Naam aur Title
         name_el = soup.find(id='preview-name')
         title_el = soup.find(id='preview-title')
         if name_el:
-            add_heading(name_el.text, 0) # Title style
+            doc.add_heading(add_text(name_el.text), level=0)
         if title_el:
-            add_para(title_el.text)
+            doc.add_paragraph(add_text(title_el.text))
         
-        add_para("") # Space ke liye
+        doc.add_paragraph() # Ek line ka space
 
-        # Main Panel aur Sidebar ke content ko process karein
-        # Hum sabhi sections ko ek saath process karenge
+        # 2. Sabhi sections ko process karein
         all_sections = soup.find_all('div', class_='preview-section')
-
         for section in all_sections:
             title_span = section.find('h3').find('span')
             if title_span:
-                add_heading(title_span.text.upper(), level=2)
+                doc.add_heading(add_text(title_span.text).upper(), level=2)
             
             content_div = section.find('div', class_='content-container')
             if content_div:
                 list_items = content_div.find_all('li')
                 if list_items:
                     for li in list_items:
-                        # Hum har list item ke liye aage bullet (•) laga denge
-                        paragraph = doc.add_paragraph(f"• {li.text.strip()}")
-                        # Thoda sa indent add karein
-                        paragraph.paragraph_format.left_indent = Inches(0.25)
+                        # Complex list items (Work Experience, Education)
+                        h4 = li.find('h4')
+                        p_sub = li.find('p')
+                        details_ul = li.find('ul')
+                        
+                        if h4: # Agar item ke andar heading hai
+                            p = doc.add_paragraph()
+                            p.add_run(add_text(h4.text)).bold = True
+                            if p_sub:
+                                p.add_run(f'\n{add_text(p_sub.text)}').italic = True
+                            if details_ul:
+                               for detail_li in details_ul.find_all('li'):
+                                   # Bullet point khud banayein
+                                   bullet_p = doc.add_paragraph(f"• {add_text(detail_li.text)}")
+                                   bullet_p.paragraph_format.left_indent = Inches(0.25)
+                        else: # Simple list items (Skills, Languages)
+                            # Bullet point khud banayein
+                            bullet_p = doc.add_paragraph(f"• {add_text(li.text)}")
+                            bullet_p.paragraph_format.left_indent = Inches(0.25)
                 else:
                     # Agar list nahi hai to plain text
-                    add_para(content_div.text)
+                    doc.add_paragraph(add_text(content_div.text))
             
-            add_para("") # Sections ke beech mein space
+            doc.add_paragraph() # Sections ke beech mein space
 
         # File ko memory mein save karein
         file_stream = io.BytesIO()
