@@ -1312,10 +1312,22 @@ def generate_docx_from_html():
             
             doc.add_paragraph() # Sections ke beech mein space
 
-        # File ko memory mein save karein
+        # File ko memory mein save karein aur validate karein
         file_stream = io.BytesIO()
         doc.save(file_stream)
         file_stream.seek(0)
+
+        # Temporary file ke liye test (debugging ke liye)
+        temp_path = '/tmp/test_resume.docx'  # Use /tmp for Render compatibility
+        with open(temp_path, 'wb') as f:
+            f.write(file_stream.getvalue())
+        # Verify if the file is valid (optional: you can remove this after testing)
+        test_doc = Document(temp_path)
+        if not test_doc:
+            logger.error("Generated DOCX file is invalid during validation.")
+            return jsonify({"success": False, "error": "Generated file is corrupted"}), 500
+        os.remove(temp_path)  # Clean up temporary file
+        file_stream.seek(0)  # Reset stream for sending
 
         return send_file(
             file_stream,
