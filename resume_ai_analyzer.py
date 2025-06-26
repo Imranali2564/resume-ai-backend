@@ -961,7 +961,7 @@ def extract_resume_sections_safely(text):
 # REPLACE the existing generate_stable_ats_report function with this one.
 
 def generate_final_detailed_report(text, extracted_data):
-    logger.info("Generating FINAL v15 Detailed Audit Report for GPT-3.5...")
+    logger.info("Generating FINAL v16 Detailed Audit with Skills Check...")
     if not client:
         return {"error": "OpenAI client not initialized."}
 
@@ -975,15 +975,13 @@ def generate_final_detailed_report(text, extracted_data):
         "summary_check": {{"status": "pass/improve", "comment": "Your comment here."}},
         "experience_metrics_check": {{"status": "pass/fail", "comment": "e.g., The work experience lacks quantifiable results."}},
         "action_verbs_check": {{"status": "pass/fail", "comment": "e.g., Sentences use passive voice like 'Responsible for'."}},
-        "bullet_points_check": {{"status": "pass/fail", "comment": "e.g., The experience section should use bullet points, not paragraphs."}},
-        "spelling_check": {{"status": "pass/fail", "comment": "e.g., No major spelling errors found."}},
-        "grammar_check": {{"status": "pass/fail", "comment": "e.g., Found a minor grammatical error in the summary."}},
-        "missing_sections_check": {{"status": "pass/fail", "comment": "e.g., Consider adding a 'Projects' section."}}
+        "skills_format_check": {{"status": "pass/fail", "comment": "e.g., The skills section should contain keywords, not long sentences."}},
+        "spelling_check": {{"status": "pass", "comment": "No major spelling errors found."}},
+        "grammar_check": {{"status": "pass/fail", "comment": "e.g., Found a minor grammatical error in the summary."}}
     }}
     
-    - A 'pass' status means the item is good.
-    - A 'fail' or 'improve' status means it's an issue.
-    - Be specific in your comments.
+    - For 'skills_format_check', if the skills section contains long descriptive sentences instead of keywords, set status to 'fail'. Otherwise, 'pass'.
+    - Be specific and professional in your comments.
 
     **Resume Text to Analyze:**
     ---
