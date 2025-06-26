@@ -8,13 +8,17 @@ import json
 import re
 import io
 
+# --- YEH SECTION UPDATE KIYA GAYA HAI ---
 # Libraries for DOCX generation and PDF handling
 from docx import Document
+from docx.shared import Pt, Inches, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from bs4 import BeautifulSoup
-from html2docx import html2docx
 import fitz  # PyMuPDF
 import PyPDF2
 import pdfkit
+# html2docx ki ab zaroorat nahi hai, isliye hata diya gaya hai
+# --------------------------------------
 
 # Local application imports from resume_ai_analyzer.py
 from resume_ai_analyzer import (
@@ -1247,22 +1251,80 @@ def generate_docx_from_html():
         if not html_content:
             return jsonify({"success": False, "error": "No HTML content provided"}), 400
 
-        # HTML ko saaf karein taaki conversion behtar ho
-        from bs4 import BeautifulSoup
+        # --- YEH HAI FINAL AUR SABSE RELIABLE TareeKA ---
+        # HTML ko parse karein
         soup = BeautifulSoup(html_content, 'html.parser')
-        for button in soup.find_all('button'):
-            button.decompose()
         
-        cleaned_html = str(soup)
-        
-        # Ek default title de dein
-        title = "Resume" 
+        # Ek naya Word document banayein
+        doc = Document()
 
-        # --- YEH HAI FINAL FIX ---
-        # html2docx seedhe ek file stream deta hai, use dobara BytesIO mein daalne ki zaroorat nahi.
-        file_stream = html2docx(cleaned_html, title)
-        file_stream.seek(0) # Stream ko shuru mein le aayein, yeh zaroori hai
-        # ------------------------
+        # Helper function to add content
+        def add_content_from_element(element, doc_obj):
+            if not element:
+                return
+
+            # Headings ke liye
+            for h3 in element.find_all('h3'):
+                title = h3.find('span')
+                if title:
+                    p = doc_obj.add_paragraph()
+                    p.add_run(title.text.strip()).bold = True
+            
+            # Content ke liye
+            content_div = element.find('div', class_='content-container')
+            if content_div:
+                # UL/LI (Bullet points) ke liye
+                for li in content_div.find_all('li'):
+                    # Complex list items (Work Experience, Education)
+                    h4 = li.find('h4')
+                    p_sub = li.find('p')
+                    details_ul = li.find('ul')
+                    
+                    if h4: # Agar item ke andar heading hai
+                        doc_obj.add_paragraph(h4.text.strip(), style='Intense Quote') # Style alag dikhane ke liye
+                        if p_sub:
+                           doc_obj.add_paragraph(p_sub.text.strip())
+                        if details_ul:
+                           for detail_li in details_ul.find_all('li'):
+                               doc_obj.add_paragraph(detail_li.text.strip(), style='List Bullet')
+                    else: # Simple list items (Skills, Languages)
+                        doc_obj.add_paragraph(li.text.strip(), style='List Bullet')
+                
+                # Agar list nahi hai, to plain text
+                if not content_div.find('ul'):
+                    doc_obj.add_paragraph(content_div.text.strip())
+
+        # --- Document ko banana shuru karein ---
+
+        # Naam aur Title
+        name_el = soup.find(id='preview-name')
+        title_el = soup.find(id='preview-title')
+        if name_el:
+            doc.add_heading(name_el.text.strip(), level=1)
+        if title_el:
+            doc.add_paragraph(title_el.text.strip())
+        
+        doc.add_paragraph() # Ek line ka space
+
+        # Main Panel ke sections
+        main_panel = soup.find(id='resume-main-panel')
+        if main_panel:
+            for section in main_panel.find_all('div', class_='preview-section'):
+                add_content_from_element(section, doc)
+                doc.add_paragraph() # Sections ke beech mein space
+
+        # Sidebar ke sections (ek simple approach)
+        sidebar = soup.find(id='sidebar-content-wrapper')
+        if sidebar:
+            doc.add_heading("Details", level=2) # Sidebar ke liye ek heading
+            for section in sidebar.find_all('div', class_='preview-section'):
+                add_content_from_element(section, doc)
+                doc.add_paragraph()
+
+        # File ko memory mein save karein
+        file_stream = io.BytesIO()
+        doc.save(file_stream)
+        file_stream.seek(0)
 
         return send_file(
             file_stream,
