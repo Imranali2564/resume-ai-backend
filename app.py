@@ -1255,9 +1255,11 @@ def generate_docx_from_html():
         
         cleaned_html = str(soup)
 
-        # --- YEH HAI FIX: Galat arguments (table_style aur style) ko hata diya gaya hai ---
-        # Convert the cleaned HTML to a DOCX file in memory
-        docx_bytes = html2docx(cleaned_html)
+        # --- YEH HAI FIX: Zaroori 'title' argument ko add kiya gaya hai ---
+        # Ek default title de dein
+        title = "Resume" 
+        # Ab function ko HTML aur title, dono ke saath call karein
+        docx_bytes = html2docx(cleaned_html, title)
         
         file_stream = io.BytesIO(docx_bytes)
         file_stream.seek(0)
