@@ -16,3 +16,5 @@ pytesseract
 Pillow
 html2docx
 html2text
+beautifulsoup4
+html-to-docx
