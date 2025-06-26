@@ -6,7 +6,17 @@ import os
 import uuid
 import json
 import re
+import io
 
+# Libraries for DOCX generation and PDF handling
+from docx import Document
+from bs4 import BeautifulSoup
+from html2docx import html2docx
+import fitz  # PyMuPDF
+import PyPDF2
+import pdfkit
+
+# Local application imports from resume_ai_analyzer.py
 from resume_ai_analyzer import (
     # New and Corrected Functions for the Stable Strategy
     extract_resume_sections_safely,
@@ -30,7 +40,6 @@ from resume_ai_analyzer import (
     generate_resume_summary,
     generate_michelle_template_html
 )
-
 try:
     from docx import Document
     from docx.shared import Pt, Inches, RGBColor
