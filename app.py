@@ -1228,7 +1228,6 @@ def handle_fix_issue_v2():
 @app.route('/api/v1/generate-docx', methods=['POST'])
 def generate_docx_from_html():
     try:
-        # Check if the payload is in the request form
         if 'payload' not in request.form:
             logger.error("Payload missing in /api/v1/generate-docx request.")
             return jsonify({"success": False, "error": "Missing payload"}), 400
@@ -1239,29 +1238,23 @@ def generate_docx_from_html():
         if not html_content:
             return jsonify({"success": False, "error": "No HTML content provided"}), 400
 
-        # --- YEH HAI BEHTAR LOGIC ---
-        # Convert HTML to a more plain, clean text format for better DOCX conversion
-        h = html2text.HTML2Text()
-        h.ignore_links = True  # Links ko ignore karein
-        h.body_width = 0       # Line wrap na karein
-        plain_text = h.handle(html_content)
-
-        # Create a new Document
-        doc = Document()
+        # --- YEH HAI SAHI AUR RELIABLE TareeKA ---
+        # html-to-docx library ka istemal karke seedhe HTML se DOCX banayein
         
-        # Har line ko alag paragraph mein add karein taaki formatting sahi rahe
-        for line in plain_text.split('\n'):
-            # Asterisks ko bullet points mein badlein
-            if line.strip().startswith('* '):
-                # Indent ke saath bullet point add karein
-                doc.add_paragraph(line.strip('* ').strip(), style='List Bullet')
-            else:
-                doc.add_paragraph(line)
+        # HTML ko thoda saaf karein taaki conversion behtar ho
+        # Live preview ke hisaab se unnecessary buttons hata dein
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html_content, 'html.parser')
+        for button in soup.find_all('button'):
+            button.decompose()
+        
+        cleaned_html = str(soup)
 
-        # File ko memory mein save karein
-        file_stream = io.BytesIO()
-        doc.save(file_stream)
-        file_stream.seek(0) # Pointer ko shuru mein le aayein
+        # Convert the cleaned HTML to a DOCX file in memory
+        docx_bytes = html2docx(cleaned_html, table_style='TableGrid', style='Normal')
+        
+        file_stream = io.BytesIO(docx_bytes)
+        file_stream.seek(0)
 
         return send_file(
             file_stream,
