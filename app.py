@@ -1247,11 +1247,7 @@ def generate_docx_from_html():
         if not html_content:
             return jsonify({"success": False, "error": "No HTML content provided"}), 400
 
-        # --- YEH HAI SAHI AUR RELIABLE TareeKA ---
-        # html-to-docx library ka istemal karke seedhe HTML se DOCX banayein
-        
-        # HTML ko thoda saaf karein taaki conversion behtar ho
-        # Live preview ke hisaab se unnecessary buttons hata dein
+        # HTML ko saaf karein taaki conversion behtar ho
         from bs4 import BeautifulSoup
         soup = BeautifulSoup(html_content, 'html.parser')
         for button in soup.find_all('button'):
@@ -1259,8 +1255,9 @@ def generate_docx_from_html():
         
         cleaned_html = str(soup)
 
+        # --- YEH HAI FIX: Galat arguments (table_style aur style) ko hata diya gaya hai ---
         # Convert the cleaned HTML to a DOCX file in memory
-        docx_bytes = html2docx(cleaned_html, table_style='TableGrid', style='Normal')
+        docx_bytes = html2docx(cleaned_html)
         
         file_stream = io.BytesIO(docx_bytes)
         file_stream.seek(0)
