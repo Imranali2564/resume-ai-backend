@@ -1254,15 +1254,15 @@ def generate_docx_from_html():
             button.decompose()
         
         cleaned_html = str(soup)
-
-        # --- YEH HAI FIX: Zaroori 'title' argument ko add kiya gaya hai ---
+        
         # Ek default title de dein
         title = "Resume" 
-        # Ab function ko HTML aur title, dono ke saath call karein
-        docx_bytes = html2docx(cleaned_html, title)
-        
-        file_stream = io.BytesIO(docx_bytes)
-        file_stream.seek(0)
+
+        # --- YEH HAI FINAL FIX ---
+        # html2docx seedhe ek file stream deta hai, use dobara BytesIO mein daalne ki zaroorat nahi.
+        file_stream = html2docx(cleaned_html, title)
+        file_stream.seek(0) # Stream ko shuru mein le aayein, yeh zaroori hai
+        # ------------------------
 
         return send_file(
             file_stream,
