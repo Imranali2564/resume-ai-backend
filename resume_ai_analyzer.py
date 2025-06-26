@@ -1043,7 +1043,7 @@ def fix_resume_issue(issue_text, extracted_data):
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini", # Using a slightly more advanced model for this complex task
+            model="gpt-3.5-turbo", # <-- MODEL KA NAAM THEEK KAR DIYA GAYA HAI
             messages=[{"role": "system", "content": "You are a resume fixing assistant that responds in perfect JSON."}, {"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
