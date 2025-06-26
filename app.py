@@ -1228,31 +1228,45 @@ def handle_fix_issue_v2():
 @app.route('/api/v1/generate-docx', methods=['POST'])
 def generate_docx_from_html():
     try:
+        # Check if the payload is in the request form
+        if 'payload' not in request.form:
+            logger.error("Payload missing in /api/v1/generate-docx request.")
+            return jsonify({"success": False, "error": "Missing payload"}), 400
+            
         data = json.loads(request.form.get('payload'))
         html_content = data.get("html_content")
 
         if not html_content:
             return jsonify({"success": False, "error": "No HTML content provided"}), 400
 
-        # Convert HTML to a more plain text format for better DOCX conversion
+        # --- YEH HAI BEHTAR LOGIC ---
+        # Convert HTML to a more plain, clean text format for better DOCX conversion
         h = html2text.HTML2Text()
-        h.ignore_links = False
-        h.body_width = 0
+        h.ignore_links = True  # Links ko ignore karein
+        h.body_width = 0       # Line wrap na karein
         plain_text = h.handle(html_content)
 
         # Create a new Document
         doc = Document()
-        doc.add_paragraph(plain_text)
+        
+        # Har line ko alag paragraph mein add karein taaki formatting sahi rahe
+        for line in plain_text.split('\n'):
+            # Asterisks ko bullet points mein badlein
+            if line.strip().startswith('* '):
+                # Indent ke saath bullet point add karein
+                doc.add_paragraph(line.strip('* ').strip(), style='List Bullet')
+            else:
+                doc.add_paragraph(line)
 
-        # Save to a bytes buffer
+        # File ko memory mein save karein
         file_stream = io.BytesIO()
         doc.save(file_stream)
-        file_stream.seek(0)
+        file_stream.seek(0) # Pointer ko shuru mein le aayein
 
         return send_file(
             file_stream,
             as_attachment=True,
-            download_name='resume.docx',
+            download_name='ResumeFixerPro_Resume.docx',
             mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         )
 
