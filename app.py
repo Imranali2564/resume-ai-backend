@@ -504,7 +504,65 @@ Include a greeting, an introduction, a body highlighting relevant skills and exp
         return jsonify({"error": f"Failed to generate cover letter: {str(e)}"}), 500
     finally:
         cleanup_file(filepath)
+        
+@app.route('/generate-cover-letter-from-data', methods=['POST'])
+def generate_cover_letter_from_data():
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Invalid JSON data provided"}), 400
 
+        extracted_data = data.get('extracted_data')
+        job_title = data.get('job_title')
+        company_name = data.get('company_name')
+
+        if not extracted_data or not job_title or not company_name:
+            return jsonify({"error": "extracted_data, job_title, and company_name are required"}), 400
+
+        # extracted_data (JSON) se ek plain text resume banayein
+        resume_text_parts = []
+        if extracted_data.get('name'):
+            resume_text_parts.append(f"Name: {extracted_data.get('name')}")
+        if extracted_data.get('summary'):
+            resume_text_parts.append(f"Summary: {extracted_data.get('summary')}")
+        if extracted_data.get('work_experience'):
+            resume_text_parts.append("\nWork Experience:")
+            for exp in extracted_data.get('work_experience', []):
+                resume_text_parts.append(f"- {exp.get('title')} at {exp.get('company')}")
+        if extracted_data.get('skills'):
+            skills_str = ', '.join(extracted_data.get('skills', []))
+            resume_text_parts.append(f"\nSkills: {skills_str}")
+        
+        resume_text = "\n".join(resume_text_parts)
+
+        if not resume_text.strip():
+            return jsonify({"error": "Could not construct resume text from provided data"}), 400
+
+        prompt = f"""
+You are a professional cover letter writer. Write a concise cover letter (300-400 words) for the following details:
+Job Title: {job_title}
+Company Name: {company_name}
+Resume Highlights: {resume_text[:6000]}
+Include a greeting, an introduction, a body highlighting relevant skills and experiences, and a closing statement.
+        """
+
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            cover_letter = response.choices[0].message.content.strip()
+            return jsonify({"cover_letter": cover_letter})
+        except Exception as e:
+            logger.error(f"Error in OpenAI API call for /generate-cover-letter-from-data: {str(e)}")
+            return jsonify({"error": f"Failed to generate cover letter: {str(e)}"}), 500
+
+    except Exception as e:
+        logger.error(f"Error in /generate-cover-letter-from-data: {str(e)}")
+        return jsonify({"error": "An unexpected server error occurred"}), 500
+    
 @app.route('/download-cover-letter', methods=['POST'])
 def download_cover_letter():
     data = request.get_json()
