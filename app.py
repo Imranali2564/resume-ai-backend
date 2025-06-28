@@ -1399,6 +1399,59 @@ def generate_docx_from_html():
         import traceback
         traceback.print_exc()
         return jsonify({"success": False, "error": "Failed to generate DOCX file"}), 500
+
+@app.route('/download-generated-resume', methods=['POST'])
+def download_generated_resume():
+    try:
+        data = request.get_json()
+        html_content = data.get("html_content")
+        file_format = data.get("format", "pdf")
+
+        if not html_content:
+            return jsonify({"error": "No HTML content provided"}), 400
+
+        # CSS ko HTML me daalna zaroori hai taki PDF me styles sahi aayen
+        # Yeh wahi CSS hai jo aapke naye design me hai
+        full_html = f"""
+        <html>
+            <head>
+                <meta charset="UTF-8">
+                <style>
+                    body {{ font-family: 'Roboto', sans-serif; color: #333; font-size: 9.5pt; }}
+                    .resume-container {{ display: flex; flex-direction: column; width: 100%; }}
+                    .content-wrapper {{ display: flex; flex-direction: row; }}
+                    .main-content {{ flex: 3; padding: 20px; }}
+                    .sidebar {{ flex: 1; background-color: #f8f8f8; padding: 20px; color: #555; border-right: 1px solid #eee; }}
+                    .name-title-header h1 {{ font-size: 26pt; font-weight: 700; color: #333; }}
+                    .name-title-header .job-title {{ font-size: 11pt; color: #666; text-transform: uppercase; }}
+                    .resume-section h2 {{ font-size: 11pt; font-weight: 700; color: #1976D2; border-bottom: 1px solid #ddd; padding-bottom: 3px; margin-top: 20px; text-transform: uppercase; }}
+                    .contact-info-sidebar h3 {{ font-size: 10pt; font-weight: 700; color: #333; border-bottom: 1px solid #ccc; padding-bottom: 5px; text-transform: uppercase; }}
+                    ul {{ list-style: none; padding-left: 0; }}
+                    li::before {{ content: '• '; color: #1976D2; }}
+                </style>
+            </head>
+            <body>{html_content}</body>
+        </html>
+        """
+
+        if file_format == 'pdf':
+            options = { 'page-size': 'A4', 'margin-top': '0.7in', 'margin-right': '0.7in', 'margin-bottom': '0.7in', 'margin-left': '0.7in', 'encoding': "UTF-8" }
+            pdf_file = pdfkit.from_string(full_html, False, options=options)
+            return send_file(io.BytesIO(pdf_file), as_attachment=True, download_name='Generated_Resume.pdf', mimetype='application/pdf')
+
+        elif file_format == 'docx':
+            if not html2docx:
+                return jsonify({"error": "DOCX conversion library not available."}), 500
+            
+            docx_bytes = html2docx(full_html, "resume.docx")
+            return send_file(io.BytesIO(docx_bytes), as_attachment=True, download_name='Generated_Resume.docx', mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+            
+        else:
+            return jsonify({"error": "Unsupported format"}), 400
+
+    except Exception as e:
+        print(f"Error in /download-generated-resume: {str(e)}")
+        return jsonify({"error": "Failed to generate file on server."}), 500
     
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
