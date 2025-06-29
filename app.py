@@ -675,8 +675,6 @@ def generate_ai_resume():
     try:
         data = request.json
         
-        # Ek saaf-suthra text block banayein jise hum AI ko ek saath bhejenge
-        # Isse AI ko poora context milta hai aur woh behtar result deta hai
         user_input_text = f"""
         - Job Title: {data.get("jobTitle", "")}
         - Summary Keywords: {data.get("summary", "")}
@@ -688,7 +686,6 @@ def generate_ai_resume():
         - Languages Keywords: {data.get("languages", "")}
         """
 
-        # Ab hum AI ko ek hi baar me saara context denge
         prompt = f"""
         You are an expert resume writer. Based on the following user-provided keywords and phrases, expand and rewrite them into professional, impactful resume sections.
         - For 'experience', 'education', and 'projects', elaborate on the points and return them as a single block of text with newlines.
@@ -712,7 +709,9 @@ def generate_ai_resume():
         }}
         """
 
-        # OpenAI ko call karna
+        # --- YAHAN PAR FIX HAI ---
+        # Ab hum OpenAI ko function ke andar import kar rahe hain, jaisa aapke baki code me hai
+        from openai import OpenAI
         client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
         
         res = client.chat.completions.create(
@@ -723,7 +722,6 @@ def generate_ai_resume():
         
         ai_data = json.loads(res.choices[0].message.content)
 
-        # User ka personal data bhi final response me jodna
         final_data = {
             "name": data.get("name"),
             "email": data.get("email"),
@@ -731,15 +729,14 @@ def generate_ai_resume():
             "location": data.get("location"),
             "linkedin": data.get("linkedin"),
             "jobTitle": data.get("jobTitle"),
-            **ai_data # AI se generate hua saara data yahan jud jayega
+            **ai_data
         }
         
         return jsonify({"success": True, "data": final_data})
 
     except Exception as e:
-        # Exact error ko log aur return karna
         error_message = f"An exception occurred in generate_ai_resume: {type(e).__name__} - {str(e)}"
-        print(error_message) # Yeh aapke Render logs me dikhega
+        print(error_message)
         return jsonify({"success": False, "error": error_message}), 500
 
 @app.route('/analyze-jd', methods=['POST'])
