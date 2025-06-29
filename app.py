@@ -678,28 +678,26 @@ def generate_ai_resume():
 
         user_input_text = f"""
         JOB TITLE: {data.get("jobTitle", "")}
-        SUMMARY KEYWORDS: {data.get("summary", "")}
-        EXPERIENCE KEYWORDS: {data.get("experience", "")}
-        EDUCATION KEYWORDS: {data.get("education", "")}
-        SKILLS KEYWORDS: {data.get("skills", "")}
-        PROJECTS KEYWORDS: {data.get("projects", "")}
-        CERTIFICATIONS KEYWORDS: {data.get("certifications", "")}
-        LANGUAGES KEYWORDS: {data.get("languages", "")}
+        SUMMARY: {data.get("summary", "")}
+        EXPERIENCE: {data.get("experience", "")}
+        EDUCATION: {data.get("education", "")}
+        SKILLS: {data.get("skills", "")}
+        PROJECTS: {data.get("projects", "")}
+        CERTIFICATIONS: {data.get("certifications", "")}
+        LANGUAGES: {data.get("languages", "")}
         """
 
-        # ✅ Optimized Prompt: No length limit, full professional style, ATS optimized
         prompt = f"""
-You are an expert human resume writer. Based on the following user-provided keywords and raw content, rewrite each section into a professionally written, well-formatted, ATS-compatible resume format.
+You are a senior resume writer and career expert. Based on the user's raw input, rewrite each resume section with professionally worded, recruiter-ready content.
 
-Strict Rules:
-1. Always rewrite content from scratch in polished English, even if it looks complete.
-2. Use natural resume-style formatting and vocabulary. Avoid generic templates or overuse of AI tone.
-3. No limits on word count – write what a real recruiter would expect in each section.
-4. Use bullet points for EXPERIENCE, PROJECTS, and EDUCATION where appropriate.
-5. SKILLS, LANGUAGES, and CERTIFICATIONS should be output as clear bullet-point lists.
-6. If any field is blank or weak, return an empty string. Never skip a key if it's part of the JSON structure.
-7. Output ONLY a valid JSON object like this format:
+🎯 INSTRUCTIONS:
+- Treat all inputs as raw keywords or short phrases.
+- Expand and rewrite them into well-structured, ATS-optimized English.
+- Add realistic, relevant content where possible, even if the input is minimal.
+- Never use placeholders like [Company Name], just skip or make smart guesses.
+- Keep tone professional and concise. Bullet points where applicable.
 
+📦 OUTPUT STRUCTURE (MUST be valid JSON only):
 {{
   "summary": "...",
   "experience": "...",
@@ -710,7 +708,7 @@ Strict Rules:
   "languages": "..."
 }}
 
-USER INPUT:
+✍️ USER INPUT:
 {user_input_text}
         """
 
