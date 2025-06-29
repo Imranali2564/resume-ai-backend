@@ -30,7 +30,7 @@ from resume_ai_analyzer import (
     calculate_new_score,
     get_field_suggestions,
     generate_smart_resume_from_keywords,
-    generate_full_ai_resume_html,
+    generate_full_ai_resume_html, # <--- YE LINE ADD KAREIN
 
     # Existing Utility and Other Functions
     analyze_resume_with_openai,
@@ -680,11 +680,19 @@ def generate_ai_resume():
         contact_fields = ["name", "email", "phone", "location", "linkedin", "jobTitle"]
         user_info = {key: data.get(key, "") for key in contact_fields}
         section_data = {key: value for key, value in data.items() if key not in contact_fields}
+
+        # generate_smart_resume_from_keywords function call pehle se hi sahi hai
         smart_content = generate_smart_resume_from_keywords(section_data)
-        parsed_resume = {**user_info, **smart_content}
-        html = generateResumeTemplate(parsed_resume)
+
+        # <--- YAHAN CHANGE HAI --->
+        # Ab hum generate_full_ai_resume_html ko sahi arguments ke saath call kar rahe hain.
+        html = generate_full_ai_resume_html(user_info, smart_content)
+        # <--- CHANGE YAHAN KHATAM HOTA HAI --->
+
         return jsonify({"success": True, "html": html})
     except Exception as e:
+        import traceback
+        traceback.print_exc() # Debugging ke liye traceback print karein
         return jsonify({"error": f"❌ Exception in generate-ai-resume: {type(e).__name__} - {str(e)}"}), 500
 
 @app.route('/convert-format', methods=['POST'])
