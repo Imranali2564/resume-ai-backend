@@ -698,18 +698,19 @@ def generate_ai_resume():
         traceback.print_exc()
         return jsonify({"error": f"❌ Exception in generate-ai-resume: {type(e).__name__} - {str(e)}"}), 500
 
-@app.route('/analyze-jd', methods=['POST'])
-def analyze_jd():
+@app.route("/generate-ai-resume", methods=["POST"])
+def generate_ai_resume():
     try:
         data = request.get_json()
-        jd_text = data.get('job_description', '')
-        if not jd_text:
-            return jsonify({"error": "No job description provided"}), 400
-        result = analyze_job_description(jd_text)
-        return jsonify(result)
+        contact_fields = ["name", "email", "phone", "location", "linkedin", "jobTitle"]
+        user_info = {key: data.get(key, "") for key in contact_fields}
+        section_data = {key: value for key, value in data.items() if key not in contact_fields}
+        smart_content = generate_smart_resume_from_keywords(section_data)
+        html = generate_full_ai_resume_html(user_info, smart_content)
+        return jsonify({"success": True, "html": html})
     except Exception as e:
-        logger.error(f"Error in /analyze-jd: {str(e)}")
-        return jsonify({"error": f"Failed to analyze job description: {str(e)}"}), 500
+        return jsonify({"error": f"❌ Exception in generate-ai-resume: {type(e).__name__} - {str(e)}"}), 500
+
 
 @app.route('/convert-format', methods=['POST'])
 def convert_format():
