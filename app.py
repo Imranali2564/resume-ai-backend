@@ -676,71 +676,32 @@ def generate_ai_resume():
     try:
         data = request.json
 
-        user_input_text = f"""
-        JOB TITLE: {data.get("jobTitle", "")}
-        SUMMARY: {data.get("summary", "")}
-        EXPERIENCE: {data.get("experience", "")}
-        EDUCATION: {data.get("education", "")}
-        SKILLS: {data.get("skills", "")}
-        PROJECTS: {data.get("projects", "")}
-        CERTIFICATIONS: {data.get("certifications", "")}
-        LANGUAGES: {data.get("languages", "")}
-        """
+        from resume_ai_analyzer import generate_smart_resume_from_keywords, generate_full_ai_resume_html
 
-        prompt = f"""
-You are a senior resume writer and career expert. Based on the user's raw input, rewrite each resume section with professionally worded, recruiter-ready content.
+        # STEP 1: Smart rewrite of keywords
+        smart_resume_data = generate_smart_resume_from_keywords(data)
 
-🎯 INSTRUCTIONS:
-- Treat all inputs as raw keywords or short phrases.
-- Expand and rewrite them into well-structured, ATS-optimized English.
-- Add realistic, relevant content where possible, even if the input is minimal.
-- Never use placeholders like [Company Name], just skip or make smart guesses.
-- Keep tone professional and concise. Bullet points where applicable.
-
-📦 OUTPUT STRUCTURE (MUST be valid JSON only):
-{{
-  "summary": "...",
-  "experience": "...",
-  "education": "...",
-  "skills": "...",
-  "projects": "...",
-  "certifications": "...",
-  "languages": "..."
-}}
-
-✍️ USER INPUT:
-{user_input_text}
-        """
-
-        from openai import OpenAI
-        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-
-        res = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
-        )
-
-        ai_data = json.loads(res.choices[0].message.content)
-
+        # STEP 2: Merge contact info
         final_data = {
-            "name": data.get("name"),
-            "email": data.get("email"),
-            "phone": data.get("phone"),
-            "location": data.get("location"),
-            "linkedin": data.get("linkedin"),
-            "jobTitle": data.get("jobTitle"),
-            **ai_data
+            "name": data.get("name", ""),
+            "email": data.get("email", ""),
+            "phone": data.get("phone", ""),
+            "location": data.get("location", ""),
+            "linkedin": data.get("linkedin", ""),
+            "jobTitle": data.get("jobTitle", ""),
+            **smart_resume_data
         }
 
-        return jsonify({"success": True, "data": final_data})
+        # STEP 3: Generate HTML preview using template
+        html = generate_full_ai_resume_html(final_data)
+
+        return jsonify({"success": True, "html": html})
 
     except Exception as e:
-        error_message = f"An exception occurred in generate_ai_resume: {type(e).__name__} - {str(e)}"
-        print(f"FINAL ERROR: {error_message}")
-        return jsonify({"success": False, "error": error_message}), 500
-
-
+        return jsonify({
+            "success": False,
+            "error": f"❌ Exception in generate-ai-resume: {type(e).__name__} - {str(e)}"
+        }), 500
 
 @app.route('/analyze-jd', methods=['POST'])
 def analyze_jd():

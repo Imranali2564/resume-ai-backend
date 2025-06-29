@@ -1137,3 +1137,55 @@ def get_field_suggestions(extracted_data, resume_text):
     except Exception as e:
         logger.error(f"Could not get field suggestions: {e}")
         return {"field": "General / Fresher", "suggestions": [{"type": "Recommended", "section": "Projects"}]}
+def generate_smart_resume_from_keywords(data: dict) -> dict:
+    """
+    Ye function har resume section ke liye AI se professionally rewritten content laata hai.
+    Jo fields user bharta hai, unke basis pe response deta hai.
+    """
+
+    from openai import OpenAI
+    import os
+
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    smart_resume = {}
+
+    sections = {
+        "summary": "Write a compelling professional summary based on these keywords.",
+        "experience": "Convert these experience points into detailed achievements using bullet points.",
+        "education": "Expand these education details into complete sentences.",
+        "skills": "List out these skills cleanly, one per line.",
+        "projects": "Write a project description with outcome/result focus.",
+        "certifications": "Expand certification names into full descriptive phrases.",
+        "languages": "List the languages clearly, one per line.",
+        "awards": "Write the awards in resume format with context.",
+        "volunteering": "Describe volunteering activities and contributions.",
+        "interests": "Convert these interests into professional sounding phrases.",
+        "publications": "Expand these publication titles and give a brief context.",
+        "patents": "Describe patents briefly and professionally.",
+    }
+
+    for key, instruction in sections.items():
+        value = data.get(key, "").strip()
+        if not value:
+            smart_resume[key] = ""
+            continue
+
+        prompt = f"""
+You are an expert resume writer. {instruction}
+Input: {value}
+Output: 
+"""
+
+        try:
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                timeout=20
+            )
+            result = response.choices[0].message.content.strip()
+            smart_resume[key] = result
+
+        except Exception as e:
+            smart_resume[key] = f"⚠️ Error: {type(e).__name__} - {str(e)}"
+
+    return smart_resume
