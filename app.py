@@ -673,7 +673,7 @@ def optimize_keywords():
 
 @app.route('/generate-ai-resume', methods=['POST'])
 def generate_ai_resume():
-    prompt = "" # Prompt ko try block ke bahar initialize karein
+    prompt = ""  # Prompt ko try block ke bahar initialize karein
     try:
         data = request.json
         user_input_text = f"""
@@ -688,42 +688,32 @@ def generate_ai_resume():
         """
 
         prompt = f"""
-        You are an expert resume writer. Rewrite and enhance the following raw resume content into a single, professional, well-formatted text block.
-        Use clear headings in ALL CAPS for each section (e.g., SUMMARY, WORK EXPERIENCE).
+        You are an expert resume writer. Rewrite and enhance the following raw resume content into a single, professional, well-formatted HTML text block.
+        Use the provided CSS styles from the original HTML to format the output.
+        Use clear headings in ALL CAPS for each section (e.g., PROFESSIONAL SUMMARY, WORK EXPERIENCE).
         Use standard newlines for bullet points. Do not add any extra commentary.
         Start directly with the first section heading.
-        If any field (e.g., Job Title, Experience) is empty, skip that section or use generic placeholder text like 'Not Provided' instead of leaving it blank or using brackets (e.g., [Company Name]).
+        If any field (e.g., Job Title, Experience) is empty, skip that section or use 'Not Provided' instead of leaving it blank or using brackets (e.g., [Company Name]).
         RAW CONTENT: --- {user_input_text} ---
+        OUTPUT FORMAT: Return only the HTML content inside a <div class="content-wrapper">...</div> structure, matching the original resume-container layout.
         """
 
-        from openai import OpenAI
         client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"), timeout=20)
         res = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             timeout=20
         )
-        improved_text = res.choices[0].message.content.strip()
+        html_content = res.choices[0].message.content.strip()
         
-        # User ka personal data bhi final response me jodna
-        final_data_for_frontend = {
-            "name": data.get("name"),
-            "email": data.get("email"),
-            "phone": data.get("phone"),
-            "location": data.get("location"),
-            "linkedin": data.get("linkedin"),
-            "jobTitle": data.get("jobTitle"),
-            "improved_text": improved_text
-        }
-        return jsonify({"success": True, "data": final_data_for_frontend})
+        return jsonify({"success": True, "html": html_content})
 
     except Exception as e:
         error_message = f"An exception occurred: {type(e).__name__} - {str(e)}"
-        # Hum error ke saath woh prompt bhi bhejenge jisne error paida kiya
         return jsonify({
             "success": False,
             "error": error_message,
-            "problematic_prompt": prompt # For debugging
+            "problematic_prompt": prompt
         }), 500
 
 
