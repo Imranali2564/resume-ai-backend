@@ -1200,53 +1200,55 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     """
 
     def list_to_html(items_string):
-        if isinstance(items_string, list):
-            items = [item.strip() for item in items_string if item.strip()]
-        else:
-            items = [item.strip() for item in items_string.split('\n') if item.strip()]
-        
-        # NOTE: {{item}} is correct here to escape the curly braces for the HTML list item,
-        # as 'item' itself is the content.
-        return "".join(f"<li>{{item}}</li>" for item in items)
+    if isinstance(items_string, list):
+        items = [item.strip() for item in items_string if item.strip()]
+    else:
+        items = [item.strip() for item in items_string.split('\n') if item.strip()]
 
-    def parse_complex_section_html(section_data, is_education=False):
-        if not section_data:
-            return ""
+    # Here, 'item' is already a string, so direct embedding is fine.
+    # No need for {{item}} here, as Python needs to evaluate 'item'.
+    return "".join(f"<li>{item}</li>" for item in items)
 
-        if isinstance(section_data, list):
-            html_content = ""
-            for item in section_data:
-                title_key = "degree" if is_education else "title"
-                company_key = "school" if is_education else "company"
-                
-                title = item.get(title_key, '')
-                company = item.get(company_key, '')
-                duration = item.get('duration', '')
-                details = item.get('details', [])
 
-                item_html = f"<h4>{title}"
-                if company:
-                    item_html += f" at {company}"
-                if duration:
-                    item_html += f", {duration}"
-                item_html += "</h4>"
-                
-                if details and isinstance(details, list):
-                    item_html += "<ul>"
-                    for detail in details:
-                        # Use repr() and then strip quotes to safely embed any string content
-                        escaped_detail = repr(detail)[1:-1]
-                        item_html += f"<li>{{escaped_detail}}</li>"
-                    item_html += "</ul>"
-                elif details and isinstance(details, str):
-                    escaped_details_str = repr(details)[1:-1]
-                    item_html += f"<p>{{escaped_details_str}}</p>"
+def parse_complex_section_html(section_data, is_education=False):
+    if not section_data:
+        return ""
 
-                html_content += f"<div class='experience-item'>{{item_html}}</div>"
-            return html_content
-        else:
-            escaped_section_data = repr(section_data)[1:-1]
-            return f"<p>{{escaped_section_data}}</p>"
+    if isinstance(section_data, list):
+        html_content = ""
+        for item in section_data:
+            title_key = "degree" if is_education else "title"
+            company_key = "school" if is_education else "company"
+
+            title = item.get(title_key, '')
+            company = item.get(company_key, '')
+            duration = item.get('duration', '')
+            details = item.get('details', [])
+
+            item_html = f"<h4>{title}"
+            if company:
+                item_html += f" at {company}"
+            if duration:
+                item_html += f", {duration}"
+            item_html += "</h4>"
+
+            if details and isinstance(details, list):
+                item_html += "<ul>"
+                for detail in details:
+                    # Here, detail is already a string to be embedded.
+                    # No need for repr() unless it literally contains unescaped quotes.
+                    item_html += f"<li>{detail}</li>" 
+                item_html += "</ul>"
+            elif details and isinstance(details, str):
+                item_html += f"<p>{details}</p>"
+
+            # {{item_html}} because item_html is a variable holding HTML string
+            html_content += f"<div class='experience-item'>{item_html}</div>" 
+        return html_content
+    else:
+        # If section_data is a plain string, just wrap it in a paragraph.
+        # No need for repr() here unless the string literally has quotes that break HTML.
+        return f"<p>{section_data}</p>"
 
 
     return f"""
