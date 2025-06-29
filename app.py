@@ -674,57 +674,57 @@ def optimize_keywords():
 @app.route('/generate-ai-resume', methods=['POST'])
 def generate_ai_resume():
     try:
-        if not request.is_json:
-            return jsonify({"success": False, "error": "Request must be JSON"}), 400
-        
         data = request.json
-        if not data or not any(data.values()):
-            return jsonify({"success": False, "error": "No valid data provided"}), 400
-
-        user_input_text = f"""
-        JOB TITLE: {data.get("jobTitle", "")}
-        SUMMARY: {data.get("summary", "")}
-        WORK EXPERIENCE: {data.get("experience", "")}
-        EDUCATION: {data.get("education", "")}
-        SKILLS: {data.get("skills", "")}
-        PROJECTS: {data.get("projects", "")}
-        CERTIFICATIONS: {data.get("certifications", "")}
-        LANGUAGES: {data.get("languages", "")}
-        """
         
+        user_input_text = f"""
+        - Job Title: {data.get("jobTitle", "")}
+        - Summary Keywords: {data.get("summary", "")}
+        - Experience Keywords: {data.get("experience", "")}
+        - Education Keywords: {data.get("education", "")}
+        - Skills Keywords: {data.get("skills", "")}
+        - Projects Keywords: {data.get("projects", "")}
+        - Certifications Keywords: {data.get("certifications", "")}
+        - Languages Keywords: {data.get("languages", "")}
+        """
+
+        # --- NAYA, ZYADA POWERFUL PROMPT ---
+        # Isse AI ab zyada detail me aur professional content likhega
         prompt = f"""
-        You are an expert resume writer. Rewrite and enhance the following raw resume content into a single, professional, well-formatted text block.
-        - Use clear headings in all caps for each section (e.g., SUMMARY, WORK EXPERIENCE).
-        - Use standard bullet points (like a simple newline) for lists.
-        - Do not add any extra commentary.
-        RAW CONTENT:
+        You are a world-class professional resume writer and career coach. Your task is to take the user's raw keywords and notes and transform them into a polished, professional, and impactful resume content.
+
+        **Instructions:**
+        1.  **Analyze the User's Input:** Understand the user's role, experience, and skills from the provided text.
+        2.  **Elaborate Sections:** For each section (SUMMARY, WORK EXPERIENCE, EDUCATION, etc.), expand upon the user's keywords.
+        3.  **Use Action Verbs:** Start all bullet points in the WORK EXPERIENCE section with strong action verbs (e.g., "Led", "Developed", "Managed", "Accelerated", "Implemented").
+        4.  **Quantify Achievements:** Where possible, turn duties into achievements. For example, instead of "Handled customer calls," write "Managed a portfolio of 50+ clients, increasing satisfaction rates by 15%."
+        5.  **Professional Tone:** Maintain a professional and confident tone throughout.
+        6.  **Clear Formatting:** Use clear headings in ALL CAPS followed by the content. Each bullet point for lists must be on a new line.
+
+        **User's Raw Data:**
         ---
         {user_input_text}
         ---
+
+        Please generate the improved content and provide it as a single block of text.
         """
+
+        # OpenAI ko call karna
+        from openai import OpenAI
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
         
-        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"), timeout=20)
         res = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            timeout=20
+            messages=[{"role": "user", "content": prompt}]
         )
+        
         improved_text = res.choices[0].message.content.strip()
-        logger.info(f"OpenAI Response: {improved_text}")  # Add this line to log response
-        logger.info("Resume generated successfully")
-        return jsonify({"success": True, "improved_text": improved_text}), 200
+        
+        return jsonify({"success": True, "improved_text": improved_text})
 
-    except ValueError as ve:
-        error_message = f"Validation Error: {str(ve)}"
-        logger.error(error_message)
-        return jsonify({"success": False, "error": error_message}), 400
-    except openai.APIError as api_err:
-        error_message = f"OpenAI API Error: {str(api_err)}"
-        logger.error(error_message)
-        return jsonify({"success": False, "error": error_message}), 500
     except Exception as e:
-        error_message = f"Internal Server Error: {type(e).__name__} - {str(e)}"
-        logger.error(error_message)
+        # Extra print statements hata diye gaye hain
+        error_message = f"An exception occurred in generate_ai_resume: {type(e).__name__} - {str(e)}"
+        # logger.error(error_message) # Agar aapke paas logger setup hai to iska istemal karein
         return jsonify({"success": False, "error": error_message}), 500
 
 
