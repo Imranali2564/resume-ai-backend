@@ -674,12 +674,11 @@ def optimize_keywords():
 @app.route('/generate-ai-resume', methods=['POST'])
 def generate_ai_resume():
     try:
-        # Request data ko validate karo
         if not request.is_json:
             return jsonify({"success": False, "error": "Request must be JSON"}), 400
         
         data = request.json
-        if not data or not any(data.values()):  # Agar data khali hai toh error
+        if not data or not any(data.values()):
             return jsonify({"success": False, "error": "No valid data provided"}), 400
 
         user_input_text = f"""
@@ -704,18 +703,14 @@ def generate_ai_resume():
         ---
         """
         
-        # OpenAI client setup with timeout
-        client = OpenAI(
-            api_key=os.environ.get("OPENAI_API_KEY"),
-            timeout=30  # 30 seconds timeout, agar slow ho toh fail ho jaye
-        )
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"), timeout=20)
         res = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
-            timeout=30  # Extra timeout for safety
+            timeout=20
         )
         improved_text = res.choices[0].message.content.strip()
-        
+        logger.info(f"OpenAI Response: {improved_text}")  # Add this line to log response
         logger.info("Resume generated successfully")
         return jsonify({"success": True, "improved_text": improved_text}), 200
 
