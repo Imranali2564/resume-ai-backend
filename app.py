@@ -675,7 +675,6 @@ def generate_ai_resume():
     try:
         data = request.json
         
-        # Ek saaf-suthra text block banayein jise hum AI ko bhejenge
         user_input_text = f"""
         Full Name: {data.get("name", "")}
         Job Title: {data.get("jobTitle", "")}
@@ -719,29 +718,8 @@ def generate_ai_resume():
         )
         
         raw_response_content = res.choices[0].message.content
+        ai_generated_data = json.loads(raw_response_content)
         
-        # --- NAYA, SAFE JSON PARSING LOGIC ---
-        ai_generated_data = {}
-        try:
-            # Try to parse the JSON directly
-            ai_generated_data = json.loads(raw_response_content)
-        except json.JSONDecodeError:
-            # Agar AI ne galat format me JSON bheja hai, to use theek karne ki koshish karein
-            print("--- OpenAI returned invalid JSON, attempting to fix... ---")
-            print(raw_response_content)
-            # Aksar AI, JSON ko ```json ... ``` me wrap kar deta hai
-            match = re.search(r"```json\s*(\{.*?\})\s*```", raw_response_content, re.DOTALL)
-            if match:
-                json_str = match.group(1)
-                try:
-                    ai_generated_data = json.loads(json_str)
-                    print("--- Successfully fixed and parsed JSON. ---")
-                except json.JSONDecodeError:
-                    raise Exception("Failed to parse JSON response from AI even after cleaning.")
-            else:
-                 raise Exception("AI did not return a valid JSON object.")
-        
-        # User ka personal data bhi final response me jodna
         final_data = {
             "name": data.get("name"),
             "email": data.get("email"),
@@ -755,9 +733,22 @@ def generate_ai_resume():
         return jsonify({"success": True, "data": final_data})
 
     except Exception as e:
-        print(f"Error in /generate-ai-resume: {str(e)}")
-        # Frontend ko saaf error message bhejna
-        return jsonify({"success": False, "error": f"AI processing failed on server. Details: {str(e)}"}), 500
+        # --- NAYA DEBUGGING CODE ---
+        # Yeh Render logs me exact error print karega
+        error_message = f"An exception occurred: {type(e).__name__} - {str(e)}"
+        print("="*40)
+        print(f"ERROR IN /generate-ai-resume: {error_message}")
+        # Agar AI ka response available hai, to use bhi print karein
+        if 'raw_response_content' in locals():
+            print("--- FAULTY AI RESPONSE ---")
+            print(raw_response_content)
+        print("="*40)
+        
+        # Frontend ko bhi saaf error message bhejna
+        return jsonify({
+            "success": False, 
+            "error": f"Backend Error: {error_message}"
+        }), 500
 
 @app.route('/analyze-jd', methods=['POST'])
 def analyze_jd():
