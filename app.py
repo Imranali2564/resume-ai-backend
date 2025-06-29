@@ -687,15 +687,30 @@ def generate_ai_resume():
         - Languages Keywords: {data.get("languages", "")}
         """
 
+        # --- YEH HAI FINAL FIX ---
+        # Niche diye gaye prompt me {{ aur }} ka istemal kiya gaya hai
+        # taaki Python ko f-string me koi confusion na ho.
         prompt = f"""
-        You are an expert resume writer. Rewrite and enhance the following raw resume content into professional, impactful sections.
-        For each section, provide a response. For list-based sections like experience or skills, separate each point with a newline character (\\n).
-        Your entire output must be a single, valid JSON object with keys: "summary", "experience", "education", "skills", "projects", "certifications", "languages".
-        
-        RAW DATA:
-        ---
+        You are an expert resume writer. Based on the following user-provided keywords and phrases, expand and rewrite them into professional, impactful resume sections.
+        - For 'experience', 'education', and 'projects', elaborate on the points and return them as a single block of text with newlines.
+        - For 'skills' and 'languages', return them as a clean, newline-separated list.
+        - For 'summary', write a powerful 2-3 line professional statement.
+        - If any section's keywords are empty, return an empty string for that section's value.
+        - Your entire output MUST be a single, valid JSON object.
+
+        USER-PROVIDED KEYWORDS:
         {user_input_text}
         ---
+        REQUIRED JSON OUTPUT FORMAT:
+        {{
+          "summary": "...",
+          "experience": "...",
+          "education": "...",
+          "skills": "...",
+          "projects": "...",
+          "certifications": "...",
+          "languages": "..."
+        }}
         """
 
         from openai import OpenAI
@@ -709,60 +724,22 @@ def generate_ai_resume():
         
         ai_data = json.loads(res.choices[0].message.content)
 
-        # --- NAYA: HTML BANANE KA LOGIC AB BACKEND ME HAI ---
+        final_data = {
+            "name": data.get("name"),
+            "email": data.get("email"),
+            "phone": data.get("phone"),
+            "location": data.get("location"),
+            "linkedin": data.get("linkedin"),
+            "jobTitle": data.get("jobTitle"),
+            **ai_data
+        }
         
-        def create_paragraph_section(title, content):
-            if not content or not content.strip(): return ""
-            return f"""<div class="resume-section" contenteditable="true">
-                           <h2>{title.upper()}</h2>
-                           <div class="content">{content.strip().replace('\\n', '<br>')}</div>
-                       </div>"""
-
-        def create_list_section(title, content):
-            if not content or not content.strip(): return ""
-            items = ''.join([f"<li>{item.strip().lstrip('-• ')}</li>" for item in content.split('\\n') if item.strip()])
-            return f"""<div class="resume-section" contenteditable="true">
-                           <h2>{title.toUpperCase()}</h2>
-                           <ul>{items}</ul>
-                       </div>"""
-
-        linkedin_html = f"<p><i class='fas fa-link'></i><a href='{data.get('linkedin')}' target='_blank'>{data.get('linkedin', '').replace('https://', '').replace('www.', '')}</a></p>" if data.get('linkedin') else ''
-
-        final_html = f"""
-            <div class="resume-container minimalist-template">
-                <div class="content-wrapper">
-                    <div class="sidebar">
-                        <div class="contact-info-sidebar">
-                            <h3>CONTACT</h3>
-                            {f"<p><i class='fas fa-phone-alt'></i><span>{data.get('phone')}</span></p>" if data.get('phone') else ''}
-                            {f"<p><i class='fas fa-envelope'></i><a href='mailto:{data.get('email')}'>{data.get('email')}</a></p>" if data.get('email') else ''}
-                            {f"<p><i class='fas fa-map-marker-alt'></i><span>{data.get('location')}</span></p>" if data.get('location') else ''}
-                            {linkedin_html}
-                        </div>
-                        {create_list_section('SKILLS', ai_data.get('skills', ''))}
-                        {create_list_section('LANGUAGES', ai_data.get('languages', ''))}
-                    </div>
-                    <div class="main-content">
-                        <div class="name-title-header">
-                            <h1>{data.get('name', '').upper()}</h1>
-                            <p class="job-title">{data.get('jobTitle', 'PROFESSIONAL')}</p>
-                        </div>
-                        {create_paragraph_section('PROFILE SUMMARY', ai_data.get('summary', ''))}
-                        {create_list_section('WORK EXPERIENCE', ai_data.get('experience', ''))}
-                        {create_list_section('EDUCATION', ai_data.get('education', ''))}
-                        {create_list_section('PROJECTS', ai_data.get('projects', ''))}
-                        {create_list_section('CERTIFICATIONS', ai_data.get('certifications', ''))}
-                    </div>
-                </div>
-            </div>
-        """
-        
-        return jsonify({"success": True, "html": final_html})
+        return jsonify({"success": True, "data": final_data})
 
     except Exception as e:
         error_message = f"An exception occurred in generate_ai_resume: {type(e).__name__} - {str(e)}"
+        print(f"FINAL ERROR: {error_message}")
         return jsonify({"success": False, "error": error_message}), 500
-
 
 
 @app.route('/analyze-jd', methods=['POST'])
