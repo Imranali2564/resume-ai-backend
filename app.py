@@ -676,66 +676,71 @@ def generate_ai_resume():
         data = request.json
         
         # Ek saaf-suthra text block banayein jise hum AI ko bhejenge
-        # Isse AI ko poora context milta hai
         user_input_text = f"""
         Full Name: {data.get("name", "")}
         Job Title: {data.get("jobTitle", "")}
         Location: {data.get("location", "")}
-        
         ---SUMMARY---
         {data.get("summary", "")}
-        
         ---WORK EXPERIENCE---
         {data.get("experience", "")}
-        
         ---EDUCATION---
         {data.get("education", "")}
-        
         ---SKILLS---
         {data.get("skills", "")}
-        
         ---PROJECTS---
         {data.get("projects", "")}
-        
         ---CERTIFICATIONS---
         {data.get("certifications", "")}
-
         ---LANGUAGES---
         {data.get("languages", "")}
         """
 
-        # Ab hum AI ko ek hi baar me saara context denge
         prompt = f"""
-        You are a professional resume writing expert. Based on the following raw information provided by the user, please rewrite and improve each section to make it professional, concise, and impactful. 
-        - For 'WORK EXPERIENCE' and 'EDUCATION', format each entry clearly, perhaps starting with a bold title or date.
-        - For 'SKILLS', ensure it's a clean, comma-separated list.
+        You are a professional resume writing expert. Based on the following raw information, rewrite and improve each section to be professional and concise.
+        - For 'WORK EXPERIENCE' and 'EDUCATION', format each entry clearly.
+        - For 'SKILLS', ensure it's a clean, comma-separated or newline-separated list.
         - For 'SUMMARY', make it a powerful 2-3 line professional statement.
-        - If a section is empty, ignore it.
-        - Return the improved content for each section.
-
-        RAW RESUME DATA:
+        - If a section is empty, return an empty string for it.
+        - Return ONLY a valid JSON object with keys: "summary", "experience", "education", "skills", "projects", "certifications", "languages".
+        RAW DATA:
         ---
         {user_input_text}
         ---
-
-        Return the result as a JSON object with keys: "summary", "experience", "education", "skills", "projects", "certifications", "languages".
-        Example: {{"summary": "A highly motivated web developer...", "experience": "Software Engineer at XYZ...", ...}}
         """
 
-        # OpenAI ko call karna
         from openai import OpenAI
         client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
         
         res = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
-            # JSON mode ka istemal karein taaki hamesha saaf data mile
             response_format={"type": "json_object"}
         )
         
-        # AI se mile JSON data ko lena
-        ai_generated_data = json.loads(res.choices[0].message.content)
-
+        raw_response_content = res.choices[0].message.content
+        
+        # --- NAYA, SAFE JSON PARSING LOGIC ---
+        ai_generated_data = {}
+        try:
+            # Try to parse the JSON directly
+            ai_generated_data = json.loads(raw_response_content)
+        except json.JSONDecodeError:
+            # Agar AI ne galat format me JSON bheja hai, to use theek karne ki koshish karein
+            print("--- OpenAI returned invalid JSON, attempting to fix... ---")
+            print(raw_response_content)
+            # Aksar AI, JSON ko ```json ... ``` me wrap kar deta hai
+            match = re.search(r"```json\s*(\{.*?\})\s*```", raw_response_content, re.DOTALL)
+            if match:
+                json_str = match.group(1)
+                try:
+                    ai_generated_data = json.loads(json_str)
+                    print("--- Successfully fixed and parsed JSON. ---")
+                except json.JSONDecodeError:
+                    raise Exception("Failed to parse JSON response from AI even after cleaning.")
+            else:
+                 raise Exception("AI did not return a valid JSON object.")
+        
         # User ka personal data bhi final response me jodna
         final_data = {
             "name": data.get("name"),
@@ -744,15 +749,15 @@ def generate_ai_resume():
             "location": data.get("location"),
             "linkedin": data.get("linkedin"),
             "jobTitle": data.get("jobTitle"),
-            **ai_generated_data # AI se generate hua saara data yahan jud jayega
+            **ai_generated_data
         }
         
         return jsonify({"success": True, "data": final_data})
 
     except Exception as e:
-        # Log error for debugging
         print(f"Error in /generate-ai-resume: {str(e)}")
-        return jsonify({"success": False, "error": f"Failed to generate AI resume: {str(e)}"}), 500
+        # Frontend ko saaf error message bhejna
+        return jsonify({"success": False, "error": f"AI processing failed on server. Details: {str(e)}"}), 500
 
 @app.route('/analyze-jd', methods=['POST'])
 def analyze_jd():
