@@ -687,11 +687,7 @@ def generate_ai_resume():
 
         # Step 1: Rewriting all resume sections via OpenAI
         smart_resume = generate_smart_resume_from_keywords(section_data)
-
-        # Step 2: Merge and render using ResumeFixerPro template
-        parsed_resume = {**user_info, **smart_resume}
-        html = generateResumeTemplate(parsed_resume)
-
+        
         return jsonify({"html": html})
 
     except Exception as e:
