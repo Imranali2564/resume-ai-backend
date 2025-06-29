@@ -674,7 +674,14 @@ def optimize_keywords():
 @app.route('/generate-ai-resume', methods=['POST'])
 def generate_ai_resume():
     try:
+        # Request data ko validate karo
+        if not request.is_json:
+            return jsonify({"success": False, "error": "Request must be JSON"}), 400
+        
         data = request.json
+        if not data or not any(data.values()):  # Agar data khali hai toh error
+            return jsonify({"success": False, "error": "No valid data provided"}), 400
+
         user_input_text = f"""
         JOB TITLE: {data.get("jobTitle", "")}
         SUMMARY: {data.get("summary", "")}
@@ -685,6 +692,7 @@ def generate_ai_resume():
         CERTIFICATIONS: {data.get("certifications", "")}
         LANGUAGES: {data.get("languages", "")}
         """
+        
         prompt = f"""
         You are an expert resume writer. Rewrite and enhance the following raw resume content into a single, professional, well-formatted text block.
         - Use clear headings in all caps for each section (e.g., SUMMARY, WORK EXPERIENCE).
@@ -695,16 +703,33 @@ def generate_ai_resume():
         {user_input_text}
         ---
         """
-        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        
+        # OpenAI client setup with timeout
+        client = OpenAI(
+            api_key=os.environ.get("OPENAI_API_KEY"),
+            timeout=30  # 30 seconds timeout, agar slow ho toh fail ho jaye
+        )
         res = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
+            timeout=30  # Extra timeout for safety
         )
         improved_text = res.choices[0].message.content.strip()
-        return jsonify({"success": True, "improved_text": improved_text})
+        
+        logger.info("Resume generated successfully")
+        return jsonify({"success": True, "improved_text": improved_text}), 200
+
+    except ValueError as ve:
+        error_message = f"Validation Error: {str(ve)}"
+        logger.error(error_message)
+        return jsonify({"success": False, "error": error_message}), 400
+    except openai.APIError as api_err:
+        error_message = f"OpenAI API Error: {str(api_err)}"
+        logger.error(error_message)
+        return jsonify({"success": False, "error": error_message}), 500
     except Exception as e:
-        error_message = f"An exception occurred in generate_ai_resume: {type(e).__name__} - {str(e)}"
-        print(f"FINAL ERROR: {error_message}")
+        error_message = f"Internal Server Error: {type(e).__name__} - {str(e)}"
+        logger.error(error_message)
         return jsonify({"success": False, "error": error_message}), 500
 
 
