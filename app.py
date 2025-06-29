@@ -2,6 +2,7 @@ import logging
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
+from openai import OpenAI
 import os
 import uuid
 import json
@@ -673,41 +674,52 @@ def optimize_keywords():
 @app.route('/generate-ai-resume', methods=['POST'])
 def generate_ai_resume():
     try:
-        # User se mila data lena
         data = request.json
-        print(f"Received data from frontend: {data.get('name')}") # Yeh log me dikhega
-
-        # --- NAYA TEST CODE ---
-        # Hum AI ko call karne ke bajaye, ek fixed jawab bhej rahe hain
         
-        test_data = {
-            "summary": "This is a test summary generated directly from the backend.",
-            "experience": "Test Experience: Worked on debugging a complex application.",
-            "education": "Test Education: B.Tech in Computer Science.",
-            "skills": "Python\nFlask\nJavaScript\nDebugging",
-            "projects": "Test Project: Created a multi-step resume generator.",
-            "certifications": "Test Certification: Certified in Problem Solving.",
-            "languages": "Hindi\nEnglish"
-        }
+        # User ke saare input ko ek saath text block me daalna
+        user_input_text = f"""
+        JOB TITLE: {data.get("jobTitle", "")}
+        SUMMARY: {data.get("summary", "")}
+        WORK EXPERIENCE: {data.get("experience", "")}
+        EDUCATION: {data.get("education", "")}
+        SKILLS: {data.get("skills", "")}
+        PROJECTS: {data.get("projects", "")}
+        CERTIFICATIONS: {data.get("certifications", "")}
+        LANGUAGES: {data.get("languages", "")}
+        """
 
-        # User ka personal data bhi final response me jodna
-        final_data = {
-            "name": data.get("name"),
-            "email": data.get("email"),
-            "phone": data.get("phone"),
-            "location": data.get("location"),
-            "linkedin": data.get("linkedin"),
-            "jobTitle": data.get("jobTitle"),
-            **test_data
-        }
+        # AI ke liye naya, simple aur powerful prompt
+        prompt = f"""
+        You are an expert resume writer. Rewrite and enhance the following raw resume content into a single, professional, well-formatted text block.
+        - Use clear headings in all caps for each section (e.g., SUMMARY, WORK EXPERIENCE, SKILLS).
+        - Use standard bullet points (like a simple newline) for lists under experience, projects, etc.
+        - Ensure the output is clean, professional, and ready to be displayed. Do not add any extra commentary.
+
+        RAW CONTENT:
+        ---
+        {user_input_text}
+        ---
+        """
+
+        # OpenAI ko call karna
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
         
-        print("Sending hardcoded success response to frontend.") # Yeh log me dikhega
-        return jsonify({"success": True, "data": final_data})
+        res = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        # AI se mila hua poora improved text
+        improved_text = res.choices[0].message.content.strip()
+        
+        # Frontend ko saaf text bhejna
+        return jsonify({"success": True, "improved_text": improved_text})
 
     except Exception as e:
-        error_message = f"An exception occurred in generate_ai_resume (TEST MODE): {type(e).__name__} - {str(e)}"
-        print(error_message)
+        error_message = f"An exception occurred in generate_ai_resume: {type(e).__name__} - {str(e)}"
+        print(f"FINAL ERROR: {error_message}")
         return jsonify({"success": False, "error": error_message}), 500
+
 
 @app.route('/analyze-jd', methods=['POST'])
 def analyze_jd():
