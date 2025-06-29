@@ -1238,36 +1238,61 @@ OUTPUT FORMAT (JSON):
     # Step 3: Convert to final resume HTML
     return generate_michelle_template_html(cleaned)
 
-def generate_michelle_template_html(parsed):
-    # Basic sample HTML layout. Adjust as per your main resume preview template.
+def generateResumeTemplate(data):
+    def list_items(text):
+        lines = [line.strip() for line in text.split("\n") if line.strip()]
+        return "".join(f"<li>{line}</li>" for line in lines)
+
     return f"""
-    <div class="resume-container">
-      <div class="header">
-        <h1>{parsed.get("name", "")}</h1>
-        <p>{parsed.get("jobTitle", "")}</p>
-      </div>
-      <h2>PROFILE SUMMARY</h2>
-      <p>{parsed.get("summary", "")}</p>
-      <h2>WORK EXPERIENCE</h2>
-      <p>{parsed.get("experience", "")}</p>
-      <h2>EDUCATION</h2>
-      <p>{parsed.get("education", "")}</p>
-      <h2>PROJECTS</h2>
-      <p>{parsed.get("projects", "")}</p>
-      <h2>SKILLS</h2>
-      <p>{parsed.get("skills", "")}</p>
-      <h2>LANGUAGES</h2>
-      <p>{parsed.get("languages", "")}</p>
-      <h2>CERTIFICATIONS</h2>
-      <p>{parsed.get("certifications", "")}</p>
-      <h2>VOLUNTEER</h2>
-      <p>{parsed.get("volunteer", "")}</p>
-      <h2>ACHIEVEMENTS</h2>
-      <p>{parsed.get("achievements", "")}</p>
-      <h2>PUBLICATIONS</h2>
-      <p>{parsed.get("publications", "")}</p>
+    <div class="resume-container minimalist-template">
+        <div class="content-wrapper">
+            <div class="sidebar">
+                <div class="contact-info-sidebar">
+                    <h3>CONTACT</h3>
+                    <p><i class="fas fa-phone-alt"></i>{data.get("phone", "")}</p>
+                    <p><i class="fas fa-envelope"></i>{data.get("email", "")}</p>
+                    <p><i class="fas fa-map-marker-alt"></i>{data.get("location", "")}</p>
+                    <p><i class="fas fa-link"></i>{data.get("linkedin", "")}</p>
+                </div>
+                <div class="section">
+                    <h3>SKILLS</h3>
+                    <ul>{list_items(data.get("skills", ""))}</ul>
+                </div>
+                <div class="section">
+                    <h3>LANGUAGES</h3>
+                    <ul>{list_items(data.get("languages", ""))}</ul>
+                </div>
+                <div class="section">
+                    <h3>CERTIFICATIONS</h3>
+                    <ul>{list_items(data.get("certifications", ""))}</ul>
+                </div>
+            </div>
+            <div class="main-content">
+                <header>
+                    <h1>{data.get("name", "")}</h1>
+                    <h2>{data.get("jobTitle", "")}</h2>
+                </header>
+                <section>
+                    <h3>PROFILE SUMMARY</h3>
+                    <p>{data.get("summary", "")}</p>
+                </section>
+                <section>
+                    <h3>WORK EXPERIENCE</h3>
+                    <p>{data.get("experience", "")}</p>
+                </section>
+                <section>
+                    <h3>EDUCATION</h3>
+                    <p>{data.get("education", "")}</p>
+                </section>
+                <section>
+                    <h3>PROJECTS</h3>
+                    <p>{data.get("projects", "")}</p>
+                </section>
+            </div>
+        </div>
     </div>
     """
+
 def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     """
     Ye function AI-generated resume content ko ek proper HTML resume format me convert karta hai.
