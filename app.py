@@ -31,7 +31,6 @@ from resume_ai_analyzer import (
     get_field_suggestions,
     generate_smart_resume_from_keywords,
     generate_full_ai_resume_html,
-    generateResumeTemplate,
 
     # Existing Utility and Other Functions
     analyze_resume_with_openai,
