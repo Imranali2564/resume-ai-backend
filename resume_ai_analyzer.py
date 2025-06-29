@@ -1205,11 +1205,13 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
         else:
             items = [item.strip() for item in items_string.split('\n') if item.strip()]
         
-        return "".join(f"<li>{{item}}</li>" for item in items) # NOTE: Here 'item' is a variable, so single braces are correct
+        # NOTE: {{item}} is correct here to escape the curly braces for the HTML list item,
+        # as 'item' itself is the content.
+        return "".join(f"<li>{{item}}</li>" for item in items)
 
     def parse_complex_section_html(section_data, is_education=False):
         if not section_data:
-            return "" # Return empty string instead of plain text if no data
+            return ""
 
         if isinstance(section_data, list):
             html_content = ""
@@ -1232,22 +1234,19 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                 if details and isinstance(details, list):
                     item_html += "<ul>"
                     for detail in details:
-                        # Detail text might also contain things that look like f-string curly braces
-                        # We use repr() to ensure the string is correctly represented if it has tricky characters
-                        # and then strip the quotes added by repr()
+                        # Use repr() and then strip quotes to safely embed any string content
                         escaped_detail = repr(detail)[1:-1]
-                        item_html += f"<li>{escaped_detail}</li>" # Using repr() to handle special chars safely
+                        item_html += f"<li>{{escaped_detail}}</li>"
                     item_html += "</ul>"
                 elif details and isinstance(details, str):
                     escaped_details_str = repr(details)[1:-1]
-                    item_html += f"<p>{escaped_details_str}</p>"
+                    item_html += f"<p>{{escaped_details_str}}</p>"
 
-                html_content += f"<div class='experience-item'>{item_html}</div>"
+                html_content += f"<div class='experience-item'>{{item_html}}</div>"
             return html_content
         else:
-            # Fallback for plain string if not a list of objects (ideally, AI should return structured data)
             escaped_section_data = repr(section_data)[1:-1]
-            return f"<p>{escaped_section_data}</p>"
+            return f"<p>{{escaped_section_data}}</p>"
 
 
     return f"""
@@ -1295,7 +1294,6 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                     <h2>Projects</h2>
                     {parse_complex_section_html(smart_content.get('projects', ''), is_education=False)}
                 </div>
-                {/* Add other sections if needed, with similar structure */}
             </main>
         </div>
     </div>
