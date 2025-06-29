@@ -1200,22 +1200,17 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     """
 
     def list_to_html(items_string):
-        # Ensure that if the input is a list (e.g., from smart_content.get('skills')),
-        # it is handled correctly. If it's a string, split by newline.
         if isinstance(items_string, list):
             items = [item.strip() for item in items_string if item.strip()]
         else:
             items = [item.strip() for item in items_string.split('\n') if item.strip()]
         
-        # Add a bullet point to each list item in HTML
-        return "".join(f"<li>{item}</li>" for item in items)
+        return "".join(f"<li>{{item}}</li>" for item in items) # NOTE: Here 'item' is a variable, so single braces are correct
 
-    # Work Experience aur Education ko parse karne ke liye helper function
     def parse_complex_section_html(section_data, is_education=False):
         if not section_data:
-            return f"<p>{section_data}</p>" # Agar AI ne plain string di hai
-        
-        # Agar AI ne list of objects di hai (jaisa ki expected hai from extract_resume_sections_safely)
+            return "" # Return empty string instead of plain text if no data
+
         if isinstance(section_data, list):
             html_content = ""
             for item in section_data:
@@ -1225,7 +1220,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                 title = item.get(title_key, '')
                 company = item.get(company_key, '')
                 duration = item.get('duration', '')
-                details = item.get('details', []) # Details should be a list of strings
+                details = item.get('details', [])
 
                 item_html = f"<h4>{title}"
                 if company:
@@ -1237,33 +1232,38 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                 if details and isinstance(details, list):
                     item_html += "<ul>"
                     for detail in details:
-                        item_html += f"<li>{detail}</li>"
+                        # Detail text might also contain things that look like f-string curly braces
+                        # We use repr() to ensure the string is correctly represented if it has tricky characters
+                        # and then strip the quotes added by repr()
+                        escaped_detail = repr(detail)[1:-1]
+                        item_html += f"<li>{escaped_detail}</li>" # Using repr() to handle special chars safely
                     item_html += "</ul>"
-                elif details and isinstance(details, str): # Fallback if details is a string
-                    item_html += f"<p>{details}</p>"
+                elif details and isinstance(details, str):
+                    escaped_details_str = repr(details)[1:-1]
+                    item_html += f"<p>{escaped_details_str}</p>"
 
-                html_content += f"<div class='experience-item'>{item_html}</div>" # Ya education-item class
+                html_content += f"<div class='experience-item'>{item_html}</div>"
             return html_content
         else:
-            # Fallback for plain string if not a list of objects (shouldn't happen with updated AI parsing)
-            return f"<p>{section_data}</p>"
+            # Fallback for plain string if not a list of objects (ideally, AI should return structured data)
+            escaped_section_data = repr(section_data)[1:-1]
+            return f"<p>{escaped_section_data}</p>"
 
 
-    # Ye hai main HTML structure jisme CSS classes ka sahi upyog kiya gaya hai
     return f"""
     <div class="resume-container">
-        <div class="content-wrapper"> {/* NEW: content-wrapper div */}
-            <aside class="resume-sidebar"> {/* EXISTING: resume-sidebar */}
-                <div class="contact-info-sidebar"> {/* CHANGED: Specific class for contact */}
+        <div class="content-wrapper">
+            <aside class="resume-sidebar">
+                <div class="contact-info-sidebar">
                     <h3>Contact</h3>
                     <p><i class="fas fa-phone-alt"></i> {user_info.get('phone', 'N/A')}</p>
                     <p><i class="fas fa-envelope"></i> {user_info.get('email', 'N/A')}</p>
                     <p><i class="fas fa-map-marker-alt"></i> {user_info.get('location', 'N/A')}</p>
                     <p><i class="fas fa-linkedin"></i> <a href="{user_info.get('linkedin', '#')}" target="_blank">{user_info.get('linkedin', 'N/A')}</a></p>
                 </div>
-                <div class="resume-section"> {/* EXISTING: resume-section for consistency */}
+                <div class="resume-section">
                     <h2>Skills</h2>
-                    <ul>{list_to_html(smart_content.get('skills', []))}</ul> {/* Use [] as default for list_to_html */}
+                    <ul>{list_to_html(smart_content.get('skills', []))}</ul>
                 </div>
                 <div class="resume-section">
                     <h2>Languages</h2>
@@ -1274,12 +1274,12 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                     <ul>{list_to_html(smart_content.get('certifications', []))}</ul>
                 </div>
             </aside>
-            <main class="main-content"> {/* NEW: main-content class */}
-                <div class="name-title-header"> {/* NEW: name-title-header for consistent styling */}
+            <main class="main-content">
+                <div class="name-title-header">
                     <h1>{user_info.get('name', '')}</h1>
                     <div class="job-title">{user_info.get('jobTitle', '')}</div>
                 </div>
-                <div class="resume-section"> {/* EXISTING: resume-section */}
+                <div class="resume-section">
                     <h2>Profile Summary</h2>
                     <p>{smart_content.get('summary', '')}</p>
                 </div>
@@ -1297,6 +1297,6 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                 </div>
                 {/* Add other sections if needed, with similar structure */}
             </main>
-        </div> {/* End of content-wrapper */}
+        </div>
     </div>
     """
