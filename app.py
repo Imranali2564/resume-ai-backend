@@ -673,48 +673,37 @@ def optimize_keywords():
 
 @app.route('/generate-ai-resume', methods=['POST'])
 def generate_ai_resume():
+    prompt = "" # Prompt ko try block ke bahar initialize karein
     try:
         data = request.json
-        
         user_input_text = f"""
-        JOB TITLE: {data.get("jobTitle", "")}
-        SUMMARY: {data.get("summary", "")}
-        WORK EXPERIENCE: {data.get("experience", "")}
-        EDUCATION: {data.get("education", "")}
-        SKILLS: {data.get("skills", "")}
-        PROJECTS: {data.get("projects", "")}
-        CERTIFICATIONS: {data.get("certifications", "")}
-        LANGUAGES: {data.get("languages", "")}
+        - Job Title: {data.get("jobTitle", "")}
+        - Summary: {data.get("summary", "")}
+        - Experience: {data.get("experience", "")}
+        - Education: {data.get("education", "")}
+        - Skills: {data.get("skills", "")}
+        - Projects: {data.get("projects", "")}
+        - Certifications: {data.get("certifications", "")}
+        - Languages: {data.get("languages", "")}
         """
 
         prompt = f"""
         You are an expert resume writer. Rewrite and enhance the following raw resume content into a single, professional, well-formatted text block.
-        - Use clear headings in ALL CAPS for each section (e.g., SUMMARY, WORK EXPERIENCE).
-        - Use standard bullet points (like a simple newline) for lists.
-        - Ensure the output is clean, professional, and ready to be displayed. Do not add any extra commentary or introductory text.
-        - Start directly with the first section heading.
-
-        RAW CONTENT:
-        ---
-        {user_input_text}
-        ---
+        Use clear headings in ALL CAPS for each section (e.g., SUMMARY, WORK EXPERIENCE).
+        Use standard newlines for bullet points. Do not add any extra commentary.
+        Start directly with the first section heading.
+        RAW CONTENT: --- {user_input_text} ---
         """
 
         from openai import OpenAI
         client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-        
         res = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
-        
         improved_text = res.choices[0].message.content.strip()
         
-        # --- YEH HAI FINAL FIX ---
-        # Ab hum 'improved_text' ko hi frontend me bhej rahe hain, naaki purane data structure ko.
-        # Isse JavaScript ko sahi data milega.
-        
-        # User ka personal data bhi final response me jodna, taaki preview me naam, email dikhe
+        # User ka personal data bhi final response me jodna
         final_data_for_frontend = {
             "name": data.get("name"),
             "email": data.get("email"),
@@ -722,15 +711,18 @@ def generate_ai_resume():
             "location": data.get("location"),
             "linkedin": data.get("linkedin"),
             "jobTitle": data.get("jobTitle"),
-            "improved_text": improved_text  # AI ka banaya hua text
+            "improved_text": improved_text
         }
-        
         return jsonify({"success": True, "data": final_data_for_frontend})
 
     except Exception as e:
-        error_message = f"An exception occurred in generate_ai_resume: {type(e).__name__} - {str(e)}"
-        # logger.error(error_message) # For production logging
-        return jsonify({"success": False, "error": error_message}), 500
+        error_message = f"An exception occurred: {type(e).__name__} - {str(e)}"
+        # Hum error ke saath woh prompt bhi bhejenge jisne error paida kiya
+        return jsonify({
+            "success": False, 
+            "error": error_message,
+            "problematic_prompt": prompt # For debugging
+        }), 500
 
 
 @app.route('/analyze-jd', methods=['POST'])
