@@ -1137,6 +1137,7 @@ def get_field_suggestions(extracted_data, resume_text):
     except Exception as e:
         logger.error(f"Could not get field suggestions: {e}")
         return {"field": "General / Fresher", "suggestions": [{"type": "Recommended", "section": "Projects"}]}
+
 def generate_smart_resume_from_keywords(data: dict) -> dict:
     """
     Ye function har resume section ke liye AI se professionally rewritten content laata hai.
@@ -1189,3 +1190,80 @@ Output:
             smart_resume[key] = f"⚠️ Error: {type(e).__name__} - {str(e)}"
 
     return smart_resume
+def generate_full_ai_resume_html(user_data):
+    """
+    Accepts raw user input dictionary and rewrites it into professional content,
+    then returns resume HTML using the Michelle template.
+    """
+    # Step 1: Create a unified raw input string for GPT
+    section_strings = []
+    for section, content in user_data.items():
+        if content.strip():
+            section_strings.append(f"- {section.title()}: {content.strip()}")
+    raw_prompt = "\n".join(section_strings)
+
+    # Step 2: Ask OpenAI to rewrite all into smart resume content
+    prompt = f"""
+You are a professional resume writer. Convert the following raw section data into well-written, professional resume content. Expand all points where necessary. Use clean formatting. Format skills/languages as lists. Return a valid JSON object with the same keys.
+
+RAW INPUT:
+{raw_prompt}
+
+OUTPUT FORMAT (JSON):
+{{
+  "summary": "...",
+  "experience": "...",
+  "education": "...",
+  "skills": "...",
+  "projects": "...",
+  "certifications": "...",
+  "languages": "...",
+  "volunteer": "...",
+  "achievements": "...",
+  "publications": "..."
+}}
+    """
+    from openai import OpenAI
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    res = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": prompt}],
+        response_format={"type": "json_object"},
+        timeout=20
+    )
+
+    cleaned = json.loads(res.choices[0].message.content)
+
+    # Step 3: Convert to final resume HTML
+    return generate_michelle_template_html(cleaned)
+
+def generate_michelle_template_html(parsed):
+    # Basic sample HTML layout. Adjust as per your main resume preview template.
+    return f"""
+    <div class="resume-container">
+      <div class="header">
+        <h1>{parsed.get("name", "")}</h1>
+        <p>{parsed.get("jobTitle", "")}</p>
+      </div>
+      <h2>PROFILE SUMMARY</h2>
+      <p>{parsed.get("summary", "")}</p>
+      <h2>WORK EXPERIENCE</h2>
+      <p>{parsed.get("experience", "")}</p>
+      <h2>EDUCATION</h2>
+      <p>{parsed.get("education", "")}</p>
+      <h2>PROJECTS</h2>
+      <p>{parsed.get("projects", "")}</p>
+      <h2>SKILLS</h2>
+      <p>{parsed.get("skills", "")}</p>
+      <h2>LANGUAGES</h2>
+      <p>{parsed.get("languages", "")}</p>
+      <h2>CERTIFICATIONS</h2>
+      <p>{parsed.get("certifications", "")}</p>
+      <h2>VOLUNTEER</h2>
+      <p>{parsed.get("volunteer", "")}</p>
+      <h2>ACHIEVEMENTS</h2>
+      <p>{parsed.get("achievements", "")}</p>
+      <h2>PUBLICATIONS</h2>
+      <p>{parsed.get("publications", "")}</p>
+    </div>
+    """

@@ -29,6 +29,8 @@ from resume_ai_analyzer import (
     fix_resume_issue,
     calculate_new_score,
     get_field_suggestions,
+    generate_smart_resume_from_keywords,
+    generate_michelle_template_html,
 
     # Existing Utility and Other Functions
     analyze_resume_with_openai,
@@ -676,9 +678,7 @@ def generate_ai_resume():
     try:
         data = request.json
 
-        from resume_ai_analyzer import generate_smart_resume_from_keywords, generate_full_ai_resume_html
-
-        # STEP 1: Smart rewrite of keywords
+                # STEP 1: Smart rewrite of keywords
         smart_resume_data = generate_smart_resume_from_keywords(data)
 
         # STEP 2: Merge contact info
