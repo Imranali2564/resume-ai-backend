@@ -673,9 +673,11 @@ def optimize_keywords():
 
 @app.route('/generate-ai-resume', methods=['POST'])
 def generate_ai_resume():
-    prompt = ""  # Prompt ko try block ke bahar initialize karein
+    prompt = ""  # Prompt ko bahar initialize kara gaya for error visibility
     try:
         data = request.json
+
+        # Step 1: Raw user input formatting
         user_input_text = f"""
         - Job Title: {data.get("jobTitle", "")}
         - Summary: {data.get("summary", "")}
@@ -687,25 +689,36 @@ def generate_ai_resume():
         - Languages: {data.get("languages", "")}
         """
 
+        # Step 2: Prompt to OpenAI
         prompt = f"""
-        You are an expert resume writer. Rewrite and enhance the following raw resume content into a single, professional, well-formatted HTML text block.
-        Use the provided CSS styles from the original HTML to format the output.
-        Use clear headings in ALL CAPS for each section (e.g., PROFESSIONAL SUMMARY, WORK EXPERIENCE).
-        Use standard newlines for bullet points. Do not add any extra commentary.
-        Start directly with the first section heading.
-        If any field (e.g., Job Title, Experience) is empty, skip that section or use 'Not Provided' instead of leaving it blank or using brackets (e.g., [Company Name]).
-        RAW CONTENT: --- {user_input_text} ---
-        OUTPUT FORMAT: Return only the HTML content inside a <div class="content-wrapper">...</div> structure, matching the original resume-container layout.
+        You are an expert resume writer. Rewrite and enhance the following raw resume content into a professional, ATS-friendly resume in HTML.
+
+        💡 Follow these formatting rules:
+        - Use <div class="content-wrapper"> as the outer container.
+        - Use <h2> tags for all section headings like SUMMARY, WORK EXPERIENCE, EDUCATION, SKILLS, etc.
+        - All section headings must be in UPPERCASE and followed by their content.
+        - Bullet points must use <ul><li> format.
+        - Only include sections that have data. If data is missing, skip the section entirely.
+        - Do NOT use placeholder text like [Company Name]. If data is missing, skip it or say “Not Provided”.
+        - Keep the structure clean and easy to parse by frontend.
+
+        👇 Raw Input:
+        {user_input_text}
+
+        🚀 OUTPUT FORMAT:
+        Return only the HTML block starting from: <div class="content-wrapper"> ... </div>
         """
 
+        # Step 3: OpenAI API call
         client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"), timeout=20)
         res = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             timeout=20
         )
+
         html_content = res.choices[0].message.content.strip()
-        
+
         return jsonify({"success": True, "html": html_content})
 
     except Exception as e:
