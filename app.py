@@ -673,34 +673,29 @@ def optimize_keywords():
 
 # Yeh function app.py me replace karein
 
-@app.route('/generate-ai-resume', methods=['POST'])
+@app.route("/generate-ai-resume", methods=["POST"])
 def generate_ai_resume():
     try:
-        data = request.json
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No input data received"}), 400
 
-        from resume_ai_analyzer import (
-            generate_smart_resume_from_keywords,
-            generate_full_ai_resume_html
-        )
+        # Split into two parts: contact info and rest
+        contact_fields = ["name", "email", "phone", "location", "linkedin", "jobTitle"]
+        user_info = {key: data.get(key, "") for key in contact_fields}
+        section_data = {key: value for key, value in data.items() if key not in contact_fields}
 
-        # Step 1: Generate smart rewritten content
-        smart_resume = generate_smart_resume_from_keywords(data)
+        # Step 1: Rewriting all resume sections via OpenAI
+        smart_resume = generate_smart_resume_from_keywords(section_data)
 
-        # Step 2: Generate full HTML using smart content + user info
-        html = generate_full_ai_resume_html(user_info=data, smart_content=smart_resume)
+        # Step 2: Merge and render using ResumeFixerPro template
+        parsed_resume = {**user_info, **smart_resume}
+        html = generateResumeTemplate(parsed_resume)
 
-        # Step 3: Return for frontend
-        return jsonify({
-            "success": True,
-            "data": smart_resume,
-            "html": html
-        })
+        return jsonify({"html": html})
 
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": f"{type(e).__name__}: {str(e)}"
-        }), 500
+        return jsonify({"error": f"❌ Exception in generate-ai-resume: {type(e).__name__} - {str(e)}"}), 500
 
 @app.route('/analyze-jd', methods=['POST'])
 def analyze_jd():
