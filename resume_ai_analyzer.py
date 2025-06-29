@@ -1200,53 +1200,103 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     """
 
     def list_to_html(items_string):
-        items = [item.strip() for item in items_string.split('\n') if item.strip()]
+        # Ensure that if the input is a list (e.g., from smart_content.get('skills')),
+        # it is handled correctly. If it's a string, split by newline.
+        if isinstance(items_string, list):
+            items = [item.strip() for item in items_string if item.strip()]
+        else:
+            items = [item.strip() for item in items_string.split('\n') if item.strip()]
+        
+        # Add a bullet point to each list item in HTML
         return "".join(f"<li>{item}</li>" for item in items)
 
+    # Work Experience aur Education ko parse karne ke liye helper function
+    def parse_complex_section_html(section_data, is_education=False):
+        if not section_data:
+            return f"<p>{section_data}</p>" # Agar AI ne plain string di hai
+        
+        # Agar AI ne list of objects di hai (jaisa ki expected hai from extract_resume_sections_safely)
+        if isinstance(section_data, list):
+            html_content = ""
+            for item in section_data:
+                title_key = "degree" if is_education else "title"
+                company_key = "school" if is_education else "company"
+                
+                title = item.get(title_key, '')
+                company = item.get(company_key, '')
+                duration = item.get('duration', '')
+                details = item.get('details', []) # Details should be a list of strings
+
+                item_html = f"<h4>{title}"
+                if company:
+                    item_html += f" at {company}"
+                if duration:
+                    item_html += f", {duration}"
+                item_html += "</h4>"
+                
+                if details and isinstance(details, list):
+                    item_html += "<ul>"
+                    for detail in details:
+                        item_html += f"<li>{detail}</li>"
+                    item_html += "</ul>"
+                elif details and isinstance(details, str): # Fallback if details is a string
+                    item_html += f"<p>{details}</p>"
+
+                html_content += f"<div class='experience-item'>{item_html}</div>" # Ya education-item class
+            return html_content
+        else:
+            # Fallback for plain string if not a list of objects (shouldn't happen with updated AI parsing)
+            return f"<p>{section_data}</p>"
+
+
+    # Ye hai main HTML structure jisme CSS classes ka sahi upyog kiya gaya hai
     return f"""
     <div class="resume-container">
-      <aside class="resume-sidebar">
-        <div class="section">
-          <h3>Contact</h3>
-          <p><strong>📞</strong> {user_info.get('phone', '')}</p>
-          <p><strong>📧</strong> {user_info.get('email', '')}</p>
-          <p><strong>📍</strong> {user_info.get('location', '')}</p>
-          <p><strong>🔗</strong> {user_info.get('linkedin', '')}</p>
-        </div>
-        <div class="section">
-          <h3>Skills</h3>
-          <ul>{list_to_html(smart_content.get('skills', ''))}</ul>
-        </div>
-        <div class="section">
-          <h3>Languages</h3>
-          <ul>{list_to_html(smart_content.get('languages', ''))}</ul>
-        </div>
-        <div class="section">
-          <h3>Certifications</h3>
-          <ul>{list_to_html(smart_content.get('certifications', ''))}</ul>
-        </div>
-      </aside>
-      <main class="resume-main">
-        <header>
-          <h1>{user_info.get('name', '')}</h1>
-          <h2>{user_info.get('jobTitle', '')}</h2>
-        </header>
-        <section>
-          <h3>Profile Summary</h3>
-          <p>{smart_content.get('summary', '')}</p>
-        </section>
-        <section>
-          <h3>Work Experience</h3>
-          <p>{smart_content.get('experience', '')}</p>
-        </section>
-        <section>
-          <h3>Education</h3>
-          <p>{smart_content.get('education', '')}</p>
-        </section>
-        <section>
-          <h3>Projects</h3>
-          <p>{smart_content.get('projects', '')}</p>
-        </section>
-      </main>
+        <div class="content-wrapper"> {/* NEW: content-wrapper div */}
+            <aside class="resume-sidebar"> {/* EXISTING: resume-sidebar */}
+                <div class="contact-info-sidebar"> {/* CHANGED: Specific class for contact */}
+                    <h3>Contact</h3>
+                    <p><i class="fas fa-phone-alt"></i> {user_info.get('phone', 'N/A')}</p>
+                    <p><i class="fas fa-envelope"></i> {user_info.get('email', 'N/A')}</p>
+                    <p><i class="fas fa-map-marker-alt"></i> {user_info.get('location', 'N/A')}</p>
+                    <p><i class="fas fa-linkedin"></i> <a href="{user_info.get('linkedin', '#')}" target="_blank">{user_info.get('linkedin', 'N/A')}</a></p>
+                </div>
+                <div class="resume-section"> {/* EXISTING: resume-section for consistency */}
+                    <h2>Skills</h2>
+                    <ul>{list_to_html(smart_content.get('skills', []))}</ul> {/* Use [] as default for list_to_html */}
+                </div>
+                <div class="resume-section">
+                    <h2>Languages</h2>
+                    <ul>{list_to_html(smart_content.get('languages', []))}</ul>
+                </div>
+                <div class="resume-section">
+                    <h2>Certifications</h2>
+                    <ul>{list_to_html(smart_content.get('certifications', []))}</ul>
+                </div>
+            </aside>
+            <main class="main-content"> {/* NEW: main-content class */}
+                <div class="name-title-header"> {/* NEW: name-title-header for consistent styling */}
+                    <h1>{user_info.get('name', '')}</h1>
+                    <div class="job-title">{user_info.get('jobTitle', '')}</div>
+                </div>
+                <div class="resume-section"> {/* EXISTING: resume-section */}
+                    <h2>Profile Summary</h2>
+                    <p>{smart_content.get('summary', '')}</p>
+                </div>
+                <div class="resume-section">
+                    <h2>Work Experience</h2>
+                    {parse_complex_section_html(smart_content.get('experience', ''), is_education=False)}
+                </div>
+                <div class="resume-section">
+                    <h2>Education</h2>
+                    {parse_complex_section_html(smart_content.get('education', ''), is_education=True)}
+                </div>
+                <div class="resume-section">
+                    <h2>Projects</h2>
+                    {parse_complex_section_html(smart_content.get('projects', ''), is_education=False)}
+                </div>
+                {/* Add other sections if needed, with similar structure */}
+            </main>
+        </div> {/* End of content-wrapper */}
     </div>
     """
