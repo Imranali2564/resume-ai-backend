@@ -1190,6 +1190,7 @@ Output:
             smart_resume[key] = f"⚠️ Error: {type(e).__name__} - {str(e)}"
 
     return smart_resume
+
 def generate_full_ai_resume_html(user_data):
     """
     Accepts raw user input dictionary and rewrites it into professional content,
@@ -1265,5 +1266,63 @@ def generate_michelle_template_html(parsed):
       <p>{parsed.get("achievements", "")}</p>
       <h2>PUBLICATIONS</h2>
       <p>{parsed.get("publications", "")}</p>
+    </div>
+    """
+def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
+    """
+    Ye function AI-generated resume content ko ek proper HTML resume format me convert karta hai.
+    Left section: contact, skills, languages, certifications, etc.
+    Right section: summary, experience, education, projects, etc.
+    """
+
+    def list_to_html(items_string):
+        items = [item.strip() for item in items_string.split('\n') if item.strip()]
+        return "".join(f"<li>{item}</li>" for item in items)
+
+    return f"""
+    <div class="resume-container">
+      <aside class="resume-sidebar">
+        <div class="section">
+          <h3>Contact</h3>
+          <p><strong>📞</strong> {user_info.get('phone', '')}</p>
+          <p><strong>📧</strong> {user_info.get('email', '')}</p>
+          <p><strong>📍</strong> {user_info.get('location', '')}</p>
+          <p><strong>🔗</strong> {user_info.get('linkedin', '')}</p>
+        </div>
+        <div class="section">
+          <h3>Skills</h3>
+          <ul>{list_to_html(smart_content.get('skills', ''))}</ul>
+        </div>
+        <div class="section">
+          <h3>Languages</h3>
+          <ul>{list_to_html(smart_content.get('languages', ''))}</ul>
+        </div>
+        <div class="section">
+          <h3>Certifications</h3>
+          <ul>{list_to_html(smart_content.get('certifications', ''))}</ul>
+        </div>
+      </aside>
+      <main class="resume-main">
+        <header>
+          <h1>{user_info.get('name', '')}</h1>
+          <h2>{user_info.get('jobTitle', '')}</h2>
+        </header>
+        <section>
+          <h3>Profile Summary</h3>
+          <p>{smart_content.get('summary', '')}</p>
+        </section>
+        <section>
+          <h3>Work Experience</h3>
+          <p>{smart_content.get('experience', '')}</p>
+        </section>
+        <section>
+          <h3>Education</h3>
+          <p>{smart_content.get('education', '')}</p>
+        </section>
+        <section>
+          <h3>Projects</h3>
+          <p>{smart_content.get('projects', '')}</p>
+        </section>
+      </main>
     </div>
     """

@@ -678,29 +678,28 @@ def generate_ai_resume():
     try:
         data = request.json
 
-                # STEP 1: Smart rewrite of keywords
-        smart_resume_data = generate_smart_resume_from_keywords(data)
+        from resume_ai_analyzer import (
+            generate_smart_resume_from_keywords,
+            generate_full_ai_resume_html
+        )
 
-        # STEP 2: Merge contact info
-        final_data = {
-            "name": data.get("name", ""),
-            "email": data.get("email", ""),
-            "phone": data.get("phone", ""),
-            "location": data.get("location", ""),
-            "linkedin": data.get("linkedin", ""),
-            "jobTitle": data.get("jobTitle", ""),
-            **smart_resume_data
-        }
+        # Step 1: Generate smart rewritten content
+        smart_resume = generate_smart_resume_from_keywords(data)
 
-        # STEP 3: Generate HTML preview using template
-        html = generate_full_ai_resume_html(final_data)
+        # Step 2: Generate full HTML using smart content + user info
+        html = generate_full_ai_resume_html(user_info=data, smart_content=smart_resume)
 
-        return jsonify({"success": True, "html": html})
+        # Step 3: Return for frontend
+        return jsonify({
+            "success": True,
+            "data": smart_resume,
+            "html": html
+        })
 
     except Exception as e:
         return jsonify({
             "success": False,
-            "error": f"❌ Exception in generate-ai-resume: {type(e).__name__} - {str(e)}"
+            "error": f"{type(e).__name__}: {str(e)}"
         }), 500
 
 @app.route('/analyze-jd', methods=['POST'])
