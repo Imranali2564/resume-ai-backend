@@ -675,8 +675,6 @@ def optimize_keywords():
 def generate_ai_resume():
     try:
         data = request.json
-        
-        # User ke saare input ko ek saath text block me daalna
         user_input_text = f"""
         JOB TITLE: {data.get("jobTitle", "")}
         SUMMARY: {data.get("summary", "")}
@@ -687,34 +685,23 @@ def generate_ai_resume():
         CERTIFICATIONS: {data.get("certifications", "")}
         LANGUAGES: {data.get("languages", "")}
         """
-
-        # AI ke liye naya, simple aur powerful prompt
         prompt = f"""
         You are an expert resume writer. Rewrite and enhance the following raw resume content into a single, professional, well-formatted text block.
-        - Use clear headings in all caps for each section (e.g., SUMMARY, WORK EXPERIENCE, SKILLS).
-        - Use standard bullet points (like a simple newline) for lists under experience, projects, etc.
-        - Ensure the output is clean, professional, and ready to be displayed. Do not add any extra commentary.
-
+        - Use clear headings in all caps for each section (e.g., SUMMARY, WORK EXPERIENCE).
+        - Use standard bullet points (like a simple newline) for lists.
+        - Do not add any extra commentary.
         RAW CONTENT:
         ---
         {user_input_text}
         ---
         """
-
-        # OpenAI ko call karna
         client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-        
         res = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
-        
-        # AI se mila hua poora improved text
         improved_text = res.choices[0].message.content.strip()
-        
-        # Frontend ko saaf text bhejna
         return jsonify({"success": True, "improved_text": improved_text})
-
     except Exception as e:
         error_message = f"An exception occurred in generate_ai_resume: {type(e).__name__} - {str(e)}"
         print(f"FINAL ERROR: {error_message}")
