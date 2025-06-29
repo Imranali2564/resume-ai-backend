@@ -1200,55 +1200,59 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     """
 
     def list_to_html(items_string):
-    if isinstance(items_string, list):
-        items = [item.strip() for item in items_string if item.strip()]
-    else:
-        items = [item.strip() for item in items_string.split('\n') if item.strip()]
+        # Indentation corrected for the block inside list_to_html
+        if isinstance(items_string, list):
+            items = [item.strip() for item in items_string if item.strip()]
+        elif isinstance(items_string, str): # Added elif for clarity
+            items = [item.strip() for item in items_string.split('\n') if item.strip()]
+        else:
+            items = [] # Fallback for unexpected type
 
-    # Here, 'item' is already a string, so direct embedding is fine.
-    # No need for {{item}} here, as Python needs to evaluate 'item'.
-    return "".join(f"<li>{item}</li>" for item in items)
+        # Here, 'item' is already a string, so direct embedding is fine.
+        # No need for {{item}} here, as Python needs to evaluate 'item'.
+        return "".join(f"<li>{item}</li>" for item in items)
 
 
-def parse_complex_section_html(section_data, is_education=False):
-    if not section_data:
-        return ""
+    def parse_complex_section_html(section_data, is_education=False):
+        # Indentation corrected for the block inside parse_complex_section_html
+        if not section_data:
+            return ""
 
-    if isinstance(section_data, list):
-        html_content = ""
-        for item in section_data:
-            title_key = "degree" if is_education else "title"
-            company_key = "school" if is_education else "company"
+        if isinstance(section_data, list):
+            html_content = ""
+            for item in section_data:
+                title_key = "degree" if is_education else "title"
+                company_key = "school" if is_education else "company"
 
-            title = item.get(title_key, '')
-            company = item.get(company_key, '')
-            duration = item.get('duration', '')
-            details = item.get('details', [])
+                title = item.get(title_key, '')
+                company = item.get(company_key, '')
+                duration = item.get('duration', '')
+                details = item.get('details', [])
 
-            item_html = f"<h4>{title}"
-            if company:
-                item_html += f" at {company}"
-            if duration:
-                item_html += f", {duration}"
-            item_html += "</h4>"
+                item_html = f"<h4>{title}"
+                if company:
+                    item_html += f" at {company}"
+                if duration:
+                    item_html += f", {duration}"
+                item_html += "</h4>"
 
-            if details and isinstance(details, list):
-                item_html += "<ul>"
-                for detail in details:
-                    # Here, detail is already a string to be embedded.
-                    # No need for repr() unless it literally contains unescaped quotes.
-                    item_html += f"<li>{detail}</li>" 
-                item_html += "</ul>"
-            elif details and isinstance(details, str):
-                item_html += f"<p>{details}</p>"
+                if details and isinstance(details, list):
+                    item_html += "<ul>"
+                    for detail in details:
+                        # Here, detail is already a string to be embedded.
+                        item_html += f"<li>{detail}</li>"
+                    item_html += "</ul>"
+                elif details and isinstance(details, str):
+                    item_html += f"<p>{details}</p>"
 
-            # {{item_html}} because item_html is a variable holding HTML string
-            html_content += f"<div class='experience-item'>{item_html}</div>" 
-        return html_content
-    else:
-        # If section_data is a plain string, just wrap it in a paragraph.
-        # No need for repr() here unless the string literally has quotes that break HTML.
-        return f"<p>{section_data}</p>"
+                # {item_html} because item_html is a variable holding HTML string
+                html_content += f"<div class='experience-item'>{item_html}</div>"
+            return html_content
+        elif isinstance(section_data, str): # Added elif for clarity
+            # If section_data is a plain string, just wrap it in a paragraph.
+            return f"<p>{section_data}</p>"
+        else: # Fallback for unexpected type
+            return ""
 
 
     return f"""
@@ -1264,15 +1268,15 @@ def parse_complex_section_html(section_data, is_education=False):
                 </div>
                 <div class="resume-section">
                     <h2>Skills</h2>
-                    <ul>{list_to_html(smart_content.get('skills', []))}</ul>
+                    <ul>{list_to_html(smart_content.get('skills', ''))}</ul>
                 </div>
                 <div class="resume-section">
                     <h2>Languages</h2>
-                    <ul>{list_to_html(smart_content.get('languages', []))}</ul>
+                    <ul>{list_to_html(smart_content.get('languages', ''))}</ul>
                 </div>
                 <div class="resume-section">
                     <h2>Certifications</h2>
-                    <ul>{list_to_html(smart_content.get('certifications', []))}</ul>
+                    <ul>{list_to_html(smart_content.get('certifications', ''))}</ul>
                 </div>
             </aside>
             <main class="main-content">
