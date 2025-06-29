@@ -673,55 +673,24 @@ def optimize_keywords():
 @app.route('/generate-ai-resume', methods=['POST'])
 def generate_ai_resume():
     try:
+        # User se mila data lena
         data = request.json
+        print(f"Received data from frontend: {data.get('name')}") # Yeh log me dikhega
+
+        # --- NAYA TEST CODE ---
+        # Hum AI ko call karne ke bajaye, ek fixed jawab bhej rahe hain
         
-        user_input_text = f"""
-        - Job Title: {data.get("jobTitle", "")}
-        - Summary Keywords: {data.get("summary", "")}
-        - Experience Keywords: {data.get("experience", "")}
-        - Education Keywords: {data.get("education", "")}
-        - Skills Keywords: {data.get("skills", "")}
-        - Projects Keywords: {data.get("projects", "")}
-        - Certifications Keywords: {data.get("certifications", "")}
-        - Languages Keywords: {data.get("languages", "")}
-        """
+        test_data = {
+            "summary": "This is a test summary generated directly from the backend.",
+            "experience": "Test Experience: Worked on debugging a complex application.",
+            "education": "Test Education: B.Tech in Computer Science.",
+            "skills": "Python\nFlask\nJavaScript\nDebugging",
+            "projects": "Test Project: Created a multi-step resume generator.",
+            "certifications": "Test Certification: Certified in Problem Solving.",
+            "languages": "Hindi\nEnglish"
+        }
 
-        prompt = f"""
-        You are an expert resume writer. Based on the following user-provided keywords and phrases, expand and rewrite them into professional, impactful resume sections.
-        - For 'experience', 'education', and 'projects', elaborate on the points and return them as a single block of text with newlines.
-        - For 'skills' and 'languages', return them as a clean, newline-separated list.
-        - For 'summary', write a powerful 2-3 line professional statement.
-        - If any section's keywords are empty, return an empty string for that section's value.
-        - Your entire output MUST be a single, valid JSON object.
-
-        USER-PROVIDED KEYWORDS:
-        {user_input_text}
-        ---
-        REQUIRED JSON OUTPUT FORMAT:
-        {{
-          "summary": "...",
-          "experience": "...",
-          "education": "...",
-          "skills": "...",
-          "projects": "...",
-          "certifications": "...",
-          "languages": "..."
-        }}
-        """
-
-        # --- YAHAN PAR FIX HAI ---
-        # Ab hum OpenAI ko function ke andar import kar rahe hain, jaisa aapke baki code me hai
-        from openai import OpenAI
-        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-        
-        res = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
-        )
-        
-        ai_data = json.loads(res.choices[0].message.content)
-
+        # User ka personal data bhi final response me jodna
         final_data = {
             "name": data.get("name"),
             "email": data.get("email"),
@@ -729,13 +698,14 @@ def generate_ai_resume():
             "location": data.get("location"),
             "linkedin": data.get("linkedin"),
             "jobTitle": data.get("jobTitle"),
-            **ai_data
+            **test_data
         }
         
+        print("Sending hardcoded success response to frontend.") # Yeh log me dikhega
         return jsonify({"success": True, "data": final_data})
 
     except Exception as e:
-        error_message = f"An exception occurred in generate_ai_resume: {type(e).__name__} - {str(e)}"
+        error_message = f"An exception occurred in generate_ai_resume (TEST MODE): {type(e).__name__} - {str(e)}"
         print(error_message)
         return jsonify({"success": False, "error": error_message}), 500
 
