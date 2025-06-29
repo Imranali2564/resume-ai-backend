@@ -675,40 +675,44 @@ def generate_ai_resume():
     try:
         data = request.json
         
+        # Ek saaf-suthra text block banayein jise hum AI ko ek saath bhejenge
+        # Isse AI ko poora context milta hai aur woh behtar result deta hai
         user_input_text = f"""
-        Full Name: {data.get("name", "")}
-        Job Title: {data.get("jobTitle", "")}
-        Location: {data.get("location", "")}
-        ---SUMMARY---
-        {data.get("summary", "")}
-        ---WORK EXPERIENCE---
-        {data.get("experience", "")}
-        ---EDUCATION---
-        {data.get("education", "")}
-        ---SKILLS---
-        {data.get("skills", "")}
-        ---PROJECTS---
-        {data.get("projects", "")}
-        ---CERTIFICATIONS---
-        {data.get("certifications", "")}
-        ---LANGUAGES---
-        {data.get("languages", "")}
+        - Job Title: {data.get("jobTitle", "")}
+        - Summary Keywords: {data.get("summary", "")}
+        - Experience Keywords: {data.get("experience", "")}
+        - Education Keywords: {data.get("education", "")}
+        - Skills Keywords: {data.get("skills", "")}
+        - Projects Keywords: {data.get("projects", "")}
+        - Certifications Keywords: {data.get("certifications", "")}
+        - Languages Keywords: {data.get("languages", "")}
         """
 
+        # Ab hum AI ko ek hi baar me saara context denge
         prompt = f"""
-        You are a professional resume writing expert. Based on the following raw information, rewrite and improve each section to be professional and concise.
-        - For 'WORK EXPERIENCE' and 'EDUCATION', format each entry clearly.
-        - For 'SKILLS', ensure it's a clean, comma-separated or newline-separated list.
-        - For 'SUMMARY', make it a powerful 2-3 line professional statement.
-        - If a section is empty, return an empty string for it.
-        - Return ONLY a valid JSON object with keys: "summary", "experience", "education", "skills", "projects", "certifications", "languages".
-        RAW DATA:
-        ---
+        You are an expert resume writer. Based on the following user-provided keywords and phrases, expand and rewrite them into professional, impactful resume sections.
+        - For 'experience', 'education', and 'projects', elaborate on the points and return them as a single block of text with newlines.
+        - For 'skills' and 'languages', return them as a clean, newline-separated list.
+        - For 'summary', write a powerful 2-3 line professional statement.
+        - If any section's keywords are empty, return an empty string for that section's value.
+        - Your entire output MUST be a single, valid JSON object.
+
+        USER-PROVIDED KEYWORDS:
         {user_input_text}
         ---
+        REQUIRED JSON OUTPUT FORMAT:
+        {{
+          "summary": "...",
+          "experience": "...",
+          "education": "...",
+          "skills": "...",
+          "projects": "...",
+          "certifications": "...",
+          "languages": "..."
+        }}
         """
 
-        from openai import OpenAI
+        # OpenAI ko call karna
         client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
         
         res = client.chat.completions.create(
@@ -717,9 +721,9 @@ def generate_ai_resume():
             response_format={"type": "json_object"}
         )
         
-        raw_response_content = res.choices[0].message.content
-        ai_generated_data = json.loads(raw_response_content)
-        
+        ai_data = json.loads(res.choices[0].message.content)
+
+        # User ka personal data bhi final response me jodna
         final_data = {
             "name": data.get("name"),
             "email": data.get("email"),
@@ -727,28 +731,16 @@ def generate_ai_resume():
             "location": data.get("location"),
             "linkedin": data.get("linkedin"),
             "jobTitle": data.get("jobTitle"),
-            **ai_generated_data
+            **ai_data # AI se generate hua saara data yahan jud jayega
         }
         
         return jsonify({"success": True, "data": final_data})
 
     except Exception as e:
-        # --- NAYA DEBUGGING CODE ---
-        # Yeh Render logs me exact error print karega
-        error_message = f"An exception occurred: {type(e).__name__} - {str(e)}"
-        print("="*40)
-        print(f"ERROR IN /generate-ai-resume: {error_message}")
-        # Agar AI ka response available hai, to use bhi print karein
-        if 'raw_response_content' in locals():
-            print("--- FAULTY AI RESPONSE ---")
-            print(raw_response_content)
-        print("="*40)
-        
-        # Frontend ko bhi saaf error message bhejna
-        return jsonify({
-            "success": False, 
-            "error": f"Backend Error: {error_message}"
-        }), 500
+        # Exact error ko log aur return karna
+        error_message = f"An exception occurred in generate_ai_resume: {type(e).__name__} - {str(e)}"
+        print(error_message) # Yeh aapke Render logs me dikhega
+        return jsonify({"success": False, "error": error_message}), 500
 
 @app.route('/analyze-jd', methods=['POST'])
 def analyze_jd():
