@@ -675,53 +675,54 @@ def optimize_keywords():
 def generate_ai_resume():
     try:
         data = request.json
-        
+
         user_input_text = f"""
-        - Job Title: {data.get("jobTitle", "")}
-        - Summary Keywords: {data.get("summary", "")}
-        - Experience Keywords: {data.get("experience", "")}
-        - Education Keywords: {data.get("education", "")}
-        - Skills Keywords: {data.get("skills", "")}
-        - Projects Keywords: {data.get("projects", "")}
-        - Certifications Keywords: {data.get("certifications", "")}
-        - Languages Keywords: {data.get("languages", "")}
+        JOB TITLE: {data.get("jobTitle", "")}
+        SUMMARY KEYWORDS: {data.get("summary", "")}
+        EXPERIENCE KEYWORDS: {data.get("experience", "")}
+        EDUCATION KEYWORDS: {data.get("education", "")}
+        SKILLS KEYWORDS: {data.get("skills", "")}
+        PROJECTS KEYWORDS: {data.get("projects", "")}
+        CERTIFICATIONS KEYWORDS: {data.get("certifications", "")}
+        LANGUAGES KEYWORDS: {data.get("languages", "")}
         """
 
-        # --- YEH HAI FINAL FIX ---
-        # Niche diye gaye prompt me {{ aur }} ka istemal kiya gaya hai
-        # taaki Python ko f-string me koi confusion na ho.
+        # ✅ Optimized Prompt: No length limit, full professional style, ATS optimized
         prompt = f"""
-        You are an expert resume writer. Based on the following user-provided keywords and phrases, expand and rewrite them into professional, impactful resume sections.
-        - For 'experience', 'education', and 'projects', elaborate on the points and return them as a single block of text with newlines.
-        - For 'skills' and 'languages', return them as a clean, newline-separated list.
-        - For 'summary', write a powerful 2-3 line professional statement.
-        - If any section's keywords are empty, return an empty string for that section's value.
-        - Your entire output MUST be a single, valid JSON object.
+You are an expert human resume writer. Based on the following user-provided keywords and raw content, rewrite each section into a professionally written, well-formatted, ATS-compatible resume format.
 
-        USER-PROVIDED KEYWORDS:
-        {user_input_text}
-        ---
-        REQUIRED JSON OUTPUT FORMAT:
-        {{
-          "summary": "...",
-          "experience": "...",
-          "education": "...",
-          "skills": "...",
-          "projects": "...",
-          "certifications": "...",
-          "languages": "..."
-        }}
+Strict Rules:
+1. Always rewrite content from scratch in polished English, even if it looks complete.
+2. Use natural resume-style formatting and vocabulary. Avoid generic templates or overuse of AI tone.
+3. No limits on word count – write what a real recruiter would expect in each section.
+4. Use bullet points for EXPERIENCE, PROJECTS, and EDUCATION where appropriate.
+5. SKILLS, LANGUAGES, and CERTIFICATIONS should be output as clear bullet-point lists.
+6. If any field is blank or weak, return an empty string. Never skip a key if it's part of the JSON structure.
+7. Output ONLY a valid JSON object like this format:
+
+{{
+  "summary": "...",
+  "experience": "...",
+  "education": "...",
+  "skills": "...",
+  "projects": "...",
+  "certifications": "...",
+  "languages": "..."
+}}
+
+USER INPUT:
+{user_input_text}
         """
 
         from openai import OpenAI
         client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-        
+
         res = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
-        
+
         ai_data = json.loads(res.choices[0].message.content)
 
         final_data = {
@@ -733,13 +734,14 @@ def generate_ai_resume():
             "jobTitle": data.get("jobTitle"),
             **ai_data
         }
-        
+
         return jsonify({"success": True, "data": final_data})
 
     except Exception as e:
         error_message = f"An exception occurred in generate_ai_resume: {type(e).__name__} - {str(e)}"
         print(f"FINAL ERROR: {error_message}")
         return jsonify({"success": False, "error": error_message}), 500
+
 
 
 @app.route('/analyze-jd', methods=['POST'])
