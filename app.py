@@ -677,37 +677,27 @@ def generate_ai_resume():
         data = request.json
         
         user_input_text = f"""
-        - Job Title: {data.get("jobTitle", "")}
-        - Summary Keywords: {data.get("summary", "")}
-        - Experience Keywords: {data.get("experience", "")}
-        - Education Keywords: {data.get("education", "")}
-        - Skills Keywords: {data.get("skills", "")}
-        - Projects Keywords: {data.get("projects", "")}
-        - Certifications Keywords: {data.get("certifications", "")}
-        - Languages Keywords: {data.get("languages", "")}
+        JOB TITLE: {data.get("jobTitle", "")}
+        SUMMARY: {data.get("summary", "")}
+        WORK EXPERIENCE: {data.get("experience", "")}
+        EDUCATION: {data.get("education", "")}
+        SKILLS: {data.get("skills", "")}
+        PROJECTS: {data.get("projects", "")}
+        CERTIFICATIONS: {data.get("certifications", "")}
+        LANGUAGES: {data.get("languages", "")}
         """
 
         prompt = f"""
-        You are an expert resume writer. Based on the following user-provided keywords and phrases, expand and rewrite them into professional, impactful resume sections.
-        - For 'WORK EXPERIENCE' and 'EDUCATION', elaborate on the points and return them as a single block of text with newlines.
-        - For 'SKILLS' and 'LANGUAGES', return them as a clean, newline-separated list.
-        - For 'SUMMARY', write a powerful 2-3 line professional statement.
-        - If any section's keywords are empty, return an empty string for that section's value.
-        - Your entire output MUST be a single, valid JSON object.
+        You are an expert resume writer. Rewrite and enhance the following raw resume content into a single, professional, well-formatted text block.
+        - Use clear headings in ALL CAPS for each section (e.g., SUMMARY, WORK EXPERIENCE).
+        - Use standard bullet points (like a simple newline) for lists.
+        - Ensure the output is clean, professional, and ready to be displayed. Do not add any extra commentary or introductory text.
+        - Start directly with the first section heading.
 
-        USER-PROVIDED KEYWORDS:
+        RAW CONTENT:
+        ---
         {user_input_text}
         ---
-        REQUIRED JSON OUTPUT FORMAT:
-        {{
-          "summary": "...",
-          "experience": "...",
-          "education": "...",
-          "skills": "...",
-          "projects": "...",
-          "certifications": "...",
-          "languages": "..."
-        }}
         """
 
         from openai import OpenAI
@@ -715,33 +705,31 @@ def generate_ai_resume():
         
         res = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
+            messages=[{"role": "user", "content": prompt}]
         )
         
-        ai_data = json.loads(res.choices[0].message.content)
-
-        final_data = {
+        improved_text = res.choices[0].message.content.strip()
+        
+        # --- YEH HAI FINAL FIX ---
+        # Ab hum 'improved_text' ko hi frontend me bhej rahe hain, naaki purane data structure ko.
+        # Isse JavaScript ko sahi data milega.
+        
+        # User ka personal data bhi final response me jodna, taaki preview me naam, email dikhe
+        final_data_for_frontend = {
             "name": data.get("name"),
             "email": data.get("email"),
             "phone": data.get("phone"),
             "location": data.get("location"),
             "linkedin": data.get("linkedin"),
             "jobTitle": data.get("jobTitle"),
-            **ai_data
+            "improved_text": improved_text  # AI ka banaya hua text
         }
         
-        return jsonify({"success": True, "data": final_data})
+        return jsonify({"success": True, "data": final_data_for_frontend})
 
     except Exception as e:
-        # --- DEBUGGING ENABLED ---
-        # Yeh line humein Render logs me aane wala asli error batayegi
-        error_message = f"An exception occurred: {type(e).__name__} - {str(e)}"
-        print("="*40)
-        print(f"DEBUGGING ERROR in /generate-ai-resume: {error_message}")
-        print("="*40)
-        
-        # Frontend ko bhi saaf error message bhejna
+        error_message = f"An exception occurred in generate_ai_resume: {type(e).__name__} - {str(e)}"
+        # logger.error(error_message) # For production logging
         return jsonify({"success": False, "error": error_message}), 500
 
 
