@@ -677,31 +677,6 @@ def optimize_keywords():
 def generate_ai_resume():
     try:
         data = request.get_json()
-        if not data:
-            return jsonify({"error": "No input data received"}), 400
-
-        # Separate contact info and section data
-        contact_fields = ["name", "email", "phone", "location", "linkedin", "jobTitle"]
-        user_info = {key: data.get(key, "") for key in contact_fields}
-        section_data = {key: value for key, value in data.items() if key not in contact_fields}
-
-        # Step 1: Generate smart section content with OpenAI
-        smart_content = generate_smart_resume_from_keywords(section_data)
-
-        # Step 2: Merge and convert to HTML
-        html = generate_full_ai_resume_html(user_info, smart_content)
-
-        return jsonify({"success": True, "html": html})
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": f"❌ Exception in generate-ai-resume: {type(e).__name__} - {str(e)}"}), 500
-
-@app.route("/generate-ai-resume", methods=["POST"])
-def generate_ai_resume():
-    try:
-        data = request.get_json()
         contact_fields = ["name", "email", "phone", "location", "linkedin", "jobTitle"]
         user_info = {key: data.get(key, "") for key in contact_fields}
         section_data = {key: value for key, value in data.items() if key not in contact_fields}
@@ -710,7 +685,6 @@ def generate_ai_resume():
         return jsonify({"success": True, "html": html})
     except Exception as e:
         return jsonify({"error": f"❌ Exception in generate-ai-resume: {type(e).__name__} - {str(e)}"}), 500
-
 
 @app.route('/convert-format', methods=['POST'])
 def convert_format():
