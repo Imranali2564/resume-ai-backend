@@ -668,156 +668,91 @@ def optimize_keywords():
     results = compare_resume_with_keywords(resume_text, jd_keywords)
     return jsonify(results)
 
+# Yeh function app.py me replace karein
+
 @app.route('/generate-ai-resume', methods=['POST'])
 def generate_ai_resume():
     try:
         data = request.json
-        name = data.get("name", "")
-        email = data.get("email", "")
-        phone = data.get("phone", "")
-        location = data.get("location", "")
-        education = data.get("education", "")
-        experience = data.get("experience", "")
-        skills = data.get("skills", "")
-        certifications = data.get("certifications", "")
-        languages = data.get("languages", "")
-        hobbies = data.get("hobbies", "")
-        summary = data.get("summary", "")
+        
+        # Ek saaf-suthra text block banayein jise hum AI ko bhejenge
+        # Isse AI ko poora context milta hai
+        user_input_text = f"""
+        Full Name: {data.get("name", "")}
+        Job Title: {data.get("jobTitle", "")}
+        Location: {data.get("location", "")}
+        
+        ---SUMMARY---
+        {data.get("summary", "")}
+        
+        ---WORK EXPERIENCE---
+        {data.get("experience", "")}
+        
+        ---EDUCATION---
+        {data.get("education", "")}
+        
+        ---SKILLS---
+        {data.get("skills", "")}
+        
+        ---PROJECTS---
+        {data.get("projects", "")}
+        
+        ---CERTIFICATIONS---
+        {data.get("certifications", "")}
 
-        def generate_section_content(section_name, user_input, context=""):
-            if not user_input.strip():
-                return ""
-            prompts = {
-                "summary": """
-You are a resume writing assistant. Based on the following:
-Education: {}
-Experience: {}
-Skills: {}
-Write a 2-3 line professional summary for a resume.
-""".format(education, experience, skills),
-                "education": """
-You are a resume writing assistant. The user has provided the following education details: '{}'.
-Based on this, generate a professional education entry for a resume. Include degree, institution, and years (e.g., 2020-2024). If details are missing, make reasonable assumptions.
-Format the output as plain text, e.g.:
-B.Tech in Computer Science, XYZ University, 2020-2024
-""".format(user_input),
-                "experience": """
-You are a resume writing assistant. The user has provided the following experience details: '{}'.
-Based on this, generate a professional experience entry for a resume. Include job title, company, duration (e.g., June 2023 - August 2023), and a brief description of responsibilities (1-2 lines).
-Format the output as plain text, e.g.:
-Software Intern, ABC Corp, June 2023 - August 2023
-Developed web applications using React and Node.js
-""".format(user_input),
-                "skills": """
-You are a resume writing assistant. The user has provided the following skills: '{}'.
-Based on this, generate a professional skills section for a resume. Expand the list by adding 2-3 relevant skills if possible, and format as a bullet list.
-Format the output as plain text with bullet points, e.g.:
-- Python
-- JavaScript
-- SQL
-""".format(user_input),
-                "certifications": """
-You are a resume writing assistant. The user has provided the following certifications: '{}'.
-Based on this, generate a professional certifications section for a resume. Include the certification name, issuing organization, and year (e.g., 2023). If details are missing, make reasonable assumptions.
-Format the output as plain text, e.g.:
-Certified Python Developer, XYZ Institute, 2023
-""".format(user_input),
-                "languages": """
-You are a resume writing assistant. The user has provided the following languages: '{}'.
-Based on this, generate a professional languages section for a resume. Include proficiency levels (e.g., Fluent, Intermediate) and format as a list.
-Format the output as plain text, e.g.:
-English (Fluent)
-Spanish (Intermediate)
-""".format(user_input),
-                "hobbies": """
-You are a resume writing assistant. The user has provided the following hobbies: '{}'.
-Based on this, generate a professional hobbies section for a resume. Expand with 1-2 related hobbies if possible, and format as a bullet list.
-Format the output as plain text with bullet points, e.g.:
-- Reading
-- Hiking
-""".format(user_input)
-            }
-            prompt = prompts.get(section_name, "")
-            if not prompt:
-                return user_input
-            try:
-                from openai import OpenAI
-                client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-                res = client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                content = res.choices[0].message.content.strip()
-                if isinstance(content, list):
-                    content = '\n'.join(content).strip()
-                return content
-            except Exception as e:
-                logger.error(f"Error generating {section_name}: {str(e)}")
-                return user_input
+        ---LANGUAGES---
+        {data.get("languages", "")}
+        """
 
-        if summary:
-            summary = generate_section_content("summary", summary)
-        else:
-            prompt = """
-You are a resume writing assistant. Based on the following:
-Education: {}
-Experience: {}
-Skills: {}
-Write a 2-3 line professional summary for a resume.
-""".format(education, experience, skills)
-            try:
-                from openai import OpenAI
-                client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-                res = client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                summary = res.choices[0].message.content.strip()
-                if isinstance(summary, list):
-                    summary = str(summary).strip()
-            except Exception as e:
-                logger.error(f"Error generating summary: {str(e)}")
-                summary = "Unable to generate summary. Please check if the API key is correctly set."
+        # Ab hum AI ko ek hi baar me saara context denge
+        prompt = f"""
+        You are a professional resume writing expert. Based on the following raw information provided by the user, please rewrite and improve each section to make it professional, concise, and impactful. 
+        - For 'WORK EXPERIENCE' and 'EDUCATION', format each entry clearly, perhaps starting with a bold title or date.
+        - For 'SKILLS', ensure it's a clean, comma-separated list.
+        - For 'SUMMARY', make it a powerful 2-3 line professional statement.
+        - If a section is empty, ignore it.
+        - Return the improved content for each section.
 
-        education = generate_section_content("education", education)
-        experience = generate_section_content("experience", experience)
-        skills = generate_section_content("skills", skills)
-        certifications = generate_section_content("certifications", certifications)
-        languages = generate_section_content("languages", languages)
-        hobbies = generate_section_content("hobbies", hobbies)
+        RAW RESUME DATA:
+        ---
+        {user_input_text}
+        ---
 
-        def section_html(title, content):
-            if not content.strip():
-                return ""
-            html_content = content.strip().replace('\n', '<br>')
-            return """
-            <div class='section' style='margin-bottom: 1.2rem;'>
-              <h3 style='font-size: 0.95rem; line-height: 1.3; color: #222; margin-bottom: 4px; border-bottom: 1px solid #ccc;'>- {}</h3>
-              <div>{}</div>
-            </div>
-            """.format(title.upper(), html_content)
+        Return the result as a JSON object with keys: "summary", "experience", "education", "skills", "projects", "certifications", "languages".
+        Example: {{"summary": "A highly motivated web developer...", "experience": "Software Engineer at XYZ...", ...}}
+        """
 
-        top = """
-        <div style='text-align: center; margin-bottom: 1.2rem;'>
-          <div style='font-size: 1.3rem; font-weight: bold; color: #1D75E5;'>{}</div>
-          <div style='font-size: 0.9rem; color: #333;'>{}</div>
-        </div>
-        """.format(name, f"{email} | {phone} | {location}")
+        # OpenAI ko call karna
+        from openai import OpenAI
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        
+        res = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            # JSON mode ka istemal karein taaki hamesha saaf data mile
+            response_format={"type": "json_object"}
+        )
+        
+        # AI se mile JSON data ko lena
+        ai_generated_data = json.loads(res.choices[0].message.content)
 
-        html = top
-        html += section_html("Professional Summary", summary)
-        html += section_html("Education", education)
-        html += section_html("Experience", experience)
-        html += section_html("Skills", skills)
-        html += section_html("Certifications", certifications)
-        html += section_html("Languages", languages)
-        html += section_html("Hobbies", hobbies)
-
-        return jsonify({"success": True, "html": html})
+        # User ka personal data bhi final response me jodna
+        final_data = {
+            "name": data.get("name"),
+            "email": data.get("email"),
+            "phone": data.get("phone"),
+            "location": data.get("location"),
+            "linkedin": data.get("linkedin"),
+            "jobTitle": data.get("jobTitle"),
+            **ai_generated_data # AI se generate hua saara data yahan jud jayega
+        }
+        
+        return jsonify({"success": True, "data": final_data})
 
     except Exception as e:
-        logger.error(f"Error in /generate-ai-resume: {str(e)}")
-        return jsonify({"error": f"Failed to generate AI resume: {str(e)}"}), 500
+        # Log error for debugging
+        print(f"Error in /generate-ai-resume: {str(e)}")
+        return jsonify({"success": False, "error": f"Failed to generate AI resume: {str(e)}"}), 500
 
 @app.route('/analyze-jd', methods=['POST'])
 def analyze_jd():
