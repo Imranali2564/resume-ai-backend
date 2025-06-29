@@ -681,7 +681,8 @@ def generate_ai_resume():
         user_info = {key: data.get(key, "") for key in contact_fields}
         section_data = {key: value for key, value in data.items() if key not in contact_fields}
         smart_content = generate_smart_resume_from_keywords(section_data)
-        html = generate_full_ai_resume_html(user_info, smart_content)
+        parsed_resume = {**user_info, **smart_content}
+        html = generateResumeTemplate(parsed_resume)
         return jsonify({"success": True, "html": html})
     except Exception as e:
         return jsonify({"error": f"❌ Exception in generate-ai-resume: {type(e).__name__} - {str(e)}"}), 500
