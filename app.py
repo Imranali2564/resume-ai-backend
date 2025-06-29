@@ -687,44 +687,61 @@ def generate_ai_resume():
         - Languages Keywords: {data.get("languages", "")}
         """
 
-        # --- NAYA, ZYADA POWERFUL PROMPT ---
-        # Isse AI ab zyada detail me aur professional content likhega
         prompt = f"""
-        You are a world-class professional resume writer and career coach. Your task is to take the user's raw keywords and notes and transform them into a polished, professional, and impactful resume content.
+        You are an expert resume writer. Based on the following user-provided keywords and phrases, expand and rewrite them into professional, impactful resume sections.
+        - For 'WORK EXPERIENCE' and 'EDUCATION', elaborate on the points and return them as a single block of text with newlines.
+        - For 'SKILLS' and 'LANGUAGES', return them as a clean, newline-separated list.
+        - For 'SUMMARY', write a powerful 2-3 line professional statement.
+        - If any section's keywords are empty, return an empty string for that section's value.
+        - Your entire output MUST be a single, valid JSON object.
 
-        **Instructions:**
-        1.  **Analyze the User's Input:** Understand the user's role, experience, and skills from the provided text.
-        2.  **Elaborate Sections:** For each section (SUMMARY, WORK EXPERIENCE, EDUCATION, etc.), expand upon the user's keywords.
-        3.  **Use Action Verbs:** Start all bullet points in the WORK EXPERIENCE section with strong action verbs (e.g., "Led", "Developed", "Managed", "Accelerated", "Implemented").
-        4.  **Quantify Achievements:** Where possible, turn duties into achievements. For example, instead of "Handled customer calls," write "Managed a portfolio of 50+ clients, increasing satisfaction rates by 15%."
-        5.  **Professional Tone:** Maintain a professional and confident tone throughout.
-        6.  **Clear Formatting:** Use clear headings in ALL CAPS followed by the content. Each bullet point for lists must be on a new line.
-
-        **User's Raw Data:**
-        ---
+        USER-PROVIDED KEYWORDS:
         {user_input_text}
         ---
-
-        Please generate the improved content and provide it as a single block of text.
+        REQUIRED JSON OUTPUT FORMAT:
+        {{
+          "summary": "...",
+          "experience": "...",
+          "education": "...",
+          "skills": "...",
+          "projects": "...",
+          "certifications": "...",
+          "languages": "..."
+        }}
         """
 
-        # OpenAI ko call karna
         from openai import OpenAI
         client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
         
         res = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
         )
         
-        improved_text = res.choices[0].message.content.strip()
+        ai_data = json.loads(res.choices[0].message.content)
+
+        final_data = {
+            "name": data.get("name"),
+            "email": data.get("email"),
+            "phone": data.get("phone"),
+            "location": data.get("location"),
+            "linkedin": data.get("linkedin"),
+            "jobTitle": data.get("jobTitle"),
+            **ai_data
+        }
         
-        return jsonify({"success": True, "improved_text": improved_text})
+        return jsonify({"success": True, "data": final_data})
 
     except Exception as e:
-        # Extra print statements hata diye gaye hain
-        error_message = f"An exception occurred in generate_ai_resume: {type(e).__name__} - {str(e)}"
-        # logger.error(error_message) # Agar aapke paas logger setup hai to iska istemal karein
+        # --- DEBUGGING ENABLED ---
+        # Yeh line humein Render logs me aane wala asli error batayegi
+        error_message = f"An exception occurred: {type(e).__name__} - {str(e)}"
+        print("="*40)
+        print(f"DEBUGGING ERROR in /generate-ai-resume: {error_message}")
+        print("="*40)
+        
+        # Frontend ko bhi saaf error message bhejna
         return jsonify({"success": False, "error": error_message}), 500
 
 
