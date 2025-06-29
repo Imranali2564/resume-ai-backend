@@ -692,14 +692,16 @@ def generate_ai_resume():
         Use clear headings in ALL CAPS for each section (e.g., SUMMARY, WORK EXPERIENCE).
         Use standard newlines for bullet points. Do not add any extra commentary.
         Start directly with the first section heading.
+        If any field (e.g., Job Title, Experience) is empty, skip that section or use generic placeholder text like 'Not Provided' instead of leaving it blank or using brackets (e.g., [Company Name]).
         RAW CONTENT: --- {user_input_text} ---
         """
 
         from openai import OpenAI
-        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"), timeout=20)
         res = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
+            timeout=20
         )
         improved_text = res.choices[0].message.content.strip()
         
@@ -719,7 +721,7 @@ def generate_ai_resume():
         error_message = f"An exception occurred: {type(e).__name__} - {str(e)}"
         # Hum error ke saath woh prompt bhi bhejenge jisne error paida kiya
         return jsonify({
-            "success": False, 
+            "success": False,
             "error": error_message,
             "problematic_prompt": prompt # For debugging
         }), 500
