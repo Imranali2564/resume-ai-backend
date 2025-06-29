@@ -680,14 +680,17 @@ def generate_ai_resume():
         if not data:
             return jsonify({"error": "No input data received"}), 400
 
-        # Split into two parts: contact info and rest
+        # ✅ Separate contact info and other resume sections
         contact_fields = ["name", "email", "phone", "location", "linkedin", "jobTitle"]
         user_info = {key: data.get(key, "") for key in contact_fields}
         section_data = {key: value for key, value in data.items() if key not in contact_fields}
 
-        # Step 1: Rewriting all resume sections via OpenAI
+        # ✅ Step 1: Get smart AI content for each section
         smart_resume = generate_smart_resume_from_keywords(section_data)
-        
+
+        # ✅ Step 2: Merge & convert to final resume HTML
+        html = generate_full_ai_resume_html(user_info, smart_resume)
+
         return jsonify({"html": html})
 
     except Exception as e:
