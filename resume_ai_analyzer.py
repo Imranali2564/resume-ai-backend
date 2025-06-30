@@ -1138,6 +1138,10 @@ def get_field_suggestions(extracted_data, resume_text):
         logger.error(f"Could not get field suggestions: {e}")
         return {"field": "General / Fresher", "suggestions": [{"type": "Recommended", "section": "Projects"}]}
 
+# Function: generate_smart_resume_from_keywords
+# Changes:
+# 1. Improved AI prompts for better formatting (bullet points, concise text).
+# 2. Specific instructions for projects, experience, and education to ensure structured output.
 def generate_smart_resume_from_keywords(data: dict) -> dict:
     """
     Ye function har resume section ke liye AI se professionally rewritten content laata hai.
@@ -1151,18 +1155,18 @@ def generate_smart_resume_from_keywords(data: dict) -> dict:
     smart_resume = {}
 
     sections = {
-        "summary": "Write a compelling professional summary based on these keywords.",
-        "experience": "Convert these experience points into detailed achievements using bullet points.",
-        "education": "Expand these education details into complete sentences.",
-        "skills": "List out these skills cleanly, one per line.",
-        "projects": "Write a project description with outcome/result focus.",
-        "certifications": "Expand certification names into full descriptive phrases.",
-        "languages": "List the languages clearly, one per line.",
-        "awards": "Write the awards in resume format with context.",
-        "volunteering": "Describe volunteering activities and contributions.",
-        "interests": "Convert these interests into professional sounding phrases.",
-        "publications": "Expand these publication titles and give a brief context.",
-        "patents": "Describe patents briefly and professionally.",
+        "summary": "Write a concise, impactful 2-3 line professional summary for a resume. Use strong action verbs.",
+        "experience": "Convert these work experience details into a list of concise, action-verb-driven bullet points, focusing on achievements and quantifiable results. Each bullet point should be a single line. Example: 'Managed cross-functional teams to deliver projects on time, reducing delays by 15%.'",
+        "education": "Reformat these education details into a standard resume education format. If multiple degrees, list each on a new line. Include Degree, University/Institute, Year. Example: 'B.Tech in Computer Science, IIT Delhi, 2018-2022. GPA: 3.8/4.0'",
+        "skills": "List these skills as a comma-separated string of keywords, categorized if appropriate (e.g., Technical Skills: Python, JavaScript; Soft Skills: Communication). Remove any leading hyphens or bullets from the input.",
+        "projects": "For each project, provide a concise title and a list of 2-3 bullet points highlighting technologies used, your role, and key achievements/outcomes. Each bullet should be a single line. Example: 'Project Title: Developed a responsive web app using React and Node.js. • Implemented user authentication and data persistence. • Achieved a 20% increase in user engagement through optimized UI.'",
+        "certifications": "List each certification on a new line, including certification name, issuing body, and year if available. Remove any leading hyphens or bullets from the input.",
+        "languages": "List each language on a new line, along with proficiency level (e.g., English: Fluent). Remove any leading hyphens or bullets from the input.",
+        "awards": "List each award on a new line in a professional resume format.",
+        "volunteering": "Describe volunteering activities and contributions concisely, using bullet points.",
+        "interests": "Convert these interests into professional sounding phrases suitable for a resume. List them concisely.",
+        "publications": "Expand these publication titles and give a brief context suitable for a resume, using bullet points if multiple.",
+        "patents": "Describe patents briefly and professionally, using bullet points if multiple.",
     }
 
     for key, instruction in sections.items():
@@ -1174,7 +1178,7 @@ def generate_smart_resume_from_keywords(data: dict) -> dict:
         prompt = f"""
 You are an expert resume writer. {instruction}
 Input: {value}
-Output: 
+Output:
 """
 
         try:
@@ -1191,7 +1195,12 @@ Output:
 
     return smart_resume
 
-
+# Function: generate_full_ai_resume_html
+# Changes:
+# 1. Indentation fixed for the entire function and its nested helper functions.
+# 2. `list_to_html` updated to remove leading hyphens/bullets from input.
+# 3. `parse_complex_section_html` updated for robust handling of experience/education/project details,
+#    ensuring proper <ul><li> structure for bullet points.
 def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     """
     Ye function AI-generated resume content ko ek proper HTML resume format me convert karta hai.
@@ -1202,19 +1211,18 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     def list_to_html(items_string):
         # Indentation corrected for the block inside list_to_html
         if isinstance(items_string, list):
-            items = [item.strip() for item in items_string if item.strip()]
-        elif isinstance(items_string, str): # Added elif for clarity
-            items = [item.strip() for item in items_string.split('\n') if item.strip()]
+            items = [item.strip().lstrip('-• ').strip() for item in items_string if item.strip()] # ADDED .lstrip()
+        elif isinstance(items_string, str):
+            items = [item.strip().lstrip('-• ').strip() for item in items_string.split('\n') if item.strip()] # ADDED .lstrip()
         else:
             items = [] # Fallback for unexpected type
-
-        # Here, 'item' is already a string, so direct embedding is fine.
-        # No need for {{item}} here, as Python needs to evaluate 'item'.
+        
+        # 'item' is a variable, so single curly braces are correct for embedding its value.
         return "".join(f"<li>{item}</li>" for item in items)
 
 
     def parse_complex_section_html(section_data, is_education=False):
-        # Yeh line 'def parse_complex_section_html(...):' se 4 spaces (ya 1 tab) aage honi chahiye.
+        # Indentation corrected for the block inside parse_complex_section_html
         if not section_data:
             return ""
 
@@ -1242,9 +1250,10 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
 
                 if details:
                     if isinstance(details, str):
-                        details_list = [d.strip() for d in details.split('\n') if d.strip()]
+                        # Split string by newlines and remove any leading hyphens/bullets
+                        details_list = [d.strip().lstrip('-• ').strip() for d in details.split('\n') if d.strip()] # ADDED .lstrip()
                     elif isinstance(details, list):
-                        details_list = [d.strip() for d in details if d.strip()]
+                        details_list = [d.strip().lstrip('-• ').strip() for d in details if d.strip()] # ADDED .lstrip()
                     else:
                         details_list = []
 
@@ -1257,7 +1266,9 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                 html_content += f"<div class='experience-item'>{item_html}</div>"
             return html_content
         elif isinstance(section_data, str):
+            # Fallback for when AI returns unstructured string for a complex section
             if "\n" in section_data and len(section_data.split('\n')) > 1:
+                # Check if lines start with common bullet indicators, if so, make a list
                 if any(line.strip().startswith(('-', '*', '•')) for line in section_data.split('\n')):
                     return "<ul>" + "".join([f"<li>{line.strip().lstrip('-*• ').strip()}</li>" for line in section_data.split('\n') if line.strip()]) + "</ul>"
                 else:
