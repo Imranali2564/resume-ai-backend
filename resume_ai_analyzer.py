@@ -1214,7 +1214,6 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
 
 
     def parse_complex_section_html(section_data, is_education=False):
-        # Indentation corrected for the block inside parse_complex_section_html
         if not section_data:
             return ""
 
@@ -1223,11 +1222,11 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             for item in section_data:
                 title_key = "degree" if is_education else "title"
                 company_key = "school" if is_education else "company"
-
+                
                 title = item.get(title_key, '')
                 company = item.get(company_key, '')
                 duration = item.get('duration', '')
-                details = item.get('details', [])
+                details = item.get('details', []) # Expected to be a list of strings
 
                 item_html = f"<h4>{title}"
                 if company:
@@ -1235,23 +1234,35 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                 if duration:
                     item_html += f", {duration}"
                 item_html += "</h4>"
+                
+                # --- CHANGE START ---
+                if details: # Check if details exist
+                    # Convert details to list if it's a single string, assuming multiple points are separated by newlines
+                    if isinstance(details, str):
+                        details_list = [d.strip() for d in details.split('\n') if d.strip()]
+                    elif isinstance(details, list):
+                        details_list = [d.strip() for d in details if d.strip()]
+                    else:
+                        details_list = []
 
-                if details and isinstance(details, list):
-                    item_html += "<ul>"
-                    for detail in details:
-                        # Here, detail is already a string to be embedded.
-                        item_html += f"<li>{detail}</li>"
-                    item_html += "</ul>"
-                elif details and isinstance(details, str):
-                    item_html += f"<p>{details}</p>"
+                    if details_list: # If there are actual bullet points
+                        item_html += "<ul>"
+                        for detail in details_list:
+                            item_html += f"<li>{detail}</li>" # Generate <li> for each detail
+                        item_html += "</ul>"
+                    # No else needed here, if details_list is empty, no ul will be added.
+                # --- CHANGE END ---
 
-                # {item_html} because item_html is a variable holding HTML string
                 html_content += f"<div class='experience-item'>{item_html}</div>"
             return html_content
-        elif isinstance(section_data, str): # Added elif for clarity
-            # If section_data is a plain string, just wrap it in a paragraph.
-            return f"<p>{section_data}</p>"
-        else: # Fallback for unexpected type
+        elif isinstance(section_data, str):
+            # Fallback for when AI returns unstructured string for a complex section
+            # If it's a long string, break it into paragraphs or a single bullet if it looks like one.
+            if "\n" in section_data and len(section_data.split('\n')) > 1:
+                return "<p>" + "</p><p>".join([line.strip() for line in section_data.split('\n') if line.strip()]) + "</p>"
+            else:
+                return f"<p>{section_data}</p>"
+        else:
             return ""
 
 
