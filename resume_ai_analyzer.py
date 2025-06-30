@@ -1155,18 +1155,18 @@ def generate_smart_resume_from_keywords(data: dict) -> dict:
     smart_resume = {}
 
     sections = {
-        "summary": "Write a concise, impactful 2-3 line professional summary for a resume. Use strong action verbs.",
-        "experience": "Convert these work experience details into a list of concise, action-verb-driven bullet points, focusing on achievements and quantifiable results. Each bullet point should be a single line. Example: 'Managed cross-functional teams to deliver projects on time, reducing delays by 15%.'",
-        "education": "Reformat these education details into a standard resume education format. If multiple degrees, list each on a new line. Include Degree, University/Institute, Year. Example: 'B.Tech in Computer Science, IIT Delhi, 2018-2022. GPA: 3.8/4.0'",
-        "skills": "List these skills as a comma-separated string of keywords, categorized if appropriate (e.g., Technical Skills: Python, JavaScript; Soft Skills: Communication). Remove any leading hyphens or bullets from the input.",
-        "projects": "For each project, provide a concise title and a list of 2-3 bullet points highlighting technologies used, your role, and key achievements/outcomes. Each bullet should be a single line. Example: 'Project Title: Developed a responsive web app using React and Node.js. • Implemented user authentication and data persistence. • Achieved a 20% increase in user engagement through optimized UI.'",
-        "certifications": "List each certification on a new line, including certification name, issuing body, and year if available. Remove any leading hyphens or bullets from the input.",
-        "languages": "List each language on a new line, along with proficiency level (e.g., English: Fluent). Remove any leading hyphens or bullets from the input.",
-        "awards": "List each award on a new line in a professional resume format.",
-        "volunteering": "Describe volunteering activities and contributions concisely, using bullet points.",
-        "interests": "Convert these interests into professional sounding phrases suitable for a resume. List them concisely.",
-        "publications": "Expand these publication titles and give a brief context suitable for a resume, using bullet points if multiple.",
-        "patents": "Describe patents briefly and professionally, using bullet points if multiple.",
+        "summary": "Write a compelling professional summary based on these keywords.",
+        "experience": "Convert these experience points into detailed achievements using bullet points.",
+        "education": "Expand these education details into complete sentences.",
+        "skills": "List out these skills cleanly, one per line.",
+        "projects": "Write a project description with outcome/result focus.",
+        "certifications": "Expand certification names into full descriptive phrases.",
+        "languages": "List the languages clearly, one per line.",
+        "awards": "Write the awards in resume format with context.",
+        "volunteering": "Describe volunteering activities and contributions.",
+        "interests": "Convert these interests into professional sounding phrases.",
+        "publications": "Expand these publication titles and give a brief context.",
+        "patents": "Describe patents briefly and professionally.",
     }
 
     for key, instruction in sections.items():
