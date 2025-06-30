@@ -1214,56 +1214,65 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
 
 
     def parse_complex_section_html(section_data, is_education=False):
-        if not section_data:
-            return ""
+    if not section_data:
+        return ""
 
-        if isinstance(section_data, list):
-            html_content = ""
-            for item in section_data:
-                title_key = "degree" if is_education else "title"
-                company_key = "school" if is_education else "company"
-                
-                title = item.get(title_key, '')
-                company = item.get(company_key, '')
-                duration = item.get('duration', '')
-                details = item.get('details', []) # Expected to be a list of strings
+    if isinstance(section_data, list):
+        html_content = ""
+        for item in section_data:
+            title_key = "degree" if is_education else "title"
+            company_key = "school" if is_education else "company"
+            
+            title = item.get(title_key, '')
+            company = item.get(company_key, '')
+            duration = item.get('duration', '')
+            details = item.get('details', []) # Expected to be a list of strings from AI
 
-                item_html = f"<h4>{title}"
-                if company:
-                    item_html += f" at {company}"
-                if duration:
-                    item_html += f", {duration}"
-                item_html += "</h4>"
-                
-                # --- CHANGE START ---
-                if details: # Check if details exist
-                    # Convert details to list if it's a single string, assuming multiple points are separated by newlines
-                    if isinstance(details, str):
-                        details_list = [d.strip() for d in details.split('\n') if d.strip()]
-                    elif isinstance(details, list):
-                        details_list = [d.strip() for d in details if d.strip()]
-                    else:
-                        details_list = []
+            # --- MODIFIED: Structure for complex items ---
+            # Work Experience/Education heading with company/school and duration
+            item_html = f"<div class='item-header'>"
+            item_html += f"<h4>{title}</h4>" # Job Title / Degree
+            
+            # Company/School & Duration on the same line, right-aligned (CSS will handle alignment)
+            item_html += f"<p class='item-meta'>"
+            if company:
+                item_html += f"<span>{company}</span>"
+            if duration:
+                item_html += f"<span class='duration'>{duration}</span>"
+            item_html += "</p>"
+            item_html += "</div>" # End item-header
 
-                    if details_list: # If there are actual bullet points
-                        item_html += "<ul>"
-                        for detail in details_list:
-                            item_html += f"<li>{detail}</li>" # Generate <li> for each detail
-                        item_html += "</ul>"
-                    # No else needed here, if details_list is empty, no ul will be added.
-                # --- CHANGE END ---
+            # Details as bullet points
+            if details:
+                if isinstance(details, str): # Handle if details comes as a single string
+                    details_list = [d.strip() for d in details.split('\n') if d.strip()]
+                elif isinstance(details, list): # Handle if details comes as a list
+                    details_list = [d.strip() for d in details if d.strip()]
+                else:
+                    details_list = []
 
-                html_content += f"<div class='experience-item'>{item_html}</div>"
-            return html_content
-        elif isinstance(section_data, str):
-            # Fallback for when AI returns unstructured string for a complex section
-            # If it's a long string, break it into paragraphs or a single bullet if it looks like one.
-            if "\n" in section_data and len(section_data.split('\n')) > 1:
-                return "<p>" + "</p><p>".join([line.strip() for line in section_data.split('\n') if line.strip()]) + "</p>"
+                if details_list:
+                    item_html += "<ul>"
+                    for detail in details_list:
+                        item_html += f"<li>{detail}</li>"
+                    item_html += "</ul>"
+            # --- END MODIFIED ---
+
+            html_content += f"<div class='experience-item'>{item_html}</div>"
+        return html_content
+    elif isinstance(section_data, str):
+        # Fallback for when AI returns unstructured string for a complex section
+        # Try to make it look like a bulleted list if it has newlines, otherwise a paragraph.
+        if "\n" in section_data and len(section_data.split('\n')) > 1:
+            # Check if lines start with common bullet indicators, if so, make a list
+            if any(line.strip().startswith(('-', '*', '•')) for line in section_data.split('\n')):
+                return "<ul>" + "".join([f"<li>{line.strip().lstrip('-*• ').strip()}</li>" for line in section_data.split('\n') if line.strip()]) + "</ul>"
             else:
-                return f"<p>{section_data}</p>"
+                return "<p>" + "</p><p>".join([line.strip() for line in section_data.split('\n') if line.strip()]) + "</p>"
         else:
-            return ""
+            return f"<p>{section_data}</p>"
+    else:
+        return ""
 
 
     return f"""
