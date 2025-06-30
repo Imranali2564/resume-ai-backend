@@ -1150,7 +1150,7 @@ def get_field_suggestions(extracted_data, resume_text):
 # 2. Prompts are designed to make the AI return data that is easier for parse_complex_section_html to handle.
 def generate_smart_resume_from_keywords(data: dict) -> dict:
     """
-    Ye function har resume section ke liye AI se professionally rewritten content laata hai.
+    Ye function AI-generated resume content ko ek proper HTML resume format me convert karta hai.
     Jo fields user bharta hai, unke basis pe response deta hai.
     """
 
@@ -1162,19 +1162,18 @@ def generate_smart_resume_from_keywords(data: dict) -> dict:
 
     sections = {
         "summary": "Write a concise, impactful 2-3 line professional summary for a resume. Focus on key skills, experience, and career goals. Use strong action verbs and highlight achievements where possible.",
-        # --- MODIFIED PROMPT FOR EXPERIENCE ---
-        "experience": """For each work experience entry, convert the raw input into a list of 3-5 concise, action-verb-driven bullet points for a resume. Each bullet point should start with an action verb and describe a key achievement or responsibility, focusing on quantifiable results where possible.
-        The output must be ONLY the bullet points, one per line. Do NOT include job titles, companies, or dates here.
+        # --- MODIFIED PROMPT FOR EXPERIENCE (More concise) ---
+        "experience": """For each work experience entry, convert the raw input into a list of 3-5 *very concise, action-verb-driven bullet points* for a resume. Each bullet point should be a single line, start with an action verb, and focus on quantifiable achievements and key responsibilities. Do NOT include job titles, companies, or dates in this output; only the bullet points.
 
 Example Output Format:
 - Managed cross-functional teams to deliver projects on time, reducing delays by 15%.
 - Developed and maintained full-stack applications using React and Node.js, enhancing performance by 20%.
 - Streamlined data processing workflows, improving efficiency by 20%.""",
-        # --- MODIFIED PROMPT FOR EDUCATION ---
+        # --- MODIFIED PROMPT FOR EDUCATION (Stricter format) ---
         "education": """Reformat these education details into a standard resume education format. For each entry, provide:
         - Degree Name (on one line)
-        - University/Institute and City, State/Country (on the next line, comma separated)
-        - Graduation/Completion Year (on the same line as university, right-aligned or clearly separated)
+        - University/Institute, City, State/Country (on the next line, comma separated)
+        - Graduation/Completion Year (on the same line as university, right-aligned, or clearly separated)
         If there are relevant bullet points (e.g., GPA, specializations, honors), list them concisely below the main entry.
 
 Example Output Format:
@@ -1182,8 +1181,9 @@ B.S. in Computer Science
 Delhi University, Delhi, India, 2019
 • Relevant coursework: Data Structures, Algorithms, Machine Learning
 • GPA: 3.8/4.0""",
-        # --- MODIFIED PROMPT FOR SKILLS ---
-        "skills": """List these skills as concise, individual bullet points. If you need to categorize, put the category name on its own line, followed by bullet points for skills under that category. Do NOT include any leading hyphens or extra bullet characters in the output, the frontend will add them.
+        # --- MODIFIED PROMPT FOR SKILLS (Stricter for categories and individual items) ---
+        "skills": """List these skills as concise, individual bullet points. If you need to categorize, put the category name on its own line, followed by bullet points for skills under that category. Do NOT add any leading hyphens or extra bullet characters to the individual skill items. The output should be clean text, with categories on separate lines and skills below them.
+
 Example:
 Technical Skills
 • Python
@@ -1194,26 +1194,26 @@ Soft Skills
 • Problem Solving
 • Teamwork
 • Communication""",
-        # --- MODIFIED PROMPT FOR PROJECTS ---
-        "projects": """For each project entry, provide the concise project title on one line, followed by a list of 2-4 action-verb-driven bullet points. Each bullet should highlight technologies used, your role, and key achievements/outcomes, especially quantifiable results. Do NOT include numbering (1., 2., 3.) or labels like 'Project Description:' or 'Outcome/Result:'.
+        # --- MODIFIED PROMPT FOR PROJECTS (Stricter for concise bullets) ---
+        "projects": """For each project entry, provide the concise project title on one line, followed by a list of 2-4 *very concise, action-verb-driven bullet points*. Each bullet should highlight technologies used, your role, and *key achievements/outcomes, especially quantifiable results*. Do NOT include numbering (1., 2., 3.) or labels like 'Project Description:' or 'Outcome/Result:'.
 
 Example Output Format:
 Personal Portfolio Website
-• Developed a responsive web app using React.js and Tailwind CSS.
+• Developed responsive web app using React.js and Tailwind CSS.
 • Implemented user authentication and data persistence with Firebase.
-• Achieved a 20% increase in user engagement through optimized UI.
+• Achieved 20% increase in user engagement through optimized UI.
 
 Todo App
-• Built a task management application using React.js and Firebase for real-time data synchronization.
-• Integrated user authentication functionalities for secure user accounts.
-• Improved user productivity by 25% with features such as drag-and-drop tasks and notifications.""",
-        # --- MODIFIED PROMPT FOR CERTIFICATIONS ---
-        "certifications": """List each certification clearly, one per line. Include certification name, issuing body, and year if available. Do NOT include any leading hyphens or extra bullet characters in the output, the frontend will add them.
+• Built task management application using React.js and Firebase.
+• Integrated user authentication and real-time data synchronization.
+• Streamlined workflow, resulting in 20% increase in task completion efficiency.""",
+        # --- MODIFIED PROMPT FOR CERTIFICATIONS (Stricter format) ---
+        "certifications": """List each certification clearly, one per line. Include certification name, issuing body, and year if available. Do NOT add any leading hyphens or extra bullet characters to the items.
 Example:
 AWS Certified Solutions Architect, Amazon Web Services, 2023
 Certified Kubernetes Administrator (CKA), Linux Foundation, 2022""",
-        # --- MODIFIED PROMPT FOR LANGUAGES ---
-        "languages": """List each language clearly, one per line, along with proficiency level (e.g., English: Fluent, French: Intermediate). Do NOT include any leading hyphens or extra bullet characters in the output, the frontend will add them.""",
+        # --- MODIFIED PROMPT FOR LANGUAGES (Stricter format) ---
+        "languages": """List each language clearly, one per line, along with proficiency level (e.g., English: Fluent, French: Intermediate). Do NOT add any leading hyphens or extra bullet characters to the items.""",
         "awards": "List each award on a new line in a professional resume format (e.g., 'Employee of the Year, ABC Corp, 2023').",
         "volunteering": "Describe volunteering activities and contributions concisely, using bullet points.",
         "interests": "Convert these interests into professional sounding phrases suitable for a resume. List them concisely.",
@@ -1224,7 +1224,7 @@ Certified Kubernetes Administrator (CKA), Linux Foundation, 2022""",
     for key, instruction in sections.items():
         value = data.get(key, "").strip()
         if not value:
-            smart_resume[key] = "" # Ensure empty string if no input
+            smart_resume[key] = ""
             continue
 
         prompt = f"""
