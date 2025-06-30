@@ -1138,6 +1138,8 @@ def get_field_suggestions(extracted_data, resume_text):
         logger.error(f"Could not get field suggestions: {e}")
         return {"field": "General / Fresher", "suggestions": [{"type": "Recommended", "section": "Projects"}]}
 
+# Function: generate_smart_resume_from_keywords
+
 # Updated functions for resume_ai_analyzer.py
 # (This code block includes both generate_smart_resume_from_keywords and generate_full_ai_resume_html)
 
@@ -1146,7 +1148,6 @@ def get_field_suggestions(extracted_data, resume_text):
 # 1. Significantly enhanced AI prompts for 'experience', 'education', 'projects', 'skills', 'certifications'
 #    to force structured, bulleted, and concise output matching professional resume standards.
 # 2. Prompts are designed to make the AI return data that is easier for parse_complex_section_html to handle.
-# 3. Explicitly asking AI to avoid "Input/Output" labels.
 def generate_smart_resume_from_keywords(data: dict) -> dict:
     """
     Ye function AI-generated resume content ko ek proper HTML resume format me convert karta hai.
@@ -1161,52 +1162,43 @@ def generate_smart_resume_from_keywords(data: dict) -> dict:
 
     sections = {
         "summary": "Write a concise, impactful 2-3 line professional summary for a resume. Focus on key skills, experience, and career goals. Use strong action verbs and highlight achievements where possible.",
-        # --- MODIFIED PROMPT FOR EXPERIENCE (More concise & action-oriented) ---
-        "experience": """For each work experience entry, convert the raw input into a list of 3-5 *very concise, action-verb-driven bullet points* for a resume. Each bullet point should be a single line, start with an action verb, and focus on quantifiable achievements and key responsibilities. Do NOT include job titles, companies, or dates in this output; ONLY the bullet points. Avoid narratives.
+        # --- MODIFIED PROMPT FOR EXPERIENCE (More concise) ---
+        "experience": """For each work experience entry, convert the raw input into a list of 3-5 *very concise, action-verb-driven bullet points* for a resume. Each bullet point should be a single line, start with an action verb, and focus on quantifiable achievements and key responsibilities. Do NOT include job titles, companies, or dates in this output; only the bullet points.
 
 Example Output Format:
-- Developed responsive UI components using React, improving website usability by 15%.
-- Implemented performance optimizations to reduce page load times by 25%.
-- Collaborated with backend engineers to integrate APIs and improve overall system functionality.""",
-        # --- MODIFIED PROMPT FOR EDUCATION (Strictly formatted, no Input/Output) ---
+- Managed cross-functional teams to deliver projects on time, reducing delays by 15%.
+- Developed and maintained full-stack applications using React and Node.js, enhancing performance by 20%.
+- Streamlined data processing workflows, improving efficiency by 20%.""",
+        # --- MODIFIED PROMPT FOR EDUCATION (Stricter format) ---
         "education": """Reformat these education details into a standard resume education format. For each entry, provide:
-        - Degree Name (e.g., B.S. in Computer Science)
-        - University/Institute, City, State/Country (e.g., ABC University, City, State/Country)
-        - Graduation/Completion Year (e.g., 2019)
-        Present this exactly on three lines as:
-        Degree Name
-        University/Institute, City, State/Country
-        Graduation/Completion Year
-        If there are relevant bullet points (e.g., GPA, specializations, honors), list them concisely below the main entry. Do NOT include any 'Input:' or 'Output:' labels in your response.
+        - Degree Name (on one line)
+        - University/Institute, City, State/Country (on the next line, comma separated)
+        - Graduation/Completion Year (on the same line as university, right-aligned, or clearly separated)
+        If there are relevant bullet points (e.g., GPA, specializations, honors), list them concisely below the main entry.
 
 Example Output Format:
-B.Tech in Computer Science
-ABC University, City, Country
-2019
+B.S. in Computer Science
+Delhi University, Delhi, India, 2019
 • Relevant coursework: Data Structures, Algorithms, Machine Learning
 • GPA: 3.8/4.0""",
-        # --- MODIFIED PROMPT FOR SKILLS (Ensure clean output, no categories unless input explicitly has them) ---
-        "skills": """List these skills as concise, individual bullet points. If the input specifies categories (e.g., 'Technical Skills:', 'Soft Skills:'), then include the category name on its own line, followed by bullet points for skills under that category. Otherwise, just list skills as bullet points. Do NOT add any leading hyphens or extra bullet characters to the individual skill items.
+        # --- MODIFIED PROMPT FOR SKILLS (Stricter for categories and individual items) ---
+        "skills": """List these skills as concise, individual bullet points. If you need to categorize, put the category name on its own line, followed by bullet points for skills under that category. Do NOT add any leading hyphens or extra bullet characters to the individual skill items. The output should be clean text, with categories on separate lines and skills below them.
 
-Example Output (with categories):
+Example:
 Technical Skills
 • Python
 • JavaScript
 • React
+• SQL
 Soft Skills
 • Problem Solving
 • Teamwork
-
-Example Output (without categories):
-• Python
-• JavaScript
-• React
-• SQL""",
-        # --- MODIFIED PROMPT FOR PROJECTS (Strictly concise, no labels, structured output) ---
+• Communication""",
+        # --- MODIFIED PROMPT FOR PROJECTS (Stricter for concise bullets) ---
         "projects": """For each project entry, provide the concise project title on one line, followed by a list of 2-4 *very concise, action-verb-driven bullet points*. Each bullet should highlight technologies used, your role, and *key achievements/outcomes, especially quantifiable results*. Do NOT include numbering (1., 2., 3.) or labels like 'Project Description:' or 'Outcome/Result:'.
 
 Example Output Format:
-Portfolio Website
+Personal Portfolio Website
 • Developed responsive web app using React.js and Tailwind CSS.
 • Implemented user authentication and data persistence with Firebase.
 • Achieved 20% increase in user engagement through optimized UI.
@@ -1215,12 +1207,12 @@ Todo App
 • Built task management application using React.js and Firebase.
 • Integrated user authentication and real-time data synchronization.
 • Streamlined workflow, resulting in 20% increase in task completion efficiency.""",
-        # --- MODIFIED PROMPT FOR CERTIFICATIONS (Strictly concise, no labels) ---
-        "certifications": """List each certification clearly, one per line. Include certification name, issuing body, and year if available. Do NOT add any leading hyphens or extra bullet characters to the items, nor 'Output:' labels.
+        # --- MODIFIED PROMPT FOR CERTIFICATIONS (Stricter format) ---
+        "certifications": """List each certification clearly, one per line. Include certification name, issuing body, and year if available. Do NOT add any leading hyphens or extra bullet characters to the items.
 Example:
 AWS Certified Solutions Architect, Amazon Web Services, 2023
 Certified Kubernetes Administrator (CKA), Linux Foundation, 2022""",
-        # --- MODIFIED PROMPT FOR LANGUAGES (Strictly concise, no labels) ---
+        # --- MODIFIED PROMPT FOR LANGUAGES (Stricter format) ---
         "languages": """List each language clearly, one per line, along with proficiency level (e.g., English: Fluent, French: Intermediate). Do NOT add any leading hyphens or extra bullet characters to the items.""",
         "awards": "List each award on a new line in a professional resume format (e.g., 'Employee of the Year, ABC Corp, 2023').",
         "volunteering": "Describe volunteering activities and contributions concisely, using bullet points.",
@@ -1257,10 +1249,12 @@ Output:
 
 
 # Function: generate_full_ai_resume_html
-# Changes: (Indentation should already be fixed from previous steps)
-# 1. `parse_complex_section_html` now includes a more robust heuristic for parsing education
-#    and project string outputs into structured HTML (item-header + bullets).
-# 2. Ensures that if AI provides skill categories, they are handled correctly as headings within the list.
+# Changes:
+# 1. Indentation corrected for all helper functions and the main HTML string. (This should be resolved from previous fixes)
+# 2. `list_to_html` now solely focuses on taking a list/string and creating proper <li> items, robustly stripping leading hyphens/bullets.
+# 3. `parse_complex_section_html` is heavily refined to expect and render AI output for Experience, Education, and Projects
+#    into specific HTML structures (item-header for titles/meta, <ul><li> for details).
+# 4. Improved fallback for unstructured AI output in parse_complex_section_html.
 def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     """
     Ye function AI-generated resume content ko ek proper HTML resume format me convert karta hai.
@@ -1269,6 +1263,8 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     """
 
     def list_to_html(items_string):
+        # This function handles both list of strings and newline-separated string input.
+        # It now robustly strips leading hyphens/bullets, ensuring only the custom CSS bullet appears.
         if isinstance(items_string, list):
             items = [item.strip().lstrip('-• ').strip() for item in items_string if item.strip()]
         elif isinstance(items_string, str):
@@ -1276,14 +1272,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
         else:
             items = []
         
-        # Handle categories within lists (e.g., for Skills)
-        final_html = ""
-        for item in items:
-            if item and not item.startswith('•') and len(item.split()) < 5: # Heuristic for category like "Technical Skills"
-                final_html += f"<p class='category-heading'><strong>{item}</strong></p>" # Bold category heading
-            else:
-                final_html += f"<li>{item}</li>"
-        return final_html
+        return "".join(f"<li>{item}</li>" for item in items)
 
 
     def parse_complex_section_html(section_data, is_education=False):
@@ -1291,70 +1280,55 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             return ""
 
         html_output = "" 
-        processed_items = []
 
-        # --- NEW ROBUST PARSING HEURISTIC FOR STRING INPUTS ---
-        # This part tries to parse raw string output from AI into structured items
-        # if AI fails to return a perfect list of dictionaries.
-        if isinstance(section_data, str):
+        # Expected: section_data is a list of structured items (from AI for Experience, Education, Projects)
+        # Note: Even if AI returns a single string (e.g., from an older prompt), we handle it in the `elif` below.
+        if isinstance(section_data, str): # Handle if AI returned string for whole section (e.g., for Projects, Education)
             lines = [line.strip() for line in section_data.split('\n') if line.strip()]
-            current_item = {"title": "", "details": [], "company": "", "duration": "", "description": ""} # Initialize with all keys
             
-            # Pattern to detect if a line is a title or a detail
-            # A line is a detail if it starts with a bullet/hyphen, or if it's not the first line and previous was a title.
+            current_item = {"title": "", "details": []}
+            all_items = []
             
+            # Simple heuristic to split string content into "items" and "details" based on newlines
+            # This is a fallback if AI doesn't return structured JSON directly for these sections.
+            # It tries to find a pattern where a line followed by bullet-like lines constitutes an item.
             for line in lines:
-                cleaned_line = line.strip().lstrip('-• ').strip()
-                if not cleaned_line: continue
-
-                if cleaned_line.lower().startswith(('input:', 'output:')): # Skip AI meta-labels
+                if not line.strip().lstrip('-• ').strip(): # Skip empty lines after stripping
                     continue
 
-                if is_education: # Specific heuristic for Education strings
-                    # Expecting Degree, then University/Location, then Year, then bullets
-                    if not current_item["title"] and not current_item["details"]: # First line: Degree
-                        current_item["title"] = cleaned_line
-                    elif current_item["title"] and not current_item["company"] and not current_item["details"]: # Second line: University, City, Year
-                        parts = cleaned_line.rsplit(',', 1) # Split from right to get year separately
-                        if len(parts) > 1 and re.match(r'\d{4}', parts[1].strip()): # If last part is a year
-                            current_item["company"] = parts[0].strip() # University & City
-                            current_item["duration"] = parts[1].strip() # Year
-                        else:
-                            current_item["company"] = cleaned_line # If no year, treat as full university line
-                    elif cleaned_line.startswith('•'): # Bullet point details
-                         current_item["details"].append(cleaned_line)
-                    else: # New education entry
-                        if current_item["title"] or current_item["company"] or current_item["details"]:
-                            processed_items.append(current_item)
-                        current_item = {"title": cleaned_line, "details": [], "company": "", "duration": ""}
-                
-                else: # General heuristic for Experience/Projects strings
-                    if cleaned_line.startswith('•'): # If it's a bullet point
-                        current_item["details"].append(cleaned_line)
-                    elif not current_item["title"] and not current_item["details"]: # First line for a new item (title)
-                        current_item["title"] = cleaned_line
-                    elif current_item["title"] and not current_item["details"] and len(cleaned_line.split()) > 2 and not cleaned_line.startswith(('-', '•')): # Could be a description for project or meta for experience (imperfect)
-                        current_item["description"] = cleaned_line # Treat as description for project
-                    else: # New item starts
-                        if current_item["title"] or current_item["details"] or current_item["description"]:
-                            processed_items.append(current_item)
-                        current_item = {"title": cleaned_line, "details": [], "company": "", "duration": "", "description": ""}
+                if line.strip().startswith(('-', '•')): # If it looks like a bullet point
+                    current_item["details"].append(line.strip().lstrip('-• ').strip())
+                elif not current_item["title"] and not current_item["details"]: # First line for a new item
+                    current_item["title"] = line.strip()
+                elif current_item["title"] and not current_item["details"]: # Next line after title, could be description
+                    # This heuristic is imperfect for complex items like "Education" unless AI is very precise.
+                    # Best is for AI to return structured JSON.
+                    current_item["details"].append(line.strip()) # Treat as a detail for now
+                else: # New item starts
+                    all_items.append(current_item)
+                    current_item = {"title": line.strip(), "details": []}
+            if current_item["title"] or current_item["details"]: # Add the last item
+                all_items.append(current_item)
             
-            if current_item["title"] or current_item["details"] or current_item["description"] or current_item["company"]: # Add the last item
-                processed_items.append(current_item)
+            # Now, process all_items (which are simplified structured based on heuristics)
+            section_data_processed = all_items # Treat this as the list of items for rendering
 
-        elif isinstance(section_data, list): # Ideal case: AI returned a list of dictionaries
-             processed_items = section_data
+            if not section_data_processed: # If heuristic parsing failed
+                # Fallback to simple paragraph if it's just one line
+                return f"<p>{section_data.strip()}</p>" if section_data.strip() else ""
+
+        elif isinstance(section_data, list): # This is the ideal case where AI returns a list of dictionaries
+             section_data_processed = section_data
         else:
              return "" # Return empty if data is not string or list
 
-        # Now, render the processed_items (whether from AI list or string heuristic)
-        for item in processed_items:
+        # Now, render the processed section_data_processed (whether from AI list or string heuristic)
+        for item in section_data_processed:
             title_text = item.get("title", '')
             company_text = item.get("company", '') # For experience/education
             duration_text = item.get("duration", '') # For experience/education
             details_list = item.get("details", []) # For details/bullet points
-            description_text = item.get("description", '') # For projects (if description is separate)
+            description_text = item.get("description", '') # For projects (if AI gives it)
 
             item_html = ""
 
@@ -1362,25 +1336,22 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             item_html += f"<div class='item-header'>"
             item_html += f"<h4>{title_text}</h4>" # Job Title / Degree / Project Title
             
-            # Meta line for University/Company/Duration
             item_html += f"<p class='item-meta'>"
             if company_text:
                 item_html += f"<span>{company_text}</span>"
-            if duration_text: # If year/duration exists
-                if company_text: # Add comma if company is also present
-                    item_html += ", " 
+            if duration_text:
                 item_html += f"<span class='duration'>{duration_text}</span>"
             item_html += "</p>"
             item_html += "</div>" # End item-header
 
-            # Add a separate description if available (e.g., for Projects)
+            # Add a separate description if available (e.g., for Projects if AI gives it)
             if description_text:
                 item_html += f"<p class='item-description'>{description_text}</p>"
 
             # Details as bullet points
             if details_list:
                 # Ensure details_list is actually a list of strings after processing
-                if isinstance(details_list, str):
+                if isinstance(details_list, str): # if it somehow became a string again
                     details_list_final = [d.strip().lstrip('-• ').strip() for d in details_list.split('\n') if d.strip()]
                 elif isinstance(details_list, list):
                     details_list_final = [d.strip().lstrip('-• ').strip() for d in details_list if d.strip()]
@@ -1393,7 +1364,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                         item_html += f"<li>{detail}</li>" # Generate <li> for each detail
                     item_html += "</ul>"
             
-            html_output += f"<div class='experience-item'>{item_html}</div>" 
+            html_output += f"<div class='experience-item'>{item_html}</div>" # Use .experience-item for all complex items for consistent styling
         
         return html_output
 
