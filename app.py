@@ -51,10 +51,12 @@ from resume_ai_analyzer import (
 try:
     from html2docx import html2docx
 except ImportError:
-    # Log an error but allow the app to start if html2docx is truly missing.
-    # If it's expected to be installed, this log helps diagnose if it's actually not found.
     logging.error("html2docx library is not installed or accessible. DOCX conversion will fail.")
-    html2docx = None # Set to None so the check inside download_generated_resume works correctly if it's missing.
+    html2docx = None
+
+logging_level = logging.INFO if os.environ.get("FLASK_ENV") != "development" else logging.DEBUG
+logging.basicConfig(level=logging_level)
+logger = logging.getLogger(__name__)
     
 try:
     from docx import Document
@@ -1239,10 +1241,6 @@ def generate_docx_from_html():
         traceback.print_exc()
         return jsonify({"success": False, "error": "Failed to generate DOCX file"}), 500
 
-# app.py
-
-# ... (rest of the code above) ...
-
 # Function to download PDF/DOCX from backend
 @app.route('/download-generated-resume', methods=['POST'])
 def download_generated_resume():
@@ -1604,19 +1602,18 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
                 'margin-bottom': '0.7in',
                 'margin-left': '0.7in',
                 'encoding': "UTF-8",
-                'enable-local-file-access': None # Important for any local assets, though not directly used here.
+                'enable-local-file-access': None
             }
             pdf_file = pdfkit.from_string(full_html, False, options=options)
             return send_file(io.BytesIO(pdf_file), as_attachment=True, download_name=f'{user_name_for_filename}.pdf', mimetype='application/pdf')
 
         elif file_format == 'docx':
-            # Check if html2docx is properly imported or available (it was set to None if import failed)
+            # Check if html2docx is properly imported or available
             if html2docx is None:
                  return jsonify({"error": "DOCX conversion library (html2docx) not available on server."}), 500
             
-            # DOCX: Pass full_html and a title (filename)
-            # This fixes the TypeError: html2docx() missing 1 required positional argument: 'title'
-            docx_bytes = html2docx(full_html, title=f'{user_name_for_filename}.docx') 
+            # FIX: Wrap docx_bytes (which is a bytes object) inside io.BytesIO
+            docx_bytes = html2docx(full_html, title=f'{user_name_for_filename}.docx')
             return send_file(io.BytesIO(docx_bytes), as_attachment=True, download_name=f'{user_name_for_filename}.docx', mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
             
         else:
