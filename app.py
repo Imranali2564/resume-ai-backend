@@ -47,6 +47,15 @@ from resume_ai_analyzer import (
     generate_resume_summary,
     generate_michelle_template_html
 )
+# NEW/FIXED: Correctly import html2docx at the top level
+try:
+    from html2docx import html2docx
+except ImportError:
+    # Log an error but allow the app to start if html2docx is truly missing.
+    # If it's expected to be installed, this log helps diagnose if it's actually not found.
+    logging.error("html2docx library is not installed or accessible. DOCX conversion will fail.")
+    html2docx = None # Set to None so the check inside download_generated_resume works correctly if it's missing.
+    
 try:
     from docx import Document
     from docx.shared import Pt, Inches, RGBColor
@@ -1241,15 +1250,13 @@ def download_generated_resume():
         data = request.get_json()
         html_content = data.get("html_content")
         file_format = data.get("format", "pdf")
-        # Ensure 'name' is retrieved for filename, default if not found
         user_name_for_filename = data.get("name", "Generated_Resume") 
 
         if not html_content:
             return jsonify({"error": "No HTML content provided"}), 400
 
         # --- LATEST CSS FROM ai-resume-generator (8).css PASTE KIYA GAYA HAI ---
-        # This CSS is directly copied from your frontend CSS for comprehensive styling in PDF/DOCX.
-        # This is CRUCIAL for PDF rendering.
+        # This is CRUCIAL for PDF rendering to match frontend preview.
         css_for_pdf_and_docx = """
 /* AI Resume Generator Specific Styles */
 body { font-family: 'Inter', sans-serif; background-color: #f7f9fc; color: #334155; }
