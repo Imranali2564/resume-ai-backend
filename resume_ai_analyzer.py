@@ -1150,7 +1150,7 @@ def get_field_suggestions(extracted_data, resume_text):
 # 2. Prompts are designed to make the AI return data that is easier for parse_complex_section_html to handle.
 def generate_smart_resume_from_keywords(data: dict) -> dict:
     """
-    Ye function AI-generated resume content ko ek proper HTML resume format me convert karta hai.
+    Ye function har resume section ke liye AI se professionally rewritten content laata hai.
     Jo fields user bharta hai, unke basis pe response deta hai.
     """
 
@@ -1161,44 +1161,49 @@ def generate_smart_resume_from_keywords(data: dict) -> dict:
     smart_resume = {}
 
     sections = {
-        "summary": "Write a concise, impactful 2-3 line professional summary for a resume. Focus on key skills, experience, and career goals. Use strong action verbs and highlight achievements where possible.",
-        # --- MODIFIED PROMPT FOR EXPERIENCE (More concise) ---
-        "experience": """For each work experience entry, convert the raw input into a list of 3-5 *very concise, action-verb-driven bullet points* for a resume. Each bullet point should be a single line, start with an action verb, and focus on quantifiable achievements and key responsibilities. Do NOT include job titles, companies, or dates in this output; only the bullet points.
+        "summary": "Write a concise, impactful 2-3 line professional summary for a resume. Focus on key skills, experience, and career goals. Use strong action verbs and highlight achievements where possible. If input is empty or insufficient, return an empty string.",
+        "experience": """For each work experience entry, convert the raw input into a list of 3-5 *very concise, action-verb-driven bullet points* for a resume. Each bullet point should be a single line, start with an action verb, and focus on quantifiable achievements and key responsibilities. Do NOT include job titles, companies, or dates in this output; ONLY the bullet points. If input is empty or insufficient, return an empty string.
 
 Example Output Format:
 - Managed cross-functional teams to deliver projects on time, reducing delays by 15%.
 - Developed and maintained full-stack applications using React and Node.js, enhancing performance by 20%.
 - Streamlined data processing workflows, improving efficiency by 20%.""",
-        # --- MODIFIED PROMPT FOR EDUCATION (Stricter format) ---
         "education": """Reformat these education details into a standard resume education format. For each entry, provide:
         - Degree Name (on one line)
         - University/Institute, City, State/Country (on the next line, comma separated)
         - Graduation/Completion Year (on the same line as university, right-aligned, or clearly separated)
-        If there are relevant bullet points (e.g., GPA, specializations, honors), list them concisely below the main entry.
+        Present this exactly on three separate lines as:
+        Degree Name
+        University/Institute, City, State/Country
+        Graduation/Completion Year
+        If there are relevant bullet points (e.g., GPA, specializations, honors), list them concisely below the main entry, each starting with a bullet. Do NOT include any 'Input:' or 'Output:' labels or numbering in your response. Do NOT add bullets to the Degree, University, or Year lines. If input is empty or insufficient, return an empty string.
 
 Example Output Format:
-B.S. in Computer Science
-Delhi University, Delhi, India, 2019
+B.Tech in Computer Science
+Delhi University, Delhi, India
+2019
 • Relevant coursework: Data Structures, Algorithms, Machine Learning
 • GPA: 3.8/4.0""",
-        # --- MODIFIED PROMPT FOR SKILLS (Stricter for categories and individual items) ---
-        "skills": """List these skills as concise, individual bullet points. If you need to categorize, put the category name on its own line, followed by bullet points for skills under that category. Do NOT add any leading hyphens or extra bullet characters to the individual skill items. The output should be clean text, with categories on separate lines and skills below them.
+        "skills": """List these skills as concise, individual bullet points. If the input explicitly provides categories (like 'Technical Skills:', 'Soft Skills:'), then include the category name on its own line, followed by bullet points for skills under that category. Otherwise, just list skills as bullet points. Do NOT add any leading hyphens or extra bullet characters to the individual skill items. If input is empty or insufficient, return an empty string.
 
-Example:
+Example Output (with categories):
 Technical Skills
 • Python
 • JavaScript
 • React
-• SQL
 Soft Skills
 • Problem Solving
 • Teamwork
-• Communication""",
-        # --- MODIFIED PROMPT FOR PROJECTS (Stricter for concise bullets) ---
-        "projects": """For each project entry, provide the concise project title on one line, followed by a list of 2-4 *very concise, action-verb-driven bullet points*. Each bullet should highlight technologies used, your role, and *key achievements/outcomes, especially quantifiable results*. Do NOT include numbering (1., 2., 3.) or labels like 'Project Description:' or 'Outcome/Result:'.
+
+Example Output (without categories):
+• Python
+• JavaScript
+• React
+• SQL""",
+        "projects": """For each project entry, provide the concise project title on one line, followed by a list of 2-4 *very concise, action-verb-driven bullet points*. Each bullet should highlight technologies used, your role, and *key achievements/outcomes, especially quantifiable results*. Do NOT include numbering (1., 2., 3.) or labels like 'Project Description:' or 'Outcome/Result:'. The project title should be clearly distinguishable (e.g., by being on its own line). If input is empty or insufficient, return an empty string.
 
 Example Output Format:
-Personal Portfolio Website
+Portfolio Website
 • Developed responsive web app using React.js and Tailwind CSS.
 • Implemented user authentication and data persistence with Firebase.
 • Achieved 20% increase in user engagement through optimized UI.
@@ -1207,24 +1212,22 @@ Todo App
 • Built task management application using React.js and Firebase.
 • Integrated user authentication and real-time data synchronization.
 • Streamlined workflow, resulting in 20% increase in task completion efficiency.""",
-        # --- MODIFIED PROMPT FOR CERTIFICATIONS (Stricter format) ---
-        "certifications": """List each certification clearly, one per line. Include certification name, issuing body, and year if available. Do NOT add any leading hyphens or extra bullet characters to the items.
+        "certifications": """List each certification clearly, one per line. Include certification name, issuing body, and year if available. Do NOT add any leading hyphens or extra bullet characters to the items, nor 'Output:' labels. If input is empty or insufficient, return an empty string.
 Example:
 AWS Certified Solutions Architect, Amazon Web Services, 2023
 Certified Kubernetes Administrator (CKA), Linux Foundation, 2022""",
-        # --- MODIFIED PROMPT FOR LANGUAGES (Stricter format) ---
-        "languages": """List each language clearly, one per line, along with proficiency level (e.g., English: Fluent, French: Intermediate). Do NOT add any leading hyphens or extra bullet characters to the items.""",
-        "awards": "List each award on a new line in a professional resume format (e.g., 'Employee of the Year, ABC Corp, 2023').",
-        "volunteering": "Describe volunteering activities and contributions concisely, using bullet points.",
-        "interests": "Convert these interests into professional sounding phrases suitable for a resume. List them concisely.",
-        "publications": "Expand these publication titles and give a brief context suitable for a resume, using bullet points if multiple.",
-        "patents": "Describe patents briefly and professionally, using bullet points if multiple.",
+        "languages": """List each language clearly, one per line, along with proficiency level (e.g., English: Fluent, French: Intermediate). Do NOT add any leading hyphens or extra bullet characters to the items. If input is empty or insufficient, return an empty string.""",
+        "awards": "List each award on a new line in a professional resume format (e.g., 'Employee of the Year, ABC Corp, 2023'). If input is empty or insufficient, return an empty string.",
+        "volunteering": "Describe volunteering activities and contributions concisely, using bullet points. If input is empty or insufficient, return an empty string.",
+        "interests": "Convert these interests into professional sounding phrases suitable for a resume. List them concisely. If input is empty or insufficient, return an empty string.",
+        "publications": "Expand these publication titles and give a brief context suitable for a resume, using bullet points if multiple. If input is empty or insufficient, return an empty string.",
+        "patents": "Describe patents briefly and professionally, using bullet points if multiple. If input is empty or insufficient, return an empty string.",
     }
 
     for key, instruction in sections.items():
         value = data.get(key, "").strip()
         if not value:
-            smart_resume[key] = ""
+            smart_resume[key] = "" # Ensure empty string if no input
             continue
 
         prompt = f"""
@@ -1240,6 +1243,10 @@ Output:
                 timeout=20
             )
             result = response.choices[0].message.content.strip()
+            # FIX: If AI still returns empty/generic phrases, force empty string
+            if result.lower() in ["no skills provided.", "no certifications found.", "no education details provided.", "no projects found.", "no languages provided.", "invalid input.", "i'm sorry, but i cannot generate certifications without any input.", "the input provided seems to be incomplete.", "kindly provide the education details that need to be reformatted in a standard resume format."]:
+                result = ""
+
             smart_resume[key] = result
 
         except Exception as e:
