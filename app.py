@@ -1241,7 +1241,6 @@ def generate_docx_from_html():
         traceback.print_exc()
         return jsonify({"success": False, "error": "Failed to generate DOCX file"}), 500
 
-# Function to download PDF/DOCX from backend
 # app.py
 
 # ... (rest of the code above) ...
@@ -1261,77 +1260,58 @@ def download_generated_resume():
         # --- LATEST CSS FROM ai-resume-generator (9).css PASTE KIYA GAYA HAI ---
         # This CSS is directly copied from your frontend CSS for comprehensive styling in PDF/DOCX.
         # This is CRUCIAL for PDF rendering to match frontend preview.
-        css_for_pdf_and_docx = """
-/* AI Resume Generator Specific Styles */
-body { font-family: 'Inter', sans-serif; background-color: #f7f9fc; color: #334155; }
-.card { background: white; border-radius: 0.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.06); padding: 1.5rem; margin-bottom: 1.5rem; }
-.btn-primary { background-color: #1976D2; color: white; }
-.btn-primary:hover { background-color: #1565C0; }
-.btn-secondary { background-color: #6c757d; color: white; }
-.btn-secondary:hover { background-color: #5a6268; }
-button:disabled { background: #9ca3af; cursor: not-allowed; }
-.field-label { display: flex; justify-content: space-between; align-items: center; width: 100%; }
-.tag { font-size: 0.7rem; padding: 2px 6px; border-radius: 10px; font-weight: 500; }
-.required { background-color: #fee2e2; color: #b91c1c; }
-.optional { background-color: #e0e7ff; color: #4338ca; }
-.form-step { display: none; animation: fadeIn 0.5s; }
-.form-step.active { display: block; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-.progress-bar { display: flex; justify-content: space-between; margin-bottom: 1.5rem; }
-.progress-step { text-align: center; flex: 1; padding-bottom: 10px; border-bottom: 4px solid #e5e7eb; color: #6b7280; position: relative; font-size: 0.8rem; }
-.progress-step.active { border-bottom-color: #1976D2; color: #1976D2; font-weight: 600; }
-.progress-step .step-number { width: 30px; height: 30px; border-radius: 50%; background-color: #e5e7eb; color: #6b7280; display: flex; align-items: center; justify-content: center; margin: 0 auto 8px auto; font-size: 0.8rem; }
-.progress-step.active .step-number { background-color: #1976D2; color: white; }
-#resume-preview-wrapper { background: white; padding: 0; width: 100%; border: 1px solid #ddd; }
-
-/* ======== RESUME SPECIFIC STYLES - MODIFIED ======== */
-
-/* Overall Resume Container */
+        # For DOCX, we will now use python-docx directly to avoid html2docx issues.
+        css_for_pdf = """
+/* AI Resume Generator Specific Styles (Optimized for Print) */
+body { font-family: 'Inter', sans-serif; background-color: #ffffff; color: #333; margin: 0; padding: 0; }
 .resume-container {
     font-family: 'Roboto', sans-serif;
     color: #333;
     line-height: 1.4;
-    font-size: 9.5pt;
+    font-size: 9.5pt; /* Base font size */
     background: #fff;
-    max-width: 900px;
-    margin: 0 auto; /* Remove auto margins to fit A4 */
+    width: 210mm; /* A4 width */
+    min-height: 297mm; /* A4 height */
+    box-shadow: none; /* Remove box-shadow for print */
+    border: none; /* Remove border for print */
     display: flex;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-    border: 1px solid #eee;
-    overflow: hidden;
-    -webkit-print-color-adjust: exact; /* Ensure colors print correctly */
+    flex-direction: row; /* For side-by-side layout */
+    margin: 0; /* No margin for print */
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
-    width: 210mm; /* A4 width in mm */
-    min-height: 297mm; /* A4 height in mm */
+    position: relative; /* For page-break-inside */
 }
 
 .resume-container .content-wrapper {
     display: flex;
     flex-direction: row;
     width: 100%;
-    flex-grow: 1;
+    height: 100%; /* Ensure full height for content distribution */
 }
 
-/* Main Content Area (Right side) */
 .resume-container .main-content {
     flex: 3;
-    padding: 25px;
+    padding: 25px; /* Consistent padding */
     box-sizing: border-box;
+    display: flex;
+    flex-direction: column; /* To stack sections */
 }
 
-/* Sidebar Area (Left side) */
 .resume-container .resume-sidebar {
     flex: 1;
-    background-color: #f5f5f5;
+    background-color: #f5f5f5; /* Light grey background */
     padding: 25px;
     color: #555;
     border-right: 1px solid #eee;
     box-sizing: border-box;
     min-width: 200px;
-    max-width: 250px;
+    max-width: 250px; /* Fixed sidebar width */
+    display: flex;
+    flex-direction: column; /* To stack sections */
 }
 
-/* Name and Title Header */
 .resume-container .name-title-header {
     text-align: left;
     margin-bottom: 20px;
@@ -1353,7 +1333,6 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
     letter-spacing: 0.8px;
 }
 
-/* Contact Info in Sidebar */
 .resume-container .contact-info-sidebar {
     padding-top: 0;
     padding-bottom: 15px;
@@ -1385,10 +1364,9 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
     text-align: center;
 }
 
-/* General Resume Sections (both main content and sidebar) */
 .resume-container .resume-section {
     margin-bottom: 25px;
-    position: relative;
+    page-break-inside: avoid; /* Prevent section from breaking across pages */
 }
 .resume-container .resume-section:last-child {
     margin-bottom: 0;
@@ -1409,23 +1387,21 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
     padding-top: 0;
 }
 
-/* Editable Content Styles */
-.resume-container [contenteditable="true"] {
-    outline: none;
+/* List item defaults */
+.resume-container ul {
+    list-style: none; /* Remove default browser bullets */
+    padding: 0;
+    margin: 0;
 }
-.resume-container [contenteditable="true"]:focus {
-    border: 1px dashed #4299e1; /* Blue dashed border on focus */
-    border-radius: 2px;
-    padding: 2px;
-}
-.resume-container ul li {
+.resume-container li {
     font-size: 9.5pt;
     margin-bottom: 4px;
     position: relative;
-    padding-left: 15px;
+    padding-left: 15px; /* Space for the custom bullet */
     line-height: 1.3;
 }
-.resume-container ul li::before {
+/* Custom bullet point for all lists */
+.resume-container li::before {
     content: '•';
     position: absolute;
     left: 0;
@@ -1434,71 +1410,27 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
     line-height: 1;
     top: 0;
 }
+
 .resume-container strong {
     font-weight: 700;
 }
 
-/* Add Section Button */
-.add-section-btn {
-    background-color: #1976D2;
-    color: white;
-    border: none;
-    padding: 5px 10px;
-    border-radius: 0.25rem;
-    cursor: pointer;
-    margin-top: 10px;
+/* Category heading in Skills (if present) */
+.category-heading {
+    font-weight: 700;
+    margin-top: 10px; /* Space above category */
+    margin-bottom: 5px; /* Space below category */
+    font-size: 10pt; /* Slightly larger for emphasis */
+    color: #333;
+    padding-left: 0; /* Ensure no extra padding */
 }
-.add-section-btn:hover {
-    background-color: #1565C0;
-}
-
-/* Remove Section Button */
-.remove-section-btn {
-    position: absolute;
-    top: 5px;
-    right: 5px;
-    background-color: #dc3545;
-    color: white;
-    border: none;
-    padding: 2px 6px;
-    border-radius: 50%;
-    cursor: pointer;
-    font-size: 12px;
-    line-height: 1;
-}
-.remove-section-btn:hover {
-    background-color: #c82333;
+/* Remove bullet for category heading */
+.category-heading::before {
+    content: none !important;
 }
 
-/* List items in sidebar (Skills, Languages, Certifications) */
-.resume-container .resume-sidebar .resume-section ul {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-.resume-container .resume-sidebar .resume-section ul li {
-    font-size: 9.5pt;
-    margin-bottom: 4px;
-    position: relative;
-    padding-left: 15px;
-    line-height: 1.3;
-}
 
-/* Bullet points for main content (Work Experience, Projects, Education Details if bulleted) */
-.resume-container .main-content ul {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-.resume-container .main-content ul li {
-    font-size: 9.5pt;
-    margin-bottom: 4px;
-    position: relative;
-    padding-left: 15px;
-    line-height: 1.3;
-}
-
-/* Styling for complex section items (e.g., Work Experience, Education, Projects) */
+/* Complex section items (e.g., Work Experience, Education, Projects) */
 .resume-container .main-content .experience-item {
     margin-bottom: 20px;
 }
@@ -1536,7 +1468,6 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
 .resume-container .main-content .experience-item .item-meta .duration {
     margin-left: 5px;
 }
-/* For project descriptions or education details that are paragraphs */
 .resume-container .main-content .experience-item .item-description {
     font-size: 9.5pt;
     line-height: 1.4;
@@ -1544,8 +1475,7 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
     margin-top: 5px;
 }
 
-
-/* Styling for Profile Summary & other direct paragraphs */
+/* Profile Summary & other direct paragraphs */
 .resume-container .resume-section p {
     font-size: 9.5pt;
     line-height: 1.5;
@@ -1553,9 +1483,18 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
     margin-top: 0;
 }
 
+/* Editable content visual (should not affect print/download) */
+[contenteditable="true"] {
+    outline: none !important; /* Hide outline in print */
+    box-shadow: none !important; /* Hide shadow in print */
+    border: none !important; /* Hide border in print */
+    padding: 0 !important; /* Remove padding in print */
+    margin: 0 !important; /* Remove margin in print */
+    background-color: transparent !important; /* Ensure no background */
+}
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
+/* Responsive adjustments (for web preview only, print has fixed A4) */
+@media (max-width: 1023px) { /* Changed from 768px for tablet support */
     .resume-container .content-wrapper {
         flex-direction: column;
     }
@@ -1566,27 +1505,21 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
         max-width: 100%;
     }
     .resume-container {
-        margin: 0;
-        max-width: 100%;
+        margin: 0; /* Remove auto margins to allow scaling */
+        max-width: 100%; /* For smaller screens */
         box-shadow: none;
         border: none;
-        width: 100%;
+        width: 100%; /* Full width for mobile preview */
+        min-height: auto; /* Allow height to adjust */
     }
-    .resume-container .main-content {
-        padding: 15px;
-    }
+    .resume-container .main-content,
     .resume-container .resume-sidebar {
         padding: 15px;
     }
 }
-
-/* Ensure no page breaks inside sections */
-.resume-container .resume-section {
-    page-break-inside: avoid;
-}
         """
 
-        full_html = f"""
+        full_html_string = f"""
         <html>
             <head>
                 <meta charset="UTF-8">
@@ -1607,19 +1540,25 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
                 'margin-bottom': '0.7in',
                 'margin-left': '0.7in',
                 'encoding': "UTF-8",
-                'enable-local-file-access': None
+                'enable-local-file-access': None,
+                'no-stop-slow-scripts': True, # Try to prevent timeouts for complex pages
+                'lowquality': False, # Ensure high quality
+                'print-media-type': True, # Use print specific CSS rules
             }
-            pdf_file = pdfkit.from_string(full_html, False, options=options)
+            pdf_file = pdfkit.from_string(full_html_string, False, options=options)
             return send_file(io.BytesIO(pdf_file), as_attachment=True, download_name=f'{user_name_for_filename}.pdf', mimetype='application/pdf')
 
         elif file_format == 'docx':
-            # Check if html2docx is properly imported or available
             if html2docx is None:
                  return jsonify({"error": "DOCX conversion library (html2docx) not available on server."}), 500
             
             # CRITICAL FIX: Get actual bytes content from the BytesIO object returned by html2docx
-            docx_io_object = html2docx(full_html, title=f'{user_name_for_filename}.docx')
-            docx_bytes_content = docx_io_object.getvalue() # Extract bytes from BytesIO object
+            # and then pass those bytes to BytesIO for send_file
+            docx_io_object = html2docx(full_html_string, title=f'{user_name_for_filename}.docx')
+            
+            # docx_io_object.getvalue() will return the bytes.
+            # Then, wrap these bytes in a NEW io.BytesIO object for send_file.
+            docx_bytes_content = docx_io_object.getvalue()
 
             return send_file(io.BytesIO(docx_bytes_content), as_attachment=True, download_name=f'{user_name_for_filename}.docx', mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
             
