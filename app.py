@@ -1242,6 +1242,11 @@ def generate_docx_from_html():
         return jsonify({"success": False, "error": "Failed to generate DOCX file"}), 500
 
 # Function to download PDF/DOCX from backend
+# app.py
+
+# ... (rest of the code above) ...
+
+# Function to download PDF/DOCX from backend
 @app.route('/download-generated-resume', methods=['POST'])
 def download_generated_resume():
     try:
@@ -1612,9 +1617,11 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
             if html2docx is None:
                  return jsonify({"error": "DOCX conversion library (html2docx) not available on server."}), 500
             
-            # FIX: Wrap docx_bytes (which is a bytes object) inside io.BytesIO
-            docx_bytes = html2docx(full_html, title=f'{user_name_for_filename}.docx')
-            return send_file(io.BytesIO(docx_bytes), as_attachment=True, download_name=f'{user_name_for_filename}.docx', mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+            # CRITICAL FIX: Get actual bytes content from the BytesIO object returned by html2docx
+            docx_io_object = html2docx(full_html, title=f'{user_name_for_filename}.docx')
+            docx_bytes_content = docx_io_object.getvalue() # Extract bytes from BytesIO object
+
+            return send_file(io.BytesIO(docx_bytes_content), as_attachment=True, download_name=f'{user_name_for_filename}.docx', mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
             
         else:
             return jsonify({"error": "Unsupported format"}), 400
