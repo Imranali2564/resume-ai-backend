@@ -1256,6 +1256,7 @@ def download_generated_resume():
             return jsonify({"error": "No HTML content provided"}), 400
 
         # --- LATEST CSS FROM ai-resume-generator (8).css PASTE KIYA GAYA HAI ---
+        # This CSS is directly copied from your frontend CSS for comprehensive styling in PDF/DOCX.
         # This is CRUCIAL for PDF rendering to match frontend preview.
         css_for_pdf_and_docx = """
 /* AI Resume Generator Specific Styles */
