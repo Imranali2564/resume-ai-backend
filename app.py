@@ -1230,19 +1230,26 @@ def generate_docx_from_html():
         traceback.print_exc()
         return jsonify({"success": False, "error": "Failed to generate DOCX file"}), 500
 
+# app.py
+
+# ... (rest of the code above) ...
+
+# Function to download PDF/DOCX from backend
 @app.route('/download-generated-resume', methods=['POST'])
 def download_generated_resume():
     try:
         data = request.get_json()
         html_content = data.get("html_content")
         file_format = data.get("format", "pdf")
-        user_name_for_filename = data.get("name", "Generated_Resume") # For DOCX filename
+        # Ensure 'name' is retrieved for filename, default if not found
+        user_name_for_filename = data.get("name", "Generated_Resume") 
 
         if not html_content:
             return jsonify({"error": "No HTML content provided"}), 400
 
         # --- LATEST CSS FROM ai-resume-generator (8).css PASTE KIYA GAYA HAI ---
-        # Yeh CSS ab aapki frontend CSS file ka poora aur latest content hai.
+        # This CSS is directly copied from your frontend CSS for comprehensive styling in PDF/DOCX.
+        # This is CRUCIAL for PDF rendering.
         css_for_pdf_and_docx = """
 /* AI Resume Generator Specific Styles */
 body { font-family: 'Inter', sans-serif; background-color: #f7f9fc; color: #334155; }
@@ -1595,16 +1602,13 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
             return send_file(io.BytesIO(pdf_file), as_attachment=True, download_name=f'{user_name_for_filename}.pdf', mimetype='application/pdf')
 
         elif file_format == 'docx':
-            try:
-                from html2docx import html2docx
-            except ImportError:
-                return jsonify({"error": "DOCX conversion library (html2docx) not available on server."}), 500
+            # Check if html2docx is properly imported or available (it was set to None if import failed)
+            if html2docx is None:
+                 return jsonify({"error": "DOCX conversion library (html2docx) not available on server."}), 500
             
-            # For DOCX, html2docx needs a simpler HTML, it doesn't process complex CSS well.
-            # It's better to pass just the raw HTML content, without the full <head><style> structure for better compatibility.
-            # However, if styles are crucial, they need to be inlined or simplified HTML is sent.
-            # Let's try passing the full_html first, as html2docx can sometimes handle basic styles.
-            docx_bytes = html2docx(full_html) 
+            # DOCX: Pass full_html and a title (filename)
+            # This fixes the TypeError: html2docx() missing 1 required positional argument: 'title'
+            docx_bytes = html2docx(full_html, title=f'{user_name_for_filename}.docx') 
             return send_file(io.BytesIO(docx_bytes), as_attachment=True, download_name=f'{user_name_for_filename}.docx', mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
             
         else:
