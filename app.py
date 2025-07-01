@@ -1257,11 +1257,11 @@ def download_generated_resume():
         if not html_content:
             return jsonify({"error": "No HTML content provided"}), 400
 
-        # --- LATEST CSS FROM ai-resume-generator (9).css PASTE KIYA GAYA HAI ---
+        # --- FIX: Define css_for_pdf_and_docx INSIDE the function ---
         # This CSS is directly copied from your frontend CSS for comprehensive styling in PDF/DOCX.
         # This is CRUCIAL for PDF rendering to match frontend preview.
         # For DOCX, we will now use python-docx directly to avoid html2docx issues.
-        css_for_pdf = """
+        css_for_pdf_and_docx = """
 /* AI Resume Generator Specific Styles (Optimized for Print) */
 body { font-family: 'Inter', sans-serif; background-color: #ffffff; color: #333; margin: 0; padding: 0; }
 .resume-container {
@@ -1297,6 +1297,7 @@ body { font-family: 'Inter', sans-serif; background-color: #ffffff; color: #333;
     box-sizing: border-box;
     display: flex;
     flex-direction: column; /* To stack sections */
+    flex-grow: 1; /* Allow to grow */
 }
 
 .resume-container .resume-sidebar {
@@ -1310,6 +1311,7 @@ body { font-family: 'Inter', sans-serif; background-color: #ffffff; color: #333;
     max-width: 250px; /* Fixed sidebar width */
     display: flex;
     flex-direction: column; /* To stack sections */
+    flex-grow: 1; /* Allow to grow */
 }
 
 .resume-container .name-title-header {
@@ -1397,7 +1399,7 @@ body { font-family: 'Inter', sans-serif; background-color: #ffffff; color: #333;
     font-size: 9.5pt;
     margin-bottom: 4px;
     position: relative;
-    padding-left: 15px; /* Space for the custom bullet */
+    padding-left: 15px;
     line-height: 1.3;
 }
 /* Custom bullet point for all lists */
@@ -1484,38 +1486,87 @@ body { font-family: 'Inter', sans-serif; background-color: #ffffff; color: #333;
 }
 
 /* Editable content visual (should not affect print/download) */
+/* These styles are for the screen view, should not affect print via !important */
 [contenteditable="true"] {
-    outline: none !important; /* Hide outline in print */
-    box-shadow: none !important; /* Hide shadow in print */
-    border: none !important; /* Hide border in print */
-    padding: 0 !important; /* Remove padding in print */
-    margin: 0 !important; /* Remove margin in print */
-    background-color: transparent !important; /* Ensure no background */
+    outline: none; /* No outline by default */
+    box-shadow: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    background-color: transparent;
+    display: inline-block;
+    min-width: 0;
+}
+[contenteditable="true"]:focus {
+    outline: 1px dashed #4299e1; /* Blue dashed border on focus */
+    border-radius: 2px;
+    padding: 2px;
+    margin: -2px; /* Adjust margin to compensate padding */
 }
 
+
 /* Responsive adjustments (for web preview only, print has fixed A4) */
-@media (max-width: 1023px) { /* Changed from 768px for tablet support */
+@media (max-width: 1023px) { /* For tablets and smaller (including mobile) */
+    #resume-preview-wrapper {
+        position: relative !important;
+        width: 100% !important; /* Full width */
+        z-index: 1;
+        overflow: hidden !important; /* Hide content overflow after scaling */
+        /* height will be controlled by JavaScript */
+    }
+
+    #resume-preview-template { /* The actual resume content div (A4 size) */
+        width: 800px !important; /* A fixed larger width for scaling to avoid rendering issues at small scales */
+        height: auto !important; /* Auto height to allow content to push */
+        min-height: 1000px !important; /* Minimum height to represent A4 aspect ratio */
+        position: absolute !important; /* Absolute positioning within scaled wrapper */
+        top: 0 !important;
+        left: 50% !important; /* Center horizontally */
+        transform-origin: top center !important; /* Scale from top center */
+        
+        /* Default scale for smallest phones (adjust as needed) */
+        transform: translateX(-50%) scale(0.40) !important; /* Scale down and center */
+        margin: 0 !important; /* No margin when scaled */
+    }
+
+    /* Scale for larger phones */
+    @media (min-width: 450px) and (max-width: 767px) {
+        #resume-preview-template {
+            transform: translateX(-50%) scale(0.48) !important;
+        }
+    }
+
+    /* Scale for tablets */
+    @media (min-width: 768px) and (max-width: 1023px) {
+        #resume-preview-template {
+            transform: translateX(-50%) scale(0.75) !important;
+        }
+    }
+
+    /* Ensure children of resume-container stack on mobile */
+    .resume-container {
+        flex-direction: column !important; /* Stack sidebar and main content */
+        width: 100% !important; /* Take full width on mobile */
+        min-height: auto !important; /* No fixed min-height on mobile */
+    }
     .resume-container .content-wrapper {
-        flex-direction: column;
+        flex-direction: column !important; /* Stack inside wrapper */
     }
     .resume-container .resume-sidebar {
-        border-right: none;
-        border-bottom: 1px solid #eee;
-        min-width: unset;
-        max-width: 100%;
-    }
-    .resume-container {
-        margin: 0; /* Remove auto margins to allow scaling */
-        max-width: 100%; /* For smaller screens */
-        box-shadow: none;
-        border: none;
-        width: 100%; /* Full width for mobile preview */
-        min-height: auto; /* Allow height to adjust */
+        border-right: none !important;
+        border-bottom: 1px solid #eee !important;
+        min-width: unset !important;
+        max-width: 100% !important;
     }
     .resume-container .main-content,
     .resume-container .resume-sidebar {
-        padding: 15px;
+        padding: 15px !important; /* Reduced padding on mobile */
     }
+}
+
+/* Ensure no page breaks inside sections */
+.resume-container .resume-section {
+    page-break-inside: avoid;
 }
         """
 
@@ -1549,16 +1600,14 @@ body { font-family: 'Inter', sans-serif; background-color: #ffffff; color: #333;
             return send_file(io.BytesIO(pdf_file), as_attachment=True, download_name=f'{user_name_for_filename}.pdf', mimetype='application/pdf')
 
         elif file_format == 'docx':
+            # Check if html2docx is properly imported or available
             if html2docx is None:
                  return jsonify({"error": "DOCX conversion library (html2docx) not available on server."}), 500
             
             # CRITICAL FIX: Get actual bytes content from the BytesIO object returned by html2docx
-            # and then pass those bytes to BytesIO for send_file
+            # docx_io_object is expected to be a BytesIO stream. We need its content as bytes.
             docx_io_object = html2docx(full_html_string, title=f'{user_name_for_filename}.docx')
-            
-            # docx_io_object.getvalue() will return the bytes.
-            # Then, wrap these bytes in a NEW io.BytesIO object for send_file.
-            docx_bytes_content = docx_io_object.getvalue()
+            docx_bytes_content = docx_io_object.getvalue() # Extract bytes from BytesIO object
 
             return send_file(io.BytesIO(docx_bytes_content), as_attachment=True, download_name=f'{user_name_for_filename}.docx', mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
             
