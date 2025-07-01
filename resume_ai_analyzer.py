@@ -1272,7 +1272,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
         else:
             items = []
         
-        return "".join(f"<li>{item}</li>" for item in items)
+        return "".join(f"<li contenteditable=\"true\">{item}</li>" for item in items)
 
 
     def parse_complex_section_html(section_data, is_education=False):
@@ -1315,7 +1315,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
 
             if not section_data_processed: # If heuristic parsing failed
                 # Fallback to simple paragraph if it's just one line
-                return f"<p>{section_data.strip()}</p>" if section_data.strip() else ""
+                return f"<p contenteditable=\"true\">{section_data.strip()}</p>" if section_data.strip() else ""
 
         elif isinstance(section_data, list): # This is the ideal case where AI returns a list of dictionaries
              section_data_processed = section_data
@@ -1334,19 +1334,19 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
 
             # Header for Experience/Education/Project item with title and meta
             item_html += f"<div class='item-header'>"
-            item_html += f"<h4>{title_text}</h4>" # Job Title / Degree / Project Title
+            item_html += f"<h4 contenteditable=\"true\">{title_text}</h4>" # Job Title / Degree / Project Title
             
             item_html += f"<p class='item-meta'>"
             if company_text:
-                item_html += f"<span>{company_text}</span>"
+                item_html += f"<span contenteditable=\"true\">{company_text}</span>"
             if duration_text:
-                item_html += f"<span class='duration'>{duration_text}</span>"
+                item_html += f"<span class='duration' contenteditable=\"true\">{duration_text}</span>"
             item_html += "</p>"
             item_html += "</div>" # End item-header
 
             # Add a separate description if available (e.g., for Projects if AI gives it)
             if description_text:
-                item_html += f"<p class='item-description'>{description_text}</p>"
+                item_html += f"<p class='item-description' contenteditable=\"true\">{description_text}</p>"
 
             # Details as bullet points
             if details_list:
@@ -1361,7 +1361,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                 if details_list_final:
                     item_html += "<ul>"
                     for detail in details_list_final:
-                        item_html += f"<li>{detail}</li>" # Generate <li> for each detail
+                        item_html += f"<li contenteditable=\"true\">{detail}</li>" # Generate <li> for each detail
                     item_html += "</ul>"
             
             html_output += f"<div class='experience-item'>{item_html}</div>" # Use .experience-item for all complex items for consistent styling
@@ -1374,44 +1374,44 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
         <div class="content-wrapper">
             <aside class="resume-sidebar">
                 <div class="contact-info-sidebar">
-                    <h3>Contact</h3>
-                    <p><i class="fas fa-phone-alt"></i> {user_info.get('phone', 'N/A')}</p>
-                    <p><i class="fas fa-envelope"></i> {user_info.get('email', 'N/A')}</p>
-                    <p><i class="fas fa-map-marker-alt"></i> {user_info.get('location', 'N/A')}</p>
-                    <p><i class="fas fa-linkedin"></i> <a href="{user_info.get('linkedin', '#')}" target="_blank">{user_info.get('linkedin', 'N/A')}</a></p>
+                    <h3 contenteditable="true">Contact</h3>
+                    <p contenteditable="true"><i class="fas fa-phone-alt"></i> {user_info.get('phone', 'N/A')}</p>
+                    <p contenteditable="true"><i class="fas fa-envelope"></i> {user_info.get('email', 'N/A')}</p>
+                    <p contenteditable="true"><i class="fas fa-map-marker-alt"></i> {user_info.get('location', 'N/A')}</p>
+                    <p contenteditable="true"><i class="fas fa-linkedin"></i> <a href="{user_info.get('linkedin', '#')}" target="_blank">{user_info.get('linkedin', 'N/A')}</a></p>
                 </div>
                 <div class="resume-section">
-                    <h2>Skills</h2>
+                    <h2 contenteditable="true">Skills</h2>
                     <ul>{list_to_html(smart_content.get('skills', ''))}</ul>
                 </div>
                 <div class="resume-section">
-                    <h2>Languages</h2>
+                    <h2 contenteditable="true">Languages</h2>
                     <ul>{list_to_html(smart_content.get('languages', ''))}</ul>
                 </div>
                 <div class="resume-section">
-                    <h2>Certifications</h2>
+                    <h2 contenteditable="true">Certifications</h2>
                     <ul>{list_to_html(smart_content.get('certifications', ''))}</ul>
                 </div>
             </aside>
             <main class="main-content">
                 <div class="name-title-header">
-                    <h1>{user_info.get('name', '')}</h1>
-                    <div class="job-title">{user_info.get('jobTitle', '')}</div>
+                    <h1 contenteditable="true">{user_info.get('name', '')}</h1>
+                    <div class="job-title" contenteditable="true">{user_info.get('jobTitle', '')}</div>
                 </div>
                 <div class="resume-section">
-                    <h2>Profile Summary</h2>
-                    <p>{smart_content.get('summary', '')}</p>
+                    <h2 contenteditable="true">Profile Summary</h2>
+                    <p contenteditable="true">{smart_content.get('summary', '')}</p>
                 </div>
                 <div class="resume-section">
-                    <h2>Work Experience</h2>
+                    <h2 contenteditable="true">Work Experience</h2>
                     {parse_complex_section_html(smart_content.get('experience', ''), is_education=False)}
                 </div>
                 <div class="resume-section">
-                    <h2>Education</h2>
+                    <h2 contenteditable="true">Education</h2>
                     {parse_complex_section_html(smart_content.get('education', ''), is_education=True)}
                 </div>
                 <div class="resume-section">
-                    <h2>Projects</h2>
+                    <h2 contenteditable="true">Projects</h2>
                     {parse_complex_section_html(smart_content.get('projects', ''), is_education=False)}
                 </div>
             </main>
