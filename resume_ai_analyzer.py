@@ -1,5 +1,3 @@
-# PASTE THIS ENTIRE CODE INTO YOUR resume_ai_analyzer.py FILE
-
 import os
 import logging
 import docx
@@ -628,5 +626,692 @@ def generate_michelle_template_html(sections):
           <ul>{list_items(sections.get('achievements', ''))}</ul>
         </div>
       </div>
+    </div>
+    """
+
+def check_ats_compatibility_fast(text):
+    score = 100
+    issues = []
+
+    if not re.search(r'\b\w+@\w+\.\w+\b', text):
+        issues.append("❌ Missing email - Add your email.")
+        score -= 15
+    else:
+        issues.append("✅ Email found.")
+
+    if not re.search(r'\+?\d[\d\s\-]{8,}', text):
+        issues.append("❌ Missing phone - Add your phone number.")
+        score -= 10
+    else:
+        issues.append("✅ Phone number found.")
+
+    keywords = ["education", "experience", "skills", "certifications"]
+    found = [k for k in keywords if k in text.lower()]
+    if len(found) < 3:
+        issues.append(f"❌ Missing sections - Add {', '.join(set(keywords) - set(found))}")
+        score -= 20
+    else:
+        issues.append("✅ Key sections found.")
+
+    # Limit to 5 issues max
+    issues = issues[:5]
+    return {"score": max(0, score), "issues": issues}
+
+def check_ats_compatibility_deep(file_path):
+    try:
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext == ".pdf":
+            text = extract_text_from_pdf(file_path)
+        elif ext == ".docx":
+            text = extract_text_from_docx(file_path)
+        else:
+            return {"error": "Unsupported file type"}
+
+        if not text.strip():
+            return {"error": "No readable text found in resume"}
+
+        # Basic Checks
+        score = 100
+        issues = []
+
+        if not re.search(r'\b\w+@\w+\.\w+\b', text):
+            issues.append("❌ Missing email - Add your email.")
+            score -= 10
+
+        if not re.search(r'\+?\d[\d\s\-]{8,}', text):
+            issues.append("❌ Missing phone - Add your phone number.")
+            score -= 10
+
+        if len(text.split()) < 150:
+            issues.append("❌ Resume too short")
+            score -= 10
+
+        # AI validation
+        prompt = f"""
+You are an ATS expert. Check the following resume and give up to 5 issues.
+
+Also flag any unnecessary personal information such as:
+- Marital Status
+- Date of Birth
+- Gender
+- Nationality
+- Religion
+
+These are not required in a professional resume and should be removed for better ATS compatibility.
+
+Resume:
+{text[:6000]}
+
+Return your output as a list like this:
+["✅ Passed: ...", "❌ Issue: ..."]
+Only include meaningful points.
+"""
+
+        ai_resp = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5
+        )
+        ai_lines = ai_resp.choices[0].message.content.strip().splitlines()
+        issues += [line for line in ai_lines if line.strip()]
+        score -= sum(5 for line in ai_lines if line.startswith("❌"))
+
+        return {"score": max(score, 0), "issues": issues}
+
+    except Exception as e:
+        return {"error": str(e)}
+import re
+
+def remove_unnecessary_personal_info(text):
+    # Remove Date of Birth
+    text = re.sub(r"(Date of Birth|DOB)[:\-]?\s*\d{1,2}[\/\-\.]?\d{1,2}[\/\-\.]?\d{2,4}", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"(Date of Birth|DOB)[:\-]?\s*[A-Za-z]+\s+\d{1,2},?\s+\d{4}", "", text, flags=re.IGNORECASE)
+
+    # Remove Gender
+    text = re.sub(r"Gender[:\-]?\s*(Male|Female|Other|Prefer not to say)", "", text, flags=re.IGNORECASE)
+
+    # Remove Marital Status
+    text = re.sub(r"Marital Status[:\-]?\s*(Single|Married|Divorced|Widowed)", "", text, flags=re.IGNORECASE)
+
+    # Remove Nationality
+    text = re.sub(r"Nationality[:\-]?\s*\w+", "", text, flags=re.IGNORECASE)
+
+    # Remove Religion
+    text = re.sub(r"Religion[:\-]?\s*\w+", "", text, flags=re.IGNORECASE)
+
+    # Remove long address formats, retain only city and country
+    # e.g. "T-602, Street No 12, Gautampuri, New Delhi 110053, India" → "New Delhi, India"
+    text = re.sub(r'((Address|Location)[:\-]?)?\s*[\w\s\-\,\.\/]*?(\b[A-Z][a-z]+\b)[,\s]+(\b[A-Z][a-z]+\b)(?:\s*\d{5,6})?(,\s*India)?', r'\3, \4', text)
+
+    return text
+
+
+def fix_ats_issue(issue_text, extracted_data):
+    section = "misc"
+    fixed_content = extracted_data # Initialize with the extracted data
+
+    if "Summary/Objective section missing" in issue_text:
+        section = "summary"
+        fixed_content["summary"] = "A highly motivated professional with a passion for excellence."
+
+    elif "Education section missing" in issue_text:
+        section = "education"
+        fixed_content["education"] = [{"degree": "B.Tech in Computer Science", "school": "ABC University", "duration": "YYYY -YYYY", "details": []}]
+
+    elif "Experience section missing" in issue_text:
+        section = "work_experience"
+        fixed_content["work_experience"] = [{"title": "Software Engineer", "company": "XYZ Ltd", "duration": "YYYY - Present", "details": ["Developed and maintained web applications."]}]
+
+    elif "Missing relevant keywords" in issue_text:
+        section = "skills"
+        # Assuming extracted_data['skills'] is a list of strings
+        if not fixed_content.get("skills"):
+            fixed_content["skills"] = ["Python", "Project Management"]
+        else:
+            fixed_content["skills"].extend(["Python", "Project Management"])
+            fixed_content["skills"] = list(set(fixed_content["skills"])) # Remove duplicates
+
+    elif "Contains personal info" in issue_text:
+        section = "contact"
+        # This fix implies altering the original contact info within extracted_data if it contains sensitive info.
+        # This part might need more sophisticated AI fix or manual intervention.
+        # For now, we'll just indicate the section.
+        pass
+
+    elif "grammar error" in issue_text:
+        # For grammar, we need to know which section has the error.
+        # This is a generic example, you'd need more specific logic from AI.
+        section = "summary" # Assuming summary for now
+        fixed_content["summary"] = fixed_content.get("summary", "").replace("responsible of", "responsible for")
+
+    return {"section": section, "fixedContent": fixed_content}
+
+
+# =====================================================================
+# NEW STABLE AI FUNCTIONS
+# =====================================================================
+
+def refine_list_section(section_name, section_text):
+    """
+    AI HELPER: Cleans up list-based sections like 'Languages' to ensure only relevant items are included.
+    """
+    if not section_text or not client: return [line.strip() for line in section_text.split('\n') if line.strip()]
+    
+    logger.info(f"Refining list section: '{section_name}'...")
+    prompt = f"""
+    You are a data cleaning expert. The following text is from the "{section_name}" section of a resume.
+    Your job is to clean this text and return only the relevant items as a JSON list of strings.
+
+    For example, if the section is "Languages", only return actual languages.
+    If the section is "Skills", only return actual skills.
+    
+    Remove any items that do not belong.
+
+    Text to clean:
+    ---
+    {section_text}
+    ---
+    
+    Return a single JSON object with one key, "cleaned_list", containing the list of strings.
+    Example: {{"cleaned_list": ["Hindi", "English"]}}
+    """
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        result = json.loads(response.choices[0].message.content)
+        return result.get("cleaned_list", [])
+    except Exception as e:
+        logger.error(f"Could not refine section {section_name}: {e}")
+        # Fallback to simple split if AI fails
+        return [line.strip() for line in section_text.split('\n') if line.strip()]
+
+def extract_resume_sections_safely(text):
+    logger.info("Extracting resume sections with FINAL v9 (Simplified & Robust) AI strategy...")
+    if not client:
+        return {"error": "OpenAI client not initialized."}
+    
+    TOKEN_LIMIT_IN_CHARS = 40000
+    if len(text) > TOKEN_LIMIT_IN_CHARS:
+        logger.warning(f"Resume text is too long, truncating to {TOKEN_LIMIT_IN_CHARS} characters.")
+        text = text[:TOKEN_LIMIT_IN_CHARS]
+
+    prompt = f"""
+    You are a world-class resume parsing system. The following text may be jumbled.
+    Your task is to intelligently parse this text and reconstruct a perfectly structured JSON object.
+
+    **Crucial Instructions:**
+    1.  **Associate Details:** Correctly associate all details with their parent items.
+    2.  **Map Certifications:** Look for headings like "Certifications", "Additional Courses", "Training", "Licenses", or "Professional Development" and map ALL of them to the `certifications` key. This is very important.
+    3.  **Clean Output:** If a section is not found, its value must be null.
+
+    **JSON STRUCTURE REQUIRED:**
+    - "name": string
+    - "job_title": string
+    - "contact": string
+    - "summary": string
+    - "work_experience": list of objects `[{{"title": string, "company": string, "duration": string, "details": list of strings}}]`
+    - "education": list of objects `[{{"degree": string, "school": string, "duration": string, "details": list of strings}}]`
+    - "skills": list of strings
+    - "languages": list of strings
+    - "certifications": list of strings  <-- All course-related info should come here.
+    - "projects": list of objects `[{{"title": string, "description": string, "details": list of strings}}]`
+
+    **Resume Text to Parse:**
+    ---
+    {text[:8000]}
+    ---
+    Return ONLY the raw JSON object.
+    """
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        final_data = json.loads(response.choices[0].message.content)
+        
+        all_possible_keys = ["name", "job_title", "contact", "summary", "work_experience", "education", "skills", "certifications", "languages", "projects", "awards", "volunteer_experience"]
+        for key in all_possible_keys:
+            if key not in final_data:
+                final_data[key] = None
+
+        logger.info(f"Final data extracted successfully. Keys: {list(final_data.keys())}")
+        return final_data
+    except Exception as e:
+        logger.error(f"Context-aware AI parsing failed: {e}")
+        return {"error": "The AI failed to parse the resume. The document format might be too complex."}
+
+def generate_final_detailed_report(text, extracted_data):
+    logger.info("Generating FINAL v16 Detailed Audit with Skills Check...")
+    if not client:
+        return {"error": "OpenAI client not initialized."}
+
+    prompt = f"""
+    You are a professional resume auditor. Analyze the provided resume text and return a detailed JSON report.
+    For each check, provide a "status" ('pass', 'fail', or 'improve') and a "comment".
+
+    **Required JSON Output Structure:**
+    {{
+        "contact_info_check": {{"status": "pass/fail", "comment": "Your comment here."}},
+        "summary_check": {{"status": "pass/improve", "comment": "Your comment here."}},
+        "experience_metrics_check": {{"status": "pass/fail", "comment": "e.g., The work experience lacks quantifiable results."}},
+        "action_verbs_check": {{"status": "pass/fail", "comment": "e.g., Sentences use passive voice like 'Responsible for'."}},
+        "skills_format_check": {{"status": "pass/fail", "comment": "e.g., The skills section should contain keywords, not long sentences."}},
+        "spelling_check": {{"status": "pass", "comment": "No major spelling errors found."}},
+        "grammar_check": {{"status": "pass/fail", "comment": "e.g., Found a minor grammatical error in the summary."}}
+    }}
+    
+    - For 'skills_format_check', if the skills section contains long descriptive sentences instead of keywords, set status to 'fail'. Otherwise, 'pass'.
+    - Be specific and professional in your comments.
+
+    **Resume Text to Analyze:**
+    ---
+    {text[:6000]}
+    ---
+    """
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "system", "content": "You are a resume auditor that responds in perfect, structured JSON."}, {"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        report_data = json.loads(response.choices[0].message.content)
+        return report_data
+    except Exception as e:
+        logger.error(f"Error in detailed report generation: {e}")
+        return {"error": "AI analysis failed to generate a detailed report."}
+
+def fix_resume_issue(issue_text, extracted_data):
+    """
+    FIXED: This new function takes the entire resume data object for better context,
+    making the AI's job easier and more reliable.
+    """
+    if not client: 
+        logger.error("OpenAI client not configured.")
+        return {"error": "OpenAI API key not set."}
+        
+    logger.info(f"Generating fix for issue '{issue_text}' with full data context...")
+
+    # Convert the resume data to a JSON string for the prompt
+    resume_context = json.dumps(extracted_data, indent=2)
+
+    prompt = f"""
+    You are an expert AI resume editor. Your task is to fix a specific issue in the provided resume JSON data.
+
+    **Resume Data (JSON format):**
+    ```json
+    {resume_context}
+    ```
+
+    **Issue to Fix:**
+    "{issue_text}"
+
+    **Instructions:**
+    1.  Analyze the 'Issue to Fix' and locate the relevant section within the 'Resume Data'.
+    2.  Modify ONLY the content of that specific section to resolve the issue. For example:
+        - If the issue is "lacks quantifiable_achievements", add numbers and percentages to the `details` of the `work_experience` section.
+        - If the issue is "action_verbs_passive_language", rewrite the sentences in `work_experience` to start with strong verbs.
+        - If the issue is "contact_information", ensure the `contact` string contains a clear email and phone number.
+    3.  Return a JSON object containing ONLY the name of the section you changed and its new, updated content.
+
+    **Required Output Format (JSON):**
+    {{"section": "key_of_the_changed_section", "fixedContent": "the_new_content_for_that_section"}}
+
+    Example Output:
+    {{"section": "work_experience", "fixedContent": [{{"title": "Tele Caller", "company": "Paisely Advisory Pvt, Ltd", "duration": "Having 6 Month Experience", "details": ["Contacted over 100 potential customers daily to promote products.", "Achieved a 15% higher customer satisfaction rate based on feedback.", "Maintained detailed records of over 2000 calls and interactions." ]}}]}}
+    """
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "system", "content": "You are a resume fixing assistant that responds in perfect JSON."}, {"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        fix_result = json.loads(response.choices[0].message.content)
+
+        if "section" not in fix_result or "fixedContent" not in fix_result:
+            raise ValueError("AI response was malformed.")
+        
+        return fix_result
+    except Exception as e:
+        logger.error(f"[ERROR in fix_resume_issue]: {e}")
+        return {"error": "AI failed to generate a fix for this issue."}
+
+
+def calculate_new_score(current_score, issue_text):
+    """
+    NEW: A predictable, rule-based function to update the score.
+    """
+    logger.info(f"Calculating new score. Current: {current_score}")
+    increment = 0
+    issue_text = issue_text.lower()
+    
+    if "missing" in issue_text:
+        increment = 10  # Critical fix
+    elif "achievements" in issue_text or "quantifiable" in issue_text:
+        increment = 8   # Major fix
+    elif "wordiness" in issue_text or "formatting" in issue_text:
+        increment = 6   # Medium fix
+    else:
+        increment = 5   # Minor fix
+        
+    new_score = min(100, current_score + increment)
+    logger.info(f"Score incremented by {increment}. New score: {new_score}")
+    return new_score
+
+def get_field_suggestions(extracted_data, resume_text):
+    logger.info("Running FINAL v9 Field & Suggestion analysis...")
+    if not client:
+        return {"field": "Unknown", "suggestions": []}
+
+    prompt = f"""
+    You are an expert Indian career coach and resume analyst. Your task is to analyze a resume to identify its professional field and suggest critical missing sections for improvement.
+
+    **Step 1: Identify the Professional Field**
+    Based on the skills (e.g., "Tally", "Python", "AutoCAD"), job titles (e.g., "Accountant", "Software Developer", "Civil Engineer"), and summary in the resume text, determine the most accurate professional field. Use common Indian job market fields like: "IT / Software Development", "Finance & Accounting", "Mechanical/Civil/Electrical Engineering", "Sales & Marketing", "Human Resources (HR)", "Graphic Design", "Healthcare", or "General / Fresher".
+
+    **Step 2: Suggest Important Missing Sections**
+    Here are the sections that were already found in the resume: {list(k for k, v in extracted_data.items() if v)}
+    
+    Now, as a career coach, analyze the FULL resume text. Based on the field you identified, suggest **only the most important and relevant sections** that are genuinely missing and would add significant value. For example:
+    - For an "IT / Software Development" resume, if there's no link to GitHub/GitLab or a Portfolio, you MUST suggest adding "Projects" or "Portfolio / GitHub".
+    - For a "Graphic Design" resume, a "Portfolio Link" (like Behance/Dribbble) is CRITICAL.
+    - For a "Finance & Accounting" resume, if not present, a "Certifications" section (like Tally, NISM) is very valuable.
+    - For any "Fresher" resume, a "Projects" or "Internships" section is highly recommended to showcase practical skills.
+    - For a "Sales" resume, a "Key Achievements" section with sales targets met or exceeded is very impactful.
+    
+    Do NOT suggest adding a section if its content is already mentioned somewhere else in the resume. Be smart and contextual.
+
+    **Instructions:**
+    Return a single JSON object with two keys:
+    1.  "field": A string with the name of the Indian-context field you identified.
+    2.  "suggestions": A list of objects. Each object should be {{"type": "Required" or "Recommended", "section": "Section Name to Add"}}. Only suggest 2-3 of the MOST CRITICAL missing sections. "Required" is for must-haves (like a portfolio for a designer). "Recommended" is for strong value-adds.
+
+    **Resume Text to Analyze:**
+    ---
+    {resume_text[:7000]} 
+    ---
+    
+    Return ONLY the JSON object.
+    """
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo", 
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        result = json.loads(response.choices[0].message.content)
+        
+        detected_field = result.get("field", "General / Fresher")
+        suggestions = result.get("suggestions", [])
+        
+        if not isinstance(suggestions, list):
+             suggestions = []
+
+        return {"field": detected_field, "suggestions": suggestions}
+    
+    except Exception as e:
+        logger.error(f"Could not get field suggestions: {e}")
+        return {"field": "General / Fresher", "suggestions": [{"type": "Recommended", "section": "Projects"}]}
+
+def generate_smart_resume_from_keywords(data: dict) -> dict:
+    """
+    Ye function har resume section ke liye AI se professionally rewritten content laata hai.
+    Jo fields user bharta hai, unke basis pe response deta hai.
+    """
+
+    from openai import OpenAI
+    import os
+
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    smart_resume = {}
+
+    sections = {
+        "summary": "Write a concise, impactful 2-3 line professional summary for a resume. Focus on key skills, experience, and career goals. If input is empty or insufficient, return ONLY an empty string. DO NOT use headings like 'Summary:'.",
+        "experience": """For each work experience entry, convert the raw input into a list of 3-5 *very concise, action-verb-driven bullet points* for a resume. Each bullet point should be a single line, start with an action verb, and focus on quantifiable achievements and key responsibilities. Do NOT include job titles, companies, or dates in this output; ONLY the bullet points. If input is empty or insufficient, return ONLY an empty string.""",
+        "education": """Reformat these education details into a standard resume education format. For each entry, provide:
+        - Degree Name (on one line)
+        - University/Institute, City, State/Country (on the next line, comma separated)
+        - Graduation/Completion Year (on the same line as university, right-aligned, or clearly separated)
+        If there are relevant bullet points (e.g., GPA, specializations, honors), list them concisely below the main entry, each starting with a bullet. If input is empty or insufficient, return ONLY an empty string.
+Example Output Format:
+B.Tech in Computer Science
+Delhi University, Delhi, India
+2019
+• Relevant coursework: Data Structures, Algorithms, Machine Learning
+• GPA: 3.8/4.0""",
+        "skills": """List these skills as concise, individual bullet points. If the input explicitly provides categories (like 'Technical Skills:', 'Soft Skills:'), then include the category name on its own line, followed by bullet points for skills under that category. Otherwise, just list skills as bullet points. If input is empty or insufficient, return ONLY an empty string.""",
+        "projects": """For each project entry, provide the concise project title on one line, followed by a list of 2-4 *very concise, action-verb-driven bullet points*. Each bullet should highlight technologies used, your role, and *key achievements/outcomes, especially quantifiable results*. Do NOT include numbering (1., 2., 3.) or labels like 'Project Description:' or 'Outcome/Result:'. The project title should be clearly distinguishable (e.g., by being on its own line). If input is empty or insufficient, return ONLY an empty string.""",
+        "certifications": """List each certification clearly, one per line. Include certification name, issuing body, and year if available. If input is empty or insufficient, return ONLY an empty string.
+Example:
+AWS Certified Solutions Architect, Amazon Web Services, 2023
+Certified Kubernetes Administrator (CKA), Linux Foundation, 2022""",
+        "languages": """List each language clearly, one per line, along with proficiency level (e.g., English: Fluent, French: Intermediate). If input is empty or insufficient, return ONLY an empty string.""",
+        "awards": "List each award on a new line in a professional resume format (e.g., 'Employee of the Year, ABC Corp, 2023'). If input is empty or insufficient, return ONLY an empty string.",
+        "volunteering": "Describe volunteering activities and contributions concisely, using bullet points. If input is empty or insufficient, return ONLY an empty string.",
+        "interests": "Convert these interests into professional sounding phrases suitable for a resume. List them concisely. If input is empty or insufficient, return ONLY an empty string.",
+        "publications": "Expand these publication titles and give a brief context suitable for a resume, using bullet points if multiple. If input is empty or insufficient, return ONLY an empty string.",
+        "patents": "Describe patents briefly and professionally, using bullet points if multiple. If input is empty or insufficient, return ONLY an empty string.",
+    }
+
+    for key, instruction in sections.items():
+        value = data.get(key, "").strip()
+        
+        prompt = f"""
+You are an expert resume writer. {instruction}
+Input: {value}
+Output:
+"""
+
+        try:
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                timeout=20
+            )
+            result = response.choices[0].message.content.strip()
+            
+            # Additional safeguard: If AI still returns generic empty phrases, force empty string
+            if result.lower() in [
+                "no skills provided.", "no certifications found.", "no education details provided.", 
+                "no projects found.", "no languages provided.", "invalid input.", 
+                "i'm sorry, but i cannot generate certifications without any input.", 
+                "the input provided seems to be incomplete.", 
+                "kindly provide the education details that need to be reformatted in a standard resume format.",
+                "empty"
+            ]:
+                smart_resume[key] = ""
+            elif not value and result.strip(): # If original input was empty but AI returned something, use AI's clean output
+                 smart_resume[key] = result
+            elif value and not result.strip(): # If input was there but AI returned nothing, keep original input (as fallback, or force empty if preferred)
+                smart_resume[key] = value # Keep original if AI gives empty output for non-empty input
+            else: # Otherwise, use AI's result
+                smart_resume[key] = result
+
+        except Exception as e:
+            logger.error(f"Error generating smart content for {key}: {e}")
+            smart_resume[key] = "" # Force empty string on AI error for cleaner preview
+
+    return smart_resume
+
+def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
+    """
+    Ye function AI-generated resume content ko ek proper HTML resume format me convert karta hai.
+    Left section: contact, skills, languages, certifications, etc.
+    Right section: summary, experience, education, projects, etc.
+    """
+
+    def list_to_html(items_string):
+        if isinstance(items_string, list):
+            items = [item.strip().lstrip('-• ').strip() for item in items_string if item.strip()]
+        elif isinstance(items_string, str):
+            items = [item.strip().lstrip('-• ').strip() for item in items_string.split('\n') if item.strip()]
+        else:
+            items = []
+        
+        # Filter out empty or insufficient AI output messages
+        filtered_items = []
+        for item in items:
+            lower_item = item.lower()
+            if lower_item not in [
+                "input is empty or insufficient.",
+                "no skills provided.",
+                "no certifications found.",
+                "no education details provided.",
+                "no projects found.",
+                "no languages provided.",
+                "i'm sorry, but i cannot generate certifications without any input.",
+                "the input provided seems to be incomplete.",
+                "kindly provide the education details that need to be reformatted in a standard resume format.",
+                "not provided.",
+                "empty"
+            ] and item.strip():
+                filtered_items.append(item)
+        
+        return "".join(f"<li contenteditable=\"true\">{item}</li>" for item in filtered_items)
+
+
+    def parse_complex_section_html(section_data, is_education=False):
+        if not section_data:
+            return ""
+
+        html_output = "" 
+
+        if isinstance(section_data, str):
+            # Filter out empty/insufficient messages at the section level
+            lower_section_data = section_data.lower().strip()
+            if lower_section_data in [
+                "sorry, but the input provided is insufficient.",
+                "input is empty or insufficient.",
+                "not provided.",
+                "empty"
+            ]:
+                return "" # Return empty if it's just an error/empty message
+
+            lines = [line.strip() for line in section_data.split('\n') if line.strip()]
+            
+            current_item = {"title": "", "details": []}
+            all_items = []
+            
+            for line in lines:
+                if not line.strip().lstrip('-• ').strip(): 
+                    continue
+
+                if line.strip().startswith(('-', '•')):
+                    current_item["details"].append(line.strip().lstrip('-• ').strip())
+                elif not current_item["title"] and not current_item["details"]:
+                    current_item["title"] = line.strip()
+                elif current_item["title"] and not current_item["details"]:
+                    current_item["details"].append(line.strip())
+                else: 
+                    all_items.append(current_item)
+                    current_item = {"title": line.strip(), "details": []}
+            if current_item["title"] or current_item["details"]: 
+                all_items.append(current_item)
+            
+            section_data_processed = all_items 
+
+            if not section_data_processed: 
+                return f"<p contenteditable=\"true\">{section_data.strip()}</p>" if section_data.strip() else ""
+
+        elif isinstance(section_data, list):
+             section_data_processed = section_data
+        else:
+             return "" 
+
+        for item in section_data_processed:
+            title_text = item.get("title", '')
+            company_text = item.get("company", '')
+            duration_text = item.get("duration", '')
+            details_list = item.get("details", [])
+            description_text = item.get("description", '')
+
+            item_html = ""
+
+            item_html += f"<div class='item-header'>"
+            item_html += f"<h4 contenteditable=\"true\">{title_text}</h4>" 
+            
+            item_html += f"<p class='item-meta'>"
+            if company_text:
+                item_html += f"<span contenteditable=\"true\">{company_text}</span>"
+            if duration_text:
+                item_html += f"<span class='duration' contenteditable=\"true\">{duration_text}</span>"
+            item_html += "</p>"
+            item_html += "</div>" 
+
+            if description_text:
+                item_html += f"<p class='item-description' contenteditable=\"true\">{description_text}</p>"
+
+            if details_list:
+                if isinstance(details_list, str): 
+                    details_list_final = [d.strip().lstrip('-• ').strip() for d in details_list.split('\n') if d.strip()]
+                elif isinstance(details_list, list):
+                    details_list_final = [d.strip().lstrip('-• ').strip() for d in details_list if d.strip()]
+                else:
+                    details_list_final = []
+
+                if details_list_final:
+                    item_html += "<ul>"
+                    for detail in details_list_final:
+                        item_html += f"<li contenteditable=\"true\">{detail}</li>"
+                    item_html += "</ul>"
+            
+            html_output += f"<div class='experience-item'>{item_html}</div>"
+        
+        return html_output
+
+
+    # --- UPDATED HTML STRUCTURE FOR BETTER LAYOUT ---
+    return f"""
+    <div class="resume-container">
+        <div class="content-wrapper">
+            <aside class="resume-sidebar">
+                <div class="contact-info-sidebar preview-section">
+                    <h3 contenteditable="true">Contact</h3>
+                    {user_info.get('phone', '').strip() and f"<p contenteditable='true'>Phone: {user_info['phone']}</p>" or ""}
+                    {user_info.get('email', '').strip() and f"<p contenteditable='true'>Email: {user_info['email']}</p>" or ""}
+                    {user_info.get('location', '').strip() and f"<p contenteditable='true'>Location: {user_info['location']}</p>" or ""}
+                    {user_info.get('linkedin', '').strip() and f"<p contenteditable='true'>LinkedIn: <a href='{user_info['linkedin']}' target='_blank'>{user_info['linkedin']}</a></p>" or ""}
+                </div>
+                <div class="resume-section preview-section">
+                    <h2 contenteditable="true">Skills</h2>
+                    <ul>{list_to_html(smart_content.get('skills', ''))}</ul>
+                </div>
+                <div class="resume-section preview-section">
+                    <h2 contenteditable="true">Languages</h2>
+                    <ul>{list_to_html(smart_content.get('languages', ''))}</ul>
+                </div>
+                <div class="resume-section preview-section">
+                    <h2 contenteditable="true">Certifications</h2>
+                    <ul>{list_to_html(smart_content.get('certifications', ''))}</ul>
+                </div>
+            </aside>
+            <main class="main-content">
+                <div class="name-title-header">
+                    <h1 contenteditable="true" id="preview-name">{user_info.get('name', '')}</h1>
+                    {user_info.get('jobTitle', '').strip() and f"<p class='job-title' contenteditable='true' id='preview-title'>{user_info['jobTitle']}</p>" or ""}
+                </div>
+                <div class="resume-section preview-section">
+                    <h2 contenteditable="true">Profile Summary</h2>
+                    <p contenteditable="true">{smart_content.get('summary', '')}</p>
+                </div>
+                <div class="resume-section preview-section">
+                    <h2 contenteditable="true">Work Experience</h2>
+                    {parse_complex_section_html(smart_content.get('experience', ''), is_education=False)}
+                </div>
+                <div class="resume-section preview-section">
+                    <h2 contenteditable="true">Education</h2>
+                    {parse_complex_section_html(smart_content.get('education', ''), is_education=True)}
+                </div>
+                <div class="resume-section preview-section">
+                    <h2 contenteditable="true">Projects</h2>
+                    {parse_complex_section_html(smart_content.get('projects', ''), is_education=False)}
+                </div>
+            </main>
+        </div>
     </div>
     """
