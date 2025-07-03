@@ -1283,7 +1283,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Languages</h2>
-                    <ul>{list_to_to_html(smart_content.get('languages', ''))}</ul>
+                    <ul>{list_to_html(smart_content.get('languages', ''))}</ul> {/* FIXED: Changed list_to_to_html to list_to_html */}
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Certifications</h2>
@@ -1293,7 +1293,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             <main class="main-content">
                 <div class="name-title-header">
                     <h1 contenteditable="true" id="preview-name">{user_info.get('name', '')}</h1>
-                    {user_info.get('jobTitle', '').strip() and f"<p class=\"job-title\" contenteditable=\"true\" id=\"preview-title\">{user_info['jobTitle']}</p>" or ""}
+                    {user_info.get('jobTitle', '').strip() and f"<p class='job-title' contenteditable=\"true\" id=\"preview-title\">{user_info['jobTitle']}</p>" or ""} {/* FIXED: Removed backslashes in class attribute within f-string */}
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Profile Summary</h2>
