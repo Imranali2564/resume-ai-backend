@@ -1321,5 +1321,3 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
         </div>
     </div>
     """
-
-}
