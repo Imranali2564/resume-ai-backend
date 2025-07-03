@@ -1071,7 +1071,7 @@ def generate_smart_resume_from_keywords(data: dict) -> dict:
     smart_resume = {}
 
     sections = {
-        "summary": "Write a concise, impactful 2-3 line professional summary for a resume. Focus on key skills, experience, and career goals. If input is empty or insufficient, return ONLY an empty string.",
+        "summary": "Write a concise, impactful 2-3 line professional summary for a resume. Focus on key skills, experience, and career goals. If input is empty or insufficient, return ONLY an empty string. DO NOT use headings like 'Summary:'.",
         "experience": """For each work experience entry, convert the raw input into a list of 3-5 *very concise, action-verb-driven bullet points* for a resume. Each bullet point should be a single line, start with an action verb, and focus on quantifiable achievements and key responsibilities. Do NOT include job titles, companies, or dates in this output; ONLY the bullet points. If input is empty or insufficient, return ONLY an empty string.""",
         "education": """Reformat these education details into a standard resume education format. For each entry, provide:
         - Degree Name (on one line)
@@ -1168,10 +1168,9 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                 "the input provided seems to be incomplete.",
                 "kindly provide the education details that need to be reformatted in a standard resume format.",
                 "not provided.",
-                "empty" # added 'empty'
-            ] and item.strip(): # Ensure it's not just whitespace
+                "empty"
+            ] and item.strip():
                 filtered_items.append(item)
-        # ---------------------------------------------------------------
         
         return "".join(f"<li contenteditable=\"true\">{item}</li>" for item in filtered_items)
 
@@ -1186,7 +1185,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             # --- FIX: Filter out empty/insufficient messages at the section level ---
             lower_section_data = section_data.lower().strip()
             if lower_section_data in [
-                "sorry, but the input provided is insufficient.", # Education error message 
+                "sorry, but the input provided is insufficient.",
                 "input is empty or insufficient.",
                 "not provided.",
                 "empty"
@@ -1271,7 +1270,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     <div class="resume-container">
         <div class="content-wrapper">
             <aside class="resume-sidebar">
-                <div class="contact-info-sidebar preview-section"> {/* Added preview-section class to contact-info-sidebar */}
+                <div class="contact-info-sidebar preview-section">
                     <h3 contenteditable="true">Contact</h3>
                     {user_info.get('phone', '').strip() and f"<p contenteditable=\"true\">Phone: {user_info['phone']}</p>" or ""}
                     {user_info.get('email', '').strip() and f"<p contenteditable=\"true\">Email: {user_info['email']}</p>" or ""}
@@ -1284,7 +1283,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Languages</h2>
-                    <ul>{list_to_html(smart_content.get('languages', ''))}</ul>
+                    <ul>{list_to_to_html(smart_content.get('languages', ''))}</ul>
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Certifications</h2>
@@ -1294,7 +1293,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             <main class="main-content">
                 <div class="name-title-header">
                     <h1 contenteditable="true" id="preview-name">{user_info.get('name', '')}</h1>
-                    {user_info.get('jobTitle', '').strip() and f"<p class=\"job-title\" contenteditable=\"true\" id=\"preview-title\">{user_info['jobTitle']}</p>" or ""} {/* Job Title as a separate P tag */}
+                    {user_info.get('jobTitle', '').strip() and f"<p class=\"job-title\" contenteditable=\"true\" id=\"preview-title\">{user_info['jobTitle']}</p>" or ""}
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Profile Summary</h2>
