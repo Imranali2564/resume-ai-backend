@@ -1,5 +1,3 @@
-# PASTE THIS ENTIRE CODE INTO YOUR resume_ai_analyzer.py FILE
-
 import os
 import logging
 import docx
@@ -692,7 +690,7 @@ def check_ats_compatibility_deep(file_path):
         prompt = f"""
 You are an ATS expert. Check the following resume and give up to 5 issues.
 
-Also flag unnecessary personal information such as:
+Also flag any unnecessary personal information such as:
 - Marital Status
 - Date of Birth
 - Gender
@@ -758,7 +756,7 @@ def fix_ats_issue(issue_text, extracted_data):
 
     elif "Education section missing" in issue_text:
         section = "education"
-        fixed_content["education"] = [{"degree": "B.Tech in Computer Science", "school": "ABC University", "duration": "YYYY - YYYY", "details": []}]
+        fixed_content["education"] = [{"degree": "B.Tech in Computer Science", "school": "ABC University", "duration": "YYYY -YYYY", "details": []}]
 
     elif "Experience section missing" in issue_text:
         section = "work_experience"
@@ -1287,10 +1285,10 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             <aside class="resume-sidebar">
                 <div class="contact-info-sidebar">
                     <h3 contenteditable="true">Contact</h3>
-                    <p contenteditable="true"><i class="fas fa-phone-alt"></i> {user_info.get('phone', 'N/A')}</p>
-                    <p contenteditable="true"><i class="fas fa-envelope"></i> {user_info.get('email', 'N/A')}</p>
-                    <p contenteditable="true"><i class="fas fa-map-marker-alt"></i> {user_info.get('location', 'N/A')}</p>
-                    <p contenteditable="true"><i class="fas fa-linkedin"></i> <a href="{user_info.get('linkedin', '#')}" target="_blank">{user_info.get('linkedin', 'N/A')}</a></p>
+                    <p contenteditable="true">Phone: {user_info.get('phone', 'N/A')}</p>
+                    <p contenteditable="true">Email: {user_info.get('email', 'N/A')}</p>
+                    <p contenteditable="true">Location: {user_info.get('location', 'N/A')}</p>
+                    <p contenteditable="true">LinkedIn: <a href="{user_info.get('linkedin', '#')}" target="_blank">{user_info.get('linkedin', 'N/A')}</a></p>
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Skills</h2>
