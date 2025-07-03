@@ -1178,6 +1178,26 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
         return "".join(f"<li contenteditable=\"true\">{item}</li>" for item in items)
 
 
+    def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
+    """
+    Ye function AI-generated resume content ko ek proper HTML resume format me convert karta hai.
+    Left section: contact, skills, languages, certifications, etc.
+    Right section: summary, experience, education, projects, etc.
+    """
+
+    def list_to_html(items_string):
+        # This function handles both list of strings and newline-separated string input.
+        # It now robustly strips leading hyphens/bullets, ensuring only the custom CSS bullet appears.
+        if isinstance(items_string, list):
+            items = [item.strip().lstrip('-• ').strip() for item in items_string if item.strip()]
+        elif isinstance(items_string, str):
+            items = [item.strip().lstrip('-• ').strip() for item in items_string.split('\n') if item.strip()]
+        else:
+            items = []
+        
+        return "".join(f"<li contenteditable=\"true\">{item}</li>" for item in items)
+
+
     def parse_complex_section_html(section_data, is_education=False):
         if not section_data:
             return ""
@@ -1283,37 +1303,37 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                     <p contenteditable="true"><i class="fas fa-map-marker-alt"></i> {user_info.get('location', 'N/A')}</p>
                     <p contenteditable="true"><i class="fas fa-linkedin"></i> <a href="{user_info.get('linkedin', '#')}" target="_blank">{user_info.get('linkedin', 'N/A')}</a></p>
                 </div>
-                <div class="resume-section preview-section"> {/* Added preview-section class */}
+                <div class="resume-section preview-section">
                     <h2 contenteditable="true">Skills</h2>
                     <ul>{list_to_html(smart_content.get('skills', ''))}</ul>
                 </div>
-                <div class="resume-section preview-section"> {/* Added preview-section class */}
+                <div class="resume-section preview-section">
                     <h2 contenteditable="true">Languages</h2>
                     <ul>{list_to_html(smart_content.get('languages', ''))}</ul>
                 </div>
-                <div class="resume-section preview-section"> {/* Added preview-section class */}
+                <div class="resume-section preview-section">
                     <h2 contenteditable="true">Certifications</h2>
                     <ul>{list_to_html(smart_content.get('certifications', ''))}</ul>
                 </div>
             </aside>
             <main class="main-content">
                 <div class="name-title-header">
-                    <h1 contenteditable="true" id="preview-name">{user_info.get('name', '')}</h1> {/* Added id */}
-                    <div class="job-title" contenteditable="true" id="preview-title">{user_info.get('jobTitle', '')}</div> {/* Added id */}
+                    <h1 contenteditable="true" id="preview-name">{user_info.get('name', '')}</h1>
+                    <div class="job-title" contenteditable="true" id="preview-title">{user_info.get('jobTitle', '')}</div>
                 </div>
-                <div class="resume-section preview-section"> {/* Added preview-section class */}
+                <div class="resume-section preview-section">
                     <h2 contenteditable="true">Profile Summary</h2>
                     <p contenteditable="true">{smart_content.get('summary', '')}</p>
                 </div>
-                <div class="resume-section preview-section"> {/* Added preview-section class */}
+                <div class="resume-section preview-section">
                     <h2 contenteditable="true">Work Experience</h2>
                     {parse_complex_section_html(smart_content.get('experience', ''), is_education=False)}
                 </div>
-                <div class="resume-section preview-section"> {/* Added preview-section class */}
+                <div class="resume-section preview-section">
                     <h2 contenteditable="true">Education</h2>
                     {parse_complex_section_html(smart_content.get('education', ''), is_education=True)}
                 </div>
-                <div class="resume-section preview-section"> {/* Added preview-section class */}
+                <div class="resume-section preview-section">
                     <h2 contenteditable="true">Projects</h2>
                     {parse_complex_section_html(smart_content.get('projects', ''), is_education=False)}
                 </div>
