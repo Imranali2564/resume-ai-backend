@@ -1265,17 +1265,17 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
         return html_output
 
 
-    # --- UPDATED HTML STRUCTURE FOR BETTER LAYOUT ---
+    # --- UPDATED HTML STRUCTURE FOR BETTER LAYOUT AND ICONS ---
     return f"""
     <div class="resume-container">
         <div class="content-wrapper">
             <aside class="resume-sidebar">
                 <div class="contact-info-sidebar preview-section">
                     <h3 contenteditable="true">Contact</h3>
-                    {user_info.get('phone', '').strip() and f"<p contenteditable='true'>Phone: {user_info['phone']}</p>" or ""}
-                    {user_info.get('email', '').strip() and f"<p contenteditable='true'>Email: {user_info['email']}</p>" or ""}
-                    {user_info.get('location', '').strip() and f"<p contenteditable='true'>Location: {user_info['location']}</p>" or ""}
-                    {user_info.get('linkedin', '').strip() and f"<p contenteditable='true'>LinkedIn: <a href='{user_info['linkedin']}' target='_blank'>{user_info['linkedin']}</a></p>" or ""}
+                    {user_info.get('phone', '').strip() and f"<p contenteditable='true'><i class='fas fa-phone-alt'></i> Phone: {user_info['phone']}</p>" or ""}
+                    {user_info.get('email', '').strip() and f"<p contenteditable='true'><i class='fas fa-envelope'></i> Email: {user_info['email']}</p>" or ""}
+                    {user_info.get('location', '').strip() and f"<p contenteditable='true'><i class='fas fa-map-marker-alt'></i> Location: {user_info['location']}</p>" or ""}
+                    {user_info.get('linkedin', '').strip() and f"<p contenteditable='true'><i class='fab fa-linkedin'></i> LinkedIn: <a href='{user_info['linkedin']}' target='_blank'>{user_info['linkedin']}</a></p>" or ""}
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Skills</h2>
