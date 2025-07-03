@@ -1071,75 +1071,36 @@ def generate_smart_resume_from_keywords(data: dict) -> dict:
     smart_resume = {}
 
     sections = {
-        "summary": "Write a concise, impactful 2-3 line professional summary for a resume. Focus on key skills, experience, and career goals. Use strong action verbs and highlight achievements where possible. If input is empty or insufficient, return only an empty string. DO NOT use headings like 'Summary:'.",
-        "experience": """For each work experience entry, convert the raw input into a list of 3-5 *very concise, action-verb-driven bullet points* for a resume. Each bullet point should be a single line, start with an action verb, and focus on quantifiable achievements and key responsibilities. Do NOT include job titles, companies, or dates in this output; ONLY the bullet points. If input is empty or insufficient, return only an empty string.
-
-Example Output Format:
-- Managed cross-functional teams to deliver projects on time, reducing delays by 15%.
-- Developed and maintained full-stack applications using React and Node.js, enhancing performance by 20%.
-- Streamlined data processing workflows, improving efficiency by 20%.""",
+        "summary": "Write a concise, impactful 2-3 line professional summary for a resume. Focus on key skills, experience, and career goals. If input is empty or insufficient, return ONLY an empty string.",
+        "experience": """For each work experience entry, convert the raw input into a list of 3-5 *very concise, action-verb-driven bullet points* for a resume. Each bullet point should be a single line, start with an action verb, and focus on quantifiable achievements and key responsibilities. Do NOT include job titles, companies, or dates in this output; ONLY the bullet points. If input is empty or insufficient, return ONLY an empty string.""",
         "education": """Reformat these education details into a standard resume education format. For each entry, provide:
         - Degree Name (on one line)
         - University/Institute, City, State/Country (on the next line, comma separated)
         - Graduation/Completion Year (on the same line as university, right-aligned, or clearly separated)
-        Present this exactly on three separate lines as:
-        Degree Name
-        University/Institute, City, State/Country
-        Graduation/Completion Year
-        If there are relevant bullet points (e.g., GPA, specializations, honors), list them concisely below the main entry, each starting with a bullet. Do NOT include any 'Input:' or 'Output:' labels or numbering in your response. Do NOT add bullets to the Degree, University, or Year lines. If input is empty or insufficient, return only an empty string.
-
+        If there are relevant bullet points (e.g., GPA, specializations, honors), list them concisely below the main entry, each starting with a bullet. If input is empty or insufficient, return ONLY an empty string.
 Example Output Format:
 B.Tech in Computer Science
 Delhi University, Delhi, India
 2019
 • Relevant coursework: Data Structures, Algorithms, Machine Learning
 • GPA: 3.8/4.0""",
-        "skills": """List these skills as concise, individual bullet points. If the input explicitly provides categories (like 'Technical Skills:', 'Soft Skills:'), then include the category name on its own line, followed by bullet points for skills under that category. Otherwise, just list skills as bullet points. Do NOT add any leading hyphens or extra bullet characters to the individual skill items. If input is empty or insufficient, return only an empty string.
-
-Example Output (with categories):
-Technical Skills
-• Python
-• JavaScript
-• React
-Soft Skills
-• Problem Solving
-• Teamwork
-
-Example Output (without categories):
-• Python
-• JavaScript
-• React
-• SQL""",
-        "projects": """For each project entry, provide the concise project title on one line, followed by a list of 2-4 *very concise, action-verb-driven bullet points*. Each bullet should highlight technologies used, your role, and *key achievements/outcomes, especially quantifiable results*. Do NOT include numbering (1., 2., 3.) or labels like 'Project Description:' or 'Outcome/Result:'. The project title should be clearly distinguishable (e.g., by being on its own line). If input is empty or insufficient, return only an empty string.
-
-Example Output Format:
-Portfolio Website
-• Developed responsive web app using React.js and Tailwind CSS.
-• Implemented user authentication and data persistence with Firebase.
-• Achieved 20% increase in user engagement through optimized UI.
-
-Todo App
-• Built task management application using React.js and Firebase.
-• Integrated user authentication and real-time data synchronization.
-• Streamlined workflow, resulting in 20% increase in task completion efficiency.""",
-        "certifications": """List each certification clearly, one per line. Include certification name, issuing body, and year if available. Do NOT add any leading hyphens or extra bullet characters to the items, nor 'Output:' labels. If input is empty or insufficient, return only an empty string.
+        "skills": """List these skills as concise, individual bullet points. If the input explicitly provides categories (like 'Technical Skills:', 'Soft Skills:'), then include the category name on its own line, followed by bullet points for skills under that category. Otherwise, just list skills as bullet points. If input is empty or insufficient, return ONLY an empty string.""",
+        "projects": """For each project entry, provide the concise project title on one line, followed by a list of 2-4 *very concise, action-verb-driven bullet points*. Each bullet should highlight technologies used, your role, and *key achievements/outcomes, especially quantifiable results*. Do NOT include numbering (1., 2., 3.) or labels like 'Project Description:' or 'Outcome/Result:'. The project title should be clearly distinguishable (e.g., by being on its own line). If input is empty or insufficient, return ONLY an empty string.""",
+        "certifications": """List each certification clearly, one per line. Include certification name, issuing body, and year if available. If input is empty or insufficient, return ONLY an empty string.
 Example:
 AWS Certified Solutions Architect, Amazon Web Services, 2023
 Certified Kubernetes Administrator (CKA), Linux Foundation, 2022""",
-        "languages": """List each language clearly, one per line, along with proficiency level (e.g., English: Fluent, French: Intermediate). Do NOT add any leading hyphens or extra bullet characters to the items. If input is empty or insufficient, return only an empty string.""",
-        "awards": "List each award on a new line in a professional resume format (e.g., 'Employee of the Year, ABC Corp, 2023'). If input is empty or insufficient, return only an empty string.",
-        "volunteering": "Describe volunteering activities and contributions concisely, using bullet points. If input is empty or insufficient, return only an empty string.",
-        "interests": "Convert these interests into professional sounding phrases suitable for a resume. List them concisely. If input is empty or insufficient, return only an empty string.",
-        "publications": "Expand these publication titles and give a brief context suitable for a resume, using bullet points if multiple. If input is empty or insufficient, return only an empty string.",
-        "patents": "Describe patents briefly and professionally, using bullet points if multiple. If input is empty or insufficient, return only an empty string.",
+        "languages": """List each language clearly, one per line, along with proficiency level (e.g., English: Fluent, French: Intermediate). If input is empty or insufficient, return ONLY an empty string.""",
+        "awards": "List each award on a new line in a professional resume format (e.g., 'Employee of the Year, ABC Corp, 2023'). If input is empty or insufficient, return ONLY an empty string.",
+        "volunteering": "Describe volunteering activities and contributions concisely, using bullet points. If input is empty or insufficient, return ONLY an empty string.",
+        "interests": "Convert these interests into professional sounding phrases suitable for a resume. List them concisely. If input is empty or insufficient, return ONLY an empty string.",
+        "publications": "Expand these publication titles and give a brief context suitable for a resume, using bullet points if multiple. If input is empty or insufficient, return ONLY an empty string.",
+        "patents": "Describe patents briefly and professionally, using bullet points if multiple. If input is empty or insufficient, return ONLY an empty string.",
     }
 
     for key, instruction in sections.items():
         value = data.get(key, "").strip()
-        if not value:
-            smart_resume[key] = "" # Ensure empty string if no input
-            continue
-
+        
         prompt = f"""
 You are an expert resume writer. {instruction}
 Input: {value}
@@ -1153,15 +1114,27 @@ Output:
                 timeout=20
             )
             result = response.choices[0].message.content.strip()
-            # FIX: If AI still returns empty/generic phrases, force empty string
-            # This list is redundant now with improved prompts, but kept as a safeguard.
-            if result.lower() in ["no skills provided.", "no certifications found.", "no education details provided.", "no projects found.", "no languages provided.", "invalid input.", "i'm sorry, but i cannot generate certifications without any input.", "the input provided seems to be incomplete.", "kindly provide the education details that need to be reformatted in a standard resume format."]:
-                result = ""
-
-            smart_resume[key] = result
+            
+            # Additional safeguard: If AI still returns generic empty phrases, force empty string
+            if result.lower() in [
+                "no skills provided.", "no certifications found.", "no education details provided.", 
+                "no projects found.", "no languages provided.", "invalid input.", 
+                "i'm sorry, but i cannot generate certifications without any input.", 
+                "the input provided seems to be incomplete.", 
+                "kindly provide the education details that need to be reformatted in a standard resume format.",
+                "empty"
+            ]:
+                smart_resume[key] = ""
+            elif not value and result.strip(): # If original input was empty but AI returned something, use AI's clean output
+                 smart_resume[key] = result
+            elif value and not result.strip(): # If input was there but AI returned nothing, keep original input (as fallback, or force empty if preferred)
+                smart_resume[key] = value # Keep original if AI gives empty output for non-empty input
+            else: # Otherwise, use AI's result
+                smart_resume[key] = result
 
         except Exception as e:
-            smart_resume[key] = f"⚠️ Error: {type(e).__name__} - {str(e)}"
+            logger.error(f"Error generating smart content for {key}: {e}")
+            smart_resume[key] = "" # Force empty string on AI error for cleaner preview
 
     return smart_resume
 
@@ -1180,19 +1153,25 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
         else:
             items = []
         
-        # Remove empty or insufficient AI output messages before rendering
-        filtered_items = [item for item in items if item.lower() not in [
-            "input is empty or insufficient.",
-            "no skills provided.",
-            "no certifications found.",
-            "no education details provided.",
-            "no projects found.",
-            "no languages provided.",
-            "i'm sorry, but i cannot generate certifications without any input.",
-            "the input provided seems to be incomplete.",
-            "kindly provide the education details that need to be reformatted in a standard resume format.",
-            "not provided."
-        ]]
+        # --- FIX: Filter out empty or insufficient AI output messages ---
+        filtered_items = []
+        for item in items:
+            lower_item = item.lower()
+            if lower_item not in [
+                "input is empty or insufficient.",
+                "no skills provided.",
+                "no certifications found.",
+                "no education details provided.",
+                "no projects found.",
+                "no languages provided.",
+                "i'm sorry, but i cannot generate certifications without any input.",
+                "the input provided seems to be incomplete.",
+                "kindly provide the education details that need to be reformatted in a standard resume format.",
+                "not provided.",
+                "empty" # added 'empty'
+            ] and item.strip(): # Ensure it's not just whitespace
+                filtered_items.append(item)
+        # ---------------------------------------------------------------
         
         return "".join(f"<li contenteditable=\"true\">{item}</li>" for item in filtered_items)
 
@@ -1204,6 +1183,16 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
         html_output = "" 
 
         if isinstance(section_data, str):
+            # --- FIX: Filter out empty/insufficient messages at the section level ---
+            lower_section_data = section_data.lower().strip()
+            if lower_section_data in [
+                "sorry, but the input provided is insufficient.", # Education error message 
+                "input is empty or insufficient.",
+                "not provided.",
+                "empty"
+            ]:
+                return "" # Return empty if it's just an error/empty message
+
             lines = [line.strip() for line in section_data.split('\n') if line.strip()]
             
             current_item = {"title": "", "details": []}
@@ -1282,12 +1271,12 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     <div class="resume-container">
         <div class="content-wrapper">
             <aside class="resume-sidebar">
-                <div class="contact-info-sidebar">
+                <div class="contact-info-sidebar preview-section"> {/* Added preview-section class to contact-info-sidebar */}
                     <h3 contenteditable="true">Contact</h3>
-                    <p contenteditable="true">Phone: {user_info.get('phone', 'N/A')}</p>
-                    <p contenteditable="true">Email: {user_info.get('email', 'N/A')}</p>
-                    <p contenteditable="true">Location: {user_info.get('location', 'N/A')}</p>
-                    <p contenteditable="true">LinkedIn: <a href="{user_info.get('linkedin', '#')}" target="_blank">{user_info.get('linkedin', 'N/A')}</a></p>
+                    {user_info.get('phone', '').strip() and f"<p contenteditable=\"true\">Phone: {user_info['phone']}</p>" or ""}
+                    {user_info.get('email', '').strip() and f"<p contenteditable=\"true\">Email: {user_info['email']}</p>" or ""}
+                    {user_info.get('location', '').strip() and f"<p contenteditable=\"true\">Location: {user_info['location']}</p>" or ""}
+                    {user_info.get('linkedin', '').strip() and f"<p contenteditable=\"true\">LinkedIn: <a href=\"{user_info['linkedin']}\" target=\"_blank\">{user_info['linkedin']}</a></p>" or ""}
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Skills</h2>
@@ -1305,7 +1294,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             <main class="main-content">
                 <div class="name-title-header">
                     <h1 contenteditable="true" id="preview-name">{user_info.get('name', '')}</h1>
-                    <div class="job-title" contenteditable="true" id="preview-title">{user_info.get('jobTitle', '')}</div>
+                    {user_info.get('jobTitle', '').strip() and f"<p class=\"job-title\" contenteditable=\"true\" id=\"preview-title\">{user_info['jobTitle']}</p>" or ""} {/* Job Title as a separate P tag */}
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Profile Summary</h2>
