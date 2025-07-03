@@ -690,14 +690,24 @@ def check_ats_compatibility_deep(file_path):
 
         # AI validation
         prompt = f"""
-You are an ATS expert. Check the following resume and give up to 5 issues:
+You are an ATS expert. Check the following resume and give up to 5 issues.
+
+Also flag unnecessary personal information such as:
+- Marital Status
+- Date of Birth
+- Gender
+- Nationality
+- Religion
+
+These are not required in a professional resume and should be removed for better ATS compatibility.
+
 Resume:
 {text[:6000]}
 
-Also flag unnecessary personal information like Marital Status, Date of Birth, Gender, Nationality, or Religion as issues with a reason to remove them.
-Return in this format:
+Return your output as a list like this:
 ["✅ Passed: ...", "❌ Issue: ..."]
-        """
+Only include meaningful points.
+"""
 
         ai_resp = client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -820,7 +830,6 @@ def refine_list_section(section_name, section_text):
         # Fallback to simple split if AI fails
         return [line.strip() for line in section_text.split('\n') if line.strip()]
 
-# 'resume_ai_analyzer.py' में इस फंक्शन को बदलें
 def extract_resume_sections_safely(text):
     logger.info("Extracting resume sections with FINAL v9 (Simplified & Robust) AI strategy...")
     if not client:
@@ -1159,26 +1168,6 @@ Output:
 
 
 def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
-    """
-    Ye function AI-generated resume content ko ek proper HTML resume format me convert karta hai.
-    Left section: contact, skills, languages, certifications, etc.
-    Right section: summary, experience, education, projects, etc.
-    """
-
-    def list_to_html(items_string):
-        # This function handles both list of strings and newline-separated string input.
-        # It now robustly strips leading hyphens/bullets, ensuring only the custom CSS bullet appears.
-        if isinstance(items_string, list):
-            items = [item.strip().lstrip('-• ').strip() for item in items_string if item.strip()]
-        elif isinstance(items_string, str):
-            items = [item.strip().lstrip('-• ').strip() for item in items_string.split('\n') if item.strip()]
-        else:
-            items = []
-        
-        return "".join(f"<li contenteditable=\"true\">{item}</li>" for item in items)
-
-
-    def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     """
     Ye function AI-generated resume content ko ek proper HTML resume format me convert karta hai.
     Left section: contact, skills, languages, certifications, etc.
