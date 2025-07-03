@@ -738,36 +738,46 @@ def remove_unnecessary_personal_info(text):
     return text
 
 
-
-def fix_ats_issue(resume_text, issue_text):
+def fix_ats_issue(issue_text, extracted_data):
     section = "misc"
-    fixed_content = resume_text
+    fixed_content = extracted_data # Initialize with the extracted data
 
     if "Summary/Objective section missing" in issue_text:
         section = "summary"
-        fixed_content += "\n\nSummary:\nA highly motivated professional with a passion for excellence."
+        fixed_content["summary"] = "A highly motivated professional with a passion for excellence."
 
     elif "Education section missing" in issue_text:
         section = "education"
-        fixed_content += "\n\nEducation:\nB.Tech in Computer Science, ABC University"
+        fixed_content["education"] = [{"degree": "B.Tech in Computer Science", "school": "ABC University", "duration": "YYYY - YYYY", "details": []}]
 
     elif "Experience section missing" in issue_text:
-        section = "experience"
-        fixed_content += "\n\nExperience:\nSoftware Engineer at XYZ Ltd (2020 - Present)"
+        section = "work_experience"
+        fixed_content["work_experience"] = [{"title": "Software Engineer", "company": "XYZ Ltd", "duration": "YYYY - Present", "details": ["Developed and maintained web applications."]}]
 
     elif "Missing relevant keywords" in issue_text:
         section = "skills"
-        fixed_content += "\n\nSkills:\nPython, Project Management"
+        # Assuming extracted_data['skills'] is a list of strings
+        if not fixed_content.get("skills"):
+            fixed_content["skills"] = ["Python", "Project Management"]
+        else:
+            fixed_content["skills"].extend(["Python", "Project Management"])
+            fixed_content["skills"] = list(set(fixed_content["skills"])) # Remove duplicates
 
     elif "Contains personal info" in issue_text:
         section = "contact"
-        fixed_content = re.sub(r"(?i)(Date of Birth|DOB|Gender|Marital Status).*?\n", "", fixed_content)
+        # This fix implies altering the original contact info within extracted_data if it contains sensitive info.
+        # This part might need more sophisticated AI fix or manual intervention.
+        # For now, we'll just indicate the section.
+        pass
 
     elif "grammar error" in issue_text:
-        section = "summary"
-        fixed_content = fixed_content.replace("responsible of", "responsible for")
+        # For grammar, we need to know which section has the error.
+        # This is a generic example, you'd need more specific logic from AI.
+        section = "summary" # Assuming summary for now
+        fixed_content["summary"] = fixed_content.get("summary", "").replace("responsible of", "responsible for")
 
     return {"section": section, "fixedContent": fixed_content}
+
 
 # =====================================================================
 # NEW STABLE AI FUNCTIONS
@@ -821,10 +831,6 @@ def extract_resume_sections_safely(text):
         logger.warning(f"Resume text is too long, truncating to {TOKEN_LIMIT_IN_CHARS} characters.")
         text = text[:TOKEN_LIMIT_IN_CHARS]
 
-    # --- THIS IS THE FIX ---
-    # The prompt for "skills" is now simplified to ALWAYS be a list of strings.
-    # This ensures consistency for the frontend.
-    # INDENTATION aagey-peeche tha, ab theek kar diya gaya hai.
     prompt = f"""
     You are a world-class resume parsing system. The following text may be jumbled.
     Your task is to intelligently parse this text and reconstruct a perfectly structured JSON object.
@@ -871,95 +877,6 @@ def extract_resume_sections_safely(text):
         logger.error(f"Context-aware AI parsing failed: {e}")
         return {"error": "The AI failed to parse the resume. The document format might be too complex."}
 
-    # --- Targeted AI call for complex sections (Experience & Education) ---
-    # in resume_ai_analyzer.py, inside extract_resume_sections_safely
-
-    # Function to parse complex sections like work experience and education
-    def parse_complex_section(section_key, section_text):
-        if not section_text: return []
-        
-        logger.info(f"Performing targeted parsing for '{section_key}'...")
-        
-        # --- UPDATED: More detailed structure examples for the AI ---
-        if section_key == 'work_experience':
-            structure_example = '[{"title": "Job Title", "company": "Company Name", "duration": "Dates", "details": ["Responsibility 1", "Responsibility 2"]}]'
-        elif section_key == 'education':
-            # We are adding the "details" key here to capture bullet points
-            structure_example = '[{"degree": "Degree Name", "school": "School/University Name", "duration": "Dates", "details": ["Coursework or Specialization detail 1", "Detail 2"]}]'
-        elif section_key == 'projects':
-            # We are making the project parsing more robust as well
-            structure_example = '[{"title": "Project Title", "description": "A brief one-line description.", "details": ["Technical detail or achievement 1", "Detail 2"]}]'
-        else:
-            return []
-
-        prompt = f"""
-        You are a data extraction specialist. Convert the following text from a resume's '{section_key}' section into a structured JSON list.
-        Extract every detail, including bullet points, into the correct fields. Do not summarize or change the text.
-
-        Desired JSON structure:
-        {structure_example}
-
-        Text to parse:
-        ---
-        {section_text}
-        ---
-        Return a single JSON object with one key, "data", containing the list.
-        """
-        try:
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"}
-            )
-            parsed_json = json.loads(response.choices[0].message.content)
-            return parsed_json.get("data", [])
-        except Exception as e:
-            logger.error(f"Targeted parsing failed for {section_key}: {e}")
-            return [{"error": f"AI failed to parse this section. Original text: {section_text}"}]
-
-    final_data['work_experience'] = parse_complex_section('work_experience', extracted_sections_raw.get('work_experience'))
-    final_data['education'] = parse_complex_section('education', extracted_sections_raw.get('education'))
-
-    # --- AI call just for the header info (Name, Title, Contact) ---
-    def parse_header(header_text):
-        if not header_text or not client: return {}, ""
-        logger.info("Making targeted AI call to parse header...")
-        prompt = f"""
-        From the text below, extract the person's full name, job title, and combine all contact information (email, phone, address, links) into a single string.
-        
-        Desired JSON: {{"name": "...", "job_title": "...", "contact": "..."}}
-        
-        Parse this text:
-        ---
-        {header_text}
-        ---
-        """
-        try:
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"}
-            )
-            return json.loads(response.choices[0].message.content)
-        except Exception as e:
-            logger.error(f"Header AI parsing failed: {e}")
-            return {"name": "Error", "job_title": "Error", "contact": header_text}
-
-    header_data = parse_header(header_chunk)
-    final_data.update(header_data)
-
-    # Ensure all required keys exist, even if they are empty or null
-    all_keys = ["name", "job_title", "contact", "summary", "skills", "languages", "work_experience", "education", "projects", "certifications"]
-    for key in all_keys:
-        if key not in final_data:
-            final_data[key] = None
-
-    logger.info("Successfully extracted sections using 'Step-by-Step' strategy.")
-    return final_data
-
-# FILE: resume_ai_analyzer.py
-# REPLACE the existing generate_stable_ats_report function with this one.
-
 def generate_final_detailed_report(text, extracted_data):
     logger.info("Generating FINAL v16 Detailed Audit with Skills Check...")
     if not client:
@@ -1000,7 +917,6 @@ def generate_final_detailed_report(text, extracted_data):
         logger.error(f"Error in detailed report generation: {e}")
         return {"error": "AI analysis failed to generate a detailed report."}
 
-# REPLACE this function in resume_ai_analyzer.py
 def fix_resume_issue(issue_text, extracted_data):
     """
     FIXED: This new function takes the entire resume data object for better context,
@@ -1043,7 +959,7 @@ def fix_resume_issue(issue_text, extracted_data):
 
     try:
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo", # <-- MODEL KA NAAM THEEK KAR DIYA GAYA HAI
+            model="gpt-3.5-turbo",
             messages=[{"role": "system", "content": "You are a resume fixing assistant that responds in perfect JSON."}, {"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
@@ -1079,14 +995,11 @@ def calculate_new_score(current_score, issue_text):
     logger.info(f"Score incremented by {increment}. New score: {new_score}")
     return new_score
 
-# REPLACE this function in resume_ai_analyzer.py
-
 def get_field_suggestions(extracted_data, resume_text):
     logger.info("Running FINAL v9 Field & Suggestion analysis...")
     if not client:
         return {"field": "Unknown", "suggestions": []}
 
-    # --- NEW, MORE INTELLIGENT PROMPT ---
     prompt = f"""
     You are an expert Indian career coach and resume analyst. Your task is to analyze a resume to identify its professional field and suggest critical missing sections for improvement.
 
@@ -1138,16 +1051,6 @@ def get_field_suggestions(extracted_data, resume_text):
         logger.error(f"Could not get field suggestions: {e}")
         return {"field": "General / Fresher", "suggestions": [{"type": "Recommended", "section": "Projects"}]}
 
-# Function: generate_smart_resume_from_keywords
-
-# Updated functions for resume_ai_analyzer.py
-# (This code block includes both generate_smart_resume_from_keywords and generate_full_ai_resume_html)
-
-# Function: generate_smart_resume_from_keywords
-# Changes:
-# 1. Significantly enhanced AI prompts for 'experience', 'education', 'projects', 'skills', 'certifications'
-#    to force structured, bulleted, and concise output matching professional resume standards.
-# 2. Prompts are designed to make the AI return data that is easier for parse_complex_section_html to handle.
 def generate_smart_resume_from_keywords(data: dict) -> dict:
     """
     Ye function har resume section ke liye AI se professionally rewritten content laata hai.
@@ -1255,13 +1158,6 @@ Output:
     return smart_resume
 
 
-# Function: generate_full_ai_resume_html
-# Changes:
-# 1. Indentation corrected for all helper functions and the main HTML string. (This should be resolved from previous fixes)
-# 2. `list_to_html` now solely focuses on taking a list/string and creating proper <li> items, robustly stripping leading hyphens/bullets.
-# 3. `parse_complex_section_html` is heavily refined to expect and render AI output for Experience, Education, and Projects
-#    into specific HTML structures (item-header for titles/meta, <ul><li> for details).
-# 4. Improved fallback for unstructured AI output in parse_complex_section_html.
 def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     """
     Ye function AI-generated resume content ko ek proper HTML resume format me convert karta hai.
@@ -1387,37 +1283,37 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                     <p contenteditable="true"><i class="fas fa-map-marker-alt"></i> {user_info.get('location', 'N/A')}</p>
                     <p contenteditable="true"><i class="fas fa-linkedin"></i> <a href="{user_info.get('linkedin', '#')}" target="_blank">{user_info.get('linkedin', 'N/A')}</a></p>
                 </div>
-                <div class="resume-section">
+                <div class="resume-section preview-section"> {/* Added preview-section class */}
                     <h2 contenteditable="true">Skills</h2>
                     <ul>{list_to_html(smart_content.get('skills', ''))}</ul>
                 </div>
-                <div class="resume-section">
+                <div class="resume-section preview-section"> {/* Added preview-section class */}
                     <h2 contenteditable="true">Languages</h2>
                     <ul>{list_to_html(smart_content.get('languages', ''))}</ul>
                 </div>
-                <div class="resume-section">
+                <div class="resume-section preview-section"> {/* Added preview-section class */}
                     <h2 contenteditable="true">Certifications</h2>
                     <ul>{list_to_html(smart_content.get('certifications', ''))}</ul>
                 </div>
             </aside>
             <main class="main-content">
                 <div class="name-title-header">
-                    <h1 contenteditable="true">{user_info.get('name', '')}</h1>
-                    <div class="job-title" contenteditable="true">{user_info.get('jobTitle', '')}</div>
+                    <h1 contenteditable="true" id="preview-name">{user_info.get('name', '')}</h1> {/* Added id */}
+                    <div class="job-title" contenteditable="true" id="preview-title">{user_info.get('jobTitle', '')}</div> {/* Added id */}
                 </div>
-                <div class="resume-section">
+                <div class="resume-section preview-section"> {/* Added preview-section class */}
                     <h2 contenteditable="true">Profile Summary</h2>
                     <p contenteditable="true">{smart_content.get('summary', '')}</p>
                 </div>
-                <div class="resume-section">
+                <div class="resume-section preview-section"> {/* Added preview-section class */}
                     <h2 contenteditable="true">Work Experience</h2>
                     {parse_complex_section_html(smart_content.get('experience', ''), is_education=False)}
                 </div>
-                <div class="resume-section">
+                <div class="resume-section preview-section"> {/* Added preview-section class */}
                     <h2 contenteditable="true">Education</h2>
                     {parse_complex_section_html(smart_content.get('education', ''), is_education=True)}
                 </div>
-                <div class="resume-section">
+                <div class="resume-section preview-section"> {/* Added preview-section class */}
                     <h2 contenteditable="true">Projects</h2>
                     {parse_complex_section_html(smart_content.get('projects', ''), is_education=False)}
                 </div>
@@ -1425,3 +1321,5 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
         </div>
     </div>
     """
+
+}
