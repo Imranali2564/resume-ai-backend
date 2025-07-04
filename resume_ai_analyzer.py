@@ -1175,13 +1175,11 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     current_subheading = None
 
     for line in lines:
-        # Skip filler
         if any(skip in line.lower() for skip in [
             "no skills provided", "invalid input", "empty", "not provided", "input is empty"
         ]) or "i'm sorry" in line.lower():
             continue
 
-        # Handle subheading
         if line.strip().endswith(":"):
             if current_subheading:
                 html_parts.append("</ul>")
@@ -1189,7 +1187,6 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             html_parts.append(f"<h3 contenteditable=\"true\">{current_subheading}</h3><ul>")
             continue
 
-        # ✅ Split aggressively using multiple separators
         skills = re.split(r"[,*•|/\t\-–]+", line)
         for skill in skills:
             clean_skill = skill.strip().strip('*').strip()
@@ -1200,7 +1197,6 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
         html_parts.append("</ul>")
 
     return "".join(html_parts)
-
 
     def parse_complex_section_html(section_data, is_education=False):
         if not section_data:
