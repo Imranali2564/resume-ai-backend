@@ -1063,14 +1063,14 @@ def generate_smart_resume_from_keywords(data: dict) -> dict:
     Ye function har resume section ke liye AI se professionally rewritten content laata hai.
     Jo fields user bharta hai, unke basis pe response deta hai.
     """
+
     from openai import OpenAI
     import os
-    import json # JSON library import karein
 
     client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     smart_resume = {}
 
-    # BAAKI SECTIONS WAISE HI RAHENGE
+    # <<< SIRF SKILLS KE PROMPT KO BEHTAR KIYA GAYA HAI >>>
     sections = {
         "summary": "Write a concise, impactful 2-3 line professional summary for a resume. Focus on key skills, experience, and career goals. If input is empty or insufficient, return ONLY an empty string. DO NOT use headings like 'Summary:'.",
         "experience": """For each work experience entry, convert the raw input into a list of 3-5 *very concise, action-verb-driven bullet points* for a resume. Each bullet point should be a single line, start with an action verb, and focus on quantifiable achievements and key responsibilities. Do NOT include job titles, companies, or dates in this output; ONLY the bullet points. If input is empty or insufficient, return ONLY an empty string.""",
@@ -1078,133 +1078,216 @@ def generate_smart_resume_from_keywords(data: dict) -> dict:
         - Degree Name (on one line)
         - University/Institute, City, State/Country (on the next line, comma separated)
         - Graduation/Completion Year (on the same line as university, right-aligned, or clearly separated)
-        If there are relevant bullet points (e.g., GPA, specializations, honors), list them concisely below the main entry, each starting with a bullet. If input is empty or insufficient, return ONLY an empty string.""",
-        # <<< SIRF SKILLS KA PROMPT BADLA GAYA HAI >>>
-        "skills": """From the following text, extract all skills. If there are categories (like 'Technical Skills'), use them as keys. Return a single JSON object.
-        Example Input: "Technical Skills: JavaScript* React, Python. Soft Skills: Communication"
-        Example Output: { "Technical Skills:": ["JavaScript", "React", "Python"], "Soft Skills:": ["Communication"] }
-        If no categories, use "skills" as the key.
-        Example Input: "JavaScript, React, Python"
-        Example Output: { "skills": ["JavaScript", "React", "Python"] }
+        If there are relevant bullet points (e.g., GPA, specializations, honors), list them concisely below the main entry, each starting with a bullet. If input is empty or insufficient, return ONLY an empty string.
+Example Output Format:
+B.Tech in Computer Science
+Delhi University, Delhi, India
+2019
+• Relevant coursework: Data Structures, Algorithms, Machine Learning
+• GPA: 3.8/4.0""",
+        "skills": """From the following text, extract ONLY the individual skills. List each skill on a new line. If there are categories like 'Technical Skills', list the category on its own line ending with a colon.
+        **Crucial Rule: DO NOT combine skills on one line. Never output something like "JavaScript* React".**
+        Correct Example:
+        Technical Skills:
+        JavaScript
+        React
+        Python
         """,
         "projects": """For each project entry, provide the concise project title on one line, followed by a list of 2-4 *very concise, action-verb-driven bullet points*. Each bullet should highlight technologies used, your role, and *key achievements/outcomes, especially quantifiable results*. Do NOT include numbering (1., 2., 3.) or labels like 'Project Description:' or 'Outcome/Result:'. The project title should be clearly distinguishable (e.g., by being on its own line). If input is empty or insufficient, return ONLY an empty string.""",
-        "certifications": """List each certification clearly, one per line. Include certification name, issuing body, and year if available. If input is empty or insufficient, return ONLY an empty string.""",
+        "certifications": """List each certification clearly, one per line. Include certification name, issuing body, and year if available. If input is empty or insufficient, return ONLY an empty string.
+Example:
+AWS Certified Solutions Architect, Amazon Web Services, 2023
+Certified Kubernetes Administrator (CKA), Linux Foundation, 2022""",
         "languages": """List each language clearly, one per line, along with proficiency level (e.g., English: Fluent, French: Intermediate). If input is empty or insufficient, return ONLY an empty string.""",
+        "awards": "List each award on a new line in a professional resume format (e.g., 'Employee of the Year, ABC Corp, 2023'). If input is empty or insufficient, return ONLY an empty string.",
+        "volunteering": "Describe volunteering activities and contributions concisely, using bullet points. If input is empty or insufficient, return ONLY an empty string.",
+        "interests": "Convert these interests into professional sounding phrases suitable for a resume. List them concisely. If input is empty or insufficient, return ONLY an empty string.",
+        "publications": "Expand these publication titles and give a brief context suitable for a resume, using bullet points if multiple. If input is empty or insufficient, return ONLY an empty string.",
+        "patents": "Describe patents briefly and professionally, using bullet points if multiple. If input is empty or insufficient, return ONLY an empty string.",
     }
+    # <<< BAAKI FUNCTION WAISA HI RAHEGA >>>
 
     for key, instruction in sections.items():
         value = data.get(key, "").strip()
+        
+        # Skip AI call if input is empty to save resources
         if not value:
-            smart_resume[key] = "" if key != 'skills' else {} # Skills ke liye empty dict
+            smart_resume[key] = ""
             continue
 
-        prompt = f"You are an expert resume writer. {instruction}\nInput: {value}\nOutput:"
-        
+        prompt = f"""
+You are an expert resume writer. {instruction}
+Input: {value}
+Output:
+"""
+
         try:
-            # <<< SKILLS KE LIYE JSON MODE KA ISTEMAAL KAREIN >>>
-            if key == 'skills':
-                response = client.chat.completions.create(
-                    model="gpt-3.5-turbo-1106", # JSON mode ke liye yeh model zaroori hai
-                    messages=[{"role": "user", "content": prompt}],
-                    response_format={"type": "json_object"}
-                )
-                result = json.loads(response.choices[0].message.content)
-                smart_resume[key] = result
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                timeout=20
+            )
+            result = response.choices[0].message.content.strip()
+            
+            # Additional safeguard: If AI still returns generic empty phrases, force empty string
+            if result.lower() in [
+                "no skills provided.", "no certifications found.", "no education details provided.", 
+                "no projects found.", "no languages provided.", "invalid input.", 
+                "i'm sorry, but i cannot generate certifications without any input.", 
+                "the input provided seems to be incomplete.", 
+                "kindly provide the education details that need to be reformatted in a standard resume format.",
+                "empty"
+            ]:
+                smart_resume[key] = ""
             else:
-                response = client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                result = response.choices[0].message.content.strip()
                 smart_resume[key] = result
 
         except Exception as e:
-            print(f"Error generating smart content for {key}: {e}")
-            smart_resume[key] = value # Error par original value rakhein
+            # logger.error(f"Error generating smart content for {key}: {e}") # Uncomment if you have logger setup
+            smart_resume[key] = value # On error, fallback to original user input
 
     return smart_resume
 
 def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     """
     Ye function AI-generated resume content ko ek proper HTML resume format me convert karta hai.
+    Left section: contact, skills, languages, certifications, etc.
+    Right section: summary, experience, education, projects, etc.
     """
-    import re
+    import re # <<< YEH LINE ADD KAREIN
 
-    # <<< list_to_html FUNCTION KO BAHUT SIMPLE KAR DIYA GAYA HAI >>>
-    def list_to_html(items_data):
-        html = ""
-        # Skills ke liye naya logic
-        if isinstance(items_data, dict): # Check karein agar data dictionary hai (skills ke liye)
-            for category, skills_list in items_data.items():
-                if category.lower() != "skills": # Agar category hai
-                    html += f"<li><strong contenteditable=\"true\">{category}</strong></li>"
-                if isinstance(skills_list, list):
-                    for skill in skills_list:
-                        html += f"<li contenteditable=\"true\">{skill.strip()}</li>"
-            return html
-        
-        # Baaki sections ke liye purana logic
-        items = []
-        if isinstance(items_data, list):
-            items = [str(item).strip() for item in items_data if str(item).strip()]
-        elif isinstance(items_data, str):
-            items = [line.strip() for line in items_data.split('\n') if line.strip()]
+    # <<< POORA list_to_html HELPER FUNCTION UPDATE KIYA GAYA HAI >>>
+    def list_to_html(items_string):
+        """
+        Smarter version to handle subheadings and multi-skill lines.
+        """
+        if not items_string:
+            return ""
 
-        return "".join(f"<li contenteditable=\"true\">{item}</li>" for item in items)
+        # Ensure items_string is a simple list of lines
+        if isinstance(items_string, list):
+            lines = [str(item).strip() for item in items_string if str(item).strip()]
+        elif isinstance(items_string, str):
+            lines = [line.strip() for line in items_string.split('\n') if line.strip()]
+        else:
+            return ""
+
+        html_parts = []
+        for line in lines:
+            # Check for generic AI filler messages
+            if line.lower() in [
+                "input is empty or insufficient.", "no skills provided.", "no certifications found.",
+                "no education details provided.", "no projects found.", "no languages provided.",
+                "not provided.", "empty"
+            ] or "i'm sorry, but i cannot" in line.lower() or "kindly provide the" in line.lower():
+                continue
+
+            # Check if the line is a subheading (e.g., "Technical Skills:")
+            if line.strip().endswith(':'):
+                html_parts.append(f"<li><strong contenteditable=\"true\">{line.strip()}</strong></li>")
+            else:
+                # Split line by common delimiters like comma, asterisk, or multiple spaces
+                # This will handle "JavaScript* React" or "Python, Java"
+                skills = re.split(r'[,*•\t]+', line)
+                for skill in skills:
+                    clean_skill = skill.strip().lstrip('-• ').strip()
+                    if clean_skill:
+                        html_parts.append(f"<li contenteditable=\"true\">{clean_skill}</li>")
+
+        return "".join(html_parts)
 
 
     def parse_complex_section_html(section_data, is_education=False):
-        # Is function mein koi badlav nahi hai, yeh waisa hi rahega
         if not section_data:
             return ""
-        html_output = ""
+
+        html_output = "" 
+
         if isinstance(section_data, str):
+            lower_section_data = section_data.lower().strip()
+            if lower_section_data in [
+                "sorry, but the input provided is insufficient.",
+                "input is empty or insufficient.",
+                "not provided.",
+                "empty"
+            ]:
+                return ""
+
             lines = [line.strip() for line in section_data.split('\n') if line.strip()]
+            
             current_item = {"title": "", "details": []}
             all_items = []
+            
             for line in lines:
-                if not line.strip().lstrip('-• ').strip(): continue
+                if not line.strip().lstrip('-• ').strip(): 
+                    continue
+
                 if line.strip().startswith(('-', '•')):
                     current_item["details"].append(line.strip().lstrip('-• ').strip())
                 elif not current_item["title"] and not current_item["details"]:
                     current_item["title"] = line.strip()
                 elif current_item["title"] and not current_item["details"]:
+                    # This could be a multi-line title or a detail that's not a bullet point
                     current_item["details"].append(line.strip())
-                else:
+                else: 
                     all_items.append(current_item)
                     current_item = {"title": line.strip(), "details": []}
-            if current_item["title"] or current_item["details"]:
+            if current_item["title"] or current_item["details"]: 
                 all_items.append(current_item)
-            section_data_processed = all_items
-            if not section_data_processed:
+            
+            section_data_processed = all_items 
+
+            if not section_data_processed: 
                 return f"<p contenteditable=\"true\">{section_data.strip()}</p>" if section_data.strip() else ""
+
         elif isinstance(section_data, list):
              section_data_processed = section_data
         else:
-             return ""
+             return "" 
+
         for item in section_data_processed:
             title_text = item.get("title", '')
             company_text = item.get("company", '')
             duration_text = item.get("duration", '')
             details_list = item.get("details", [])
             description_text = item.get("description", '')
+
             item_html = ""
-            item_html += f"<div class='item-header'><h4 contenteditable=\"true\">{title_text}</h4>"
+
+            item_html += f"<div class='item-header'>"
+            item_html += f"<h4 contenteditable=\"true\">{title_text}</h4>" 
+            
             item_html += f"<p class='item-meta'>"
-            if company_text: item_html += f"<span contenteditable=\"true\">{company_text}</span>"
-            if duration_text: item_html += f"<span class='duration' contenteditable=\"true\">{duration_text}</span>"
-            item_html += "</p></div>"
-            if description_text: item_html += f"<p class='item-description' contenteditable=\"true\">{description_text}</p>"
+            if company_text:
+                item_html += f"<span contenteditable=\"true\">{company_text}</span>"
+            if duration_text:
+                item_html += f"<span class='duration' contenteditable=\"true\">{duration_text}</span>"
+            item_html += "</p>"
+            item_html += "</div>" 
+
+            if description_text:
+                item_html += f"<p class='item-description' contenteditable=\"true\">{description_text}</p>"
+
             if details_list:
-                details_list_final = [d.strip().lstrip('-• ').strip() for d in details_list if d.strip()] if isinstance(details_list, list) else [d.strip().lstrip('-• ').strip() for d in details_list.split('\n') if d.strip()]
+                if isinstance(details_list, str): 
+                    details_list_final = [d.strip().lstrip('-• ').strip() for d in details_list.split('\n') if d.strip()]
+                elif isinstance(details_list, list):
+                    details_list_final = [d.strip().lstrip('-• ').strip() for d in details_list if d.strip()]
+                else:
+                    details_list_final = []
+
                 if details_list_final:
                     item_html += "<ul>"
-                    for detail in details_list_final: item_html += f"<li contenteditable=\"true\">{detail}</li>"
+                    for detail in details_list_final:
+                        item_html += f"<li contenteditable=\"true\">{detail}</li>"
                     item_html += "</ul>"
+            
             html_output += f"<div class='experience-item'>{item_html}</div>"
+        
         return html_output
 
-    # --- Final HTML Structure (Ismein koi badlav nahi hai) ---
+
+    # --- FINAL HTML STRUCTURE ---
     return f"""
     <div class="resume-container">
         <div class="content-wrapper">
@@ -1218,7 +1301,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Skills</h2>
-                    <ul>{list_to_html(smart_content.get('skills', {{}}))}</ul>
+                    <ul>{list_to_html(smart_content.get('skills', ''))}</ul>
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Languages</h2>
