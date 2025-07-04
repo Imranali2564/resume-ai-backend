@@ -706,7 +706,7 @@ def generate_ai_resume():
     except Exception as e:
         import traceback
         traceback.print_exc()  # Debugging ke liye traceback print karen
-        return jsonify({"error": f"❌ Exception in generate-ai-resume: {type(e).__name__} - {str(e)}"}), 500
+        return jsonify({"error": "❌ Exception in generate-ai-resume: {} - {}".format(type(e).__name__, str(e))}), 500
 
 @app.route('/convert-format', methods=['POST'])
 def convert_format():
