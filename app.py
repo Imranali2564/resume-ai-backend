@@ -692,12 +692,16 @@ def generate_ai_resume():
         user_info = {key: data.get(key, "") for key in contact_fields}
         section_data = {key: value for key, value in data.items() if key not in contact_fields}
 
-        # Generate smart content from keywords
         smart_content = generate_smart_resume_from_keywords(section_data)
+        is_pdf = request.args.get('format') == 'pdf'  # Add query param ?format=pdf for PDF generation
+        html = generate_full_ai_resume_html(user_info, smart_content, is_pdf)
 
-        # Generate HTML with updated function
-        html = generate_full_ai_resume_html(user_info, smart_content)
-
+        if is_pdf:
+            pdf = pdfkit.from_string(html, False)
+            response = make_response(pdf)
+            response.headers['Content-Type'] = 'application/pdf'
+            response.headers['Content-Disposition'] = 'attachment; filename=imran_ansari_resume.pdf'
+            return response
         return jsonify({"success": True, "html": html})
     except Exception as e:
         import traceback

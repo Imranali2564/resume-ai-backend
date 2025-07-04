@@ -1148,7 +1148,7 @@ Output:
 
     return smart_resume
 
-def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
+def generate_full_ai_resume_html(user_info: dict, smart_content: dict, is_pdf=False) -> str:
     """
     Ye function AI-generated resume content ko ek proper HTML resume format me convert karta hai.
     Left section: contact, skills, languages, certifications, etc.
@@ -1297,16 +1297,24 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
 
     title = smart_content.get("summary", "").split("\n")[0] if smart_content.get("summary") else jobTitle
 
+    # Contact info with icon/text toggle
+    contact_html = ""
+    if phone.strip():
+        contact_html += f"<p contenteditable='true'>{('📞 ' if is_pdf else '<i class=\'fas fa-phone-alt\'></i> ') + phone}</p>"
+    if email.strip():
+        contact_html += f"<p contenteditable='true'>{('📧 ' if is_pdf else '<i class=\'fas fa-envelope\'></i> ') + email}</p>"
+    if location.strip():
+        contact_html += f"<p contenteditable='true'>{('📍 ' if is_pdf else '<i class=\'fas fa-map-marker-alt\'></i> ') + location}</p>"
+    if linkedin.strip():
+        contact_html += f"<p contenteditable='true'>{('🔗 ' if is_pdf else '<i class=\'fab fa-linkedin\'></i> ') + '<a href=\'' + linkedin + '\' target=\'_blank\'>' + linkedin + '</a>'}</p>"
+
     return f"""
     <div class="resume-container">
         <div class="content-wrapper">
             <aside class="resume-sidebar">
                 <div class="contact-info-sidebar preview-section">
                     <h3 contenteditable="true">Contact</h3>
-                    {phone.strip() and f"<p contenteditable='true'><i class='fas fa-phone-alt'></i> {phone}</p>" or ""}
-                    {email.strip() and f"<p contenteditable='true'><i class='fas fa-envelope'></i> {email}</p>" or ""}
-                    {location.strip() and f"<p contenteditable='true'><i class='fas fa-map-marker-alt'></i> {location}</p>" or ""}
-                    {linkedin.strip() and f"<p contenteditable='true'><i class='fab fa-linkedin'></i> <a href='{linkedin}' target='_blank'>{linkedin}</a></p>" or ""}
+                    {contact_html}
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Skills</h2>
