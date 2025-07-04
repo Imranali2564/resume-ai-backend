@@ -1144,35 +1144,47 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     Left section: contact, skills, languages, certifications, etc.
     Right section: summary, experience, education, projects, etc.
     """
+    import re # <<< YEH LINE ADD KAREIN
 
+    # <<< POORA list_to_html HELPER FUNCTION UPDATE KIYA GAYA HAI >>>
     def list_to_html(items_string):
+        """
+        Smarter version to handle subheadings and multi-skill lines.
+        """
+        if not items_string:
+            return ""
+
+        # Ensure items_string is a simple list of lines
         if isinstance(items_string, list):
-            items = [item.strip().lstrip('-• ').strip() for item in items_string if item.strip()]
+            lines = [str(item).strip() for item in items_string if str(item).strip()]
         elif isinstance(items_string, str):
-            items = [item.strip().lstrip('-• ').strip() for item in items_string.split('\n') if item.strip()]
+            lines = [line.strip() for line in items_string.split('\n') if line.strip()]
         else:
-            items = []
-        
-        # Filter out empty or insufficient AI output messages
-        filtered_items = []
-        for item in items:
-            lower_item = item.lower()
-            if lower_item not in [
-                "input is empty or insufficient.",
-                "no skills provided.",
-                "no certifications found.",
-                "no education details provided.",
-                "no projects found.",
-                "no languages provided.",
-                "i'm sorry, but i cannot generate certifications without any input.",
-                "the input provided seems to be incomplete.",
-                "kindly provide the education details that need to be reformatted in a standard resume format.",
-                "not provided.",
-                "empty"
-            ] and item.strip():
-                filtered_items.append(item)
-        
-        return "".join(f"<li contenteditable=\"true\">{item}</li>" for item in filtered_items)
+            return ""
+
+        html_parts = []
+        for line in lines:
+            # Check for generic AI filler messages
+            if line.lower() in [
+                "input is empty or insufficient.", "no skills provided.", "no certifications found.",
+                "no education details provided.", "no projects found.", "no languages provided.",
+                "not provided.", "empty"
+            ] or "i'm sorry, but i cannot" in line.lower() or "kindly provide the" in line.lower():
+                continue
+
+            # Check if the line is a subheading (e.g., "Technical Skills:")
+            if line.strip().endswith(':'):
+                html_parts.append(f"<li><strong contenteditable=\"true\">{line.strip()}</strong></li>")
+            else:
+                # Split line by common delimiters like comma, asterisk, or multiple spaces
+                # This will handle "JavaScript* React" or "Python, Java"
+                skills = re.split(r'[,*•\t]+', line)
+                for skill in skills:
+                    clean_skill = skill.strip().lstrip('-• ').strip()
+                    if clean_skill:
+                        html_parts.append(f"<li contenteditable=\"true\">{clean_skill}</li>")
+
+        return "".join(html_parts)
 
 
     def parse_complex_section_html(section_data, is_education=False):
@@ -1182,7 +1194,6 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
         html_output = "" 
 
         if isinstance(section_data, str):
-            # Filter out empty/insufficient messages at the section level
             lower_section_data = section_data.lower().strip()
             if lower_section_data in [
                 "sorry, but the input provided is insufficient.",
@@ -1190,7 +1201,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                 "not provided.",
                 "empty"
             ]:
-                return "" # Return empty if it's just an error/empty message
+                return ""
 
             lines = [line.strip() for line in section_data.split('\n') if line.strip()]
             
@@ -1206,6 +1217,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                 elif not current_item["title"] and not current_item["details"]:
                     current_item["title"] = line.strip()
                 elif current_item["title"] and not current_item["details"]:
+                    # This could be a multi-line title or a detail that's not a bullet point
                     current_item["details"].append(line.strip())
                 else: 
                     all_items.append(current_item)
@@ -1265,17 +1277,17 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
         return html_output
 
 
-    # --- UPDATED HTML STRUCTURE FOR BETTER LAYOUT AND ICONS ---
+    # --- FINAL HTML STRUCTURE ---
     return f"""
     <div class="resume-container">
         <div class="content-wrapper">
             <aside class="resume-sidebar">
                 <div class="contact-info-sidebar preview-section">
                     <h3 contenteditable="true">Contact</h3>
-                    {user_info.get('phone', '').strip() and f"<p contenteditable='true'><i class='fas fa-phone-alt'></i> Phone: {user_info['phone']}</p>" or ""}
-                    {user_info.get('email', '').strip() and f"<p contenteditable='true'><i class='fas fa-envelope'></i> Email: {user_info['email']}</p>" or ""}
-                    {user_info.get('location', '').strip() and f"<p contenteditable='true'><i class='fas fa-map-marker-alt'></i> Location: {user_info['location']}</p>" or ""}
-                    {user_info.get('linkedin', '').strip() and f"<p contenteditable='true'><i class='fab fa-linkedin'></i> LinkedIn: <a href='{user_info['linkedin']}' target='_blank'>{user_info['linkedin']}</a></p>" or ""}
+                    {user_info.get('phone', '').strip() and f"<p contenteditable='true'><i class='fas fa-phone-alt'></i> {user_info['phone']}</p>" or ""}
+                    {user_info.get('email', '').strip() and f"<p contenteditable='true'><i class='fas fa-envelope'></i> {user_info['email']}</p>" or ""}
+                    {user_info.get('location', '').strip() and f"<p contenteditable='true'><i class='fas fa-map-marker-alt'></i> {user_info['location']}</p>" or ""}
+                    {user_info.get('linkedin', '').strip() and f"<p contenteditable='true'><i class='fab fa-linkedin'></i> <a href='{user_info['linkedin']}' target='_blank'>{user_info['linkedin']}</a></p>" or ""}
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Skills</h2>
