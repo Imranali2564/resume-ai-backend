@@ -1070,6 +1070,7 @@ def generate_smart_resume_from_keywords(data: dict) -> dict:
     client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     smart_resume = {}
 
+    # <<< SIRF SKILLS KE PROMPT KO BEHTAR KIYA GAYA HAI >>>
     sections = {
         "summary": "Write a concise, impactful 2-3 line professional summary for a resume. Focus on key skills, experience, and career goals. If input is empty or insufficient, return ONLY an empty string. DO NOT use headings like 'Summary:'.",
         "experience": """For each work experience entry, convert the raw input into a list of 3-5 *very concise, action-verb-driven bullet points* for a resume. Each bullet point should be a single line, start with an action verb, and focus on quantifiable achievements and key responsibilities. Do NOT include job titles, companies, or dates in this output; ONLY the bullet points. If input is empty or insufficient, return ONLY an empty string.""",
@@ -1084,7 +1085,14 @@ Delhi University, Delhi, India
 2019
 • Relevant coursework: Data Structures, Algorithms, Machine Learning
 • GPA: 3.8/4.0""",
-        "skills": """List these skills as concise, individual bullet points. If the input explicitly provides categories (like 'Technical Skills:', 'Soft Skills:'), then include the category name on its own line, followed by bullet points for skills under that category. Otherwise, just list skills as bullet points. If input is empty or insufficient, return ONLY an empty string.""",
+        "skills": """From the following text, extract ONLY the individual skills. List each skill on a new line. If there are categories like 'Technical Skills', list the category on its own line ending with a colon.
+        **Crucial Rule: DO NOT combine skills on one line. Never output something like "JavaScript* React".**
+        Correct Example:
+        Technical Skills:
+        JavaScript
+        React
+        Python
+        """,
         "projects": """For each project entry, provide the concise project title on one line, followed by a list of 2-4 *very concise, action-verb-driven bullet points*. Each bullet should highlight technologies used, your role, and *key achievements/outcomes, especially quantifiable results*. Do NOT include numbering (1., 2., 3.) or labels like 'Project Description:' or 'Outcome/Result:'. The project title should be clearly distinguishable (e.g., by being on its own line). If input is empty or insufficient, return ONLY an empty string.""",
         "certifications": """List each certification clearly, one per line. Include certification name, issuing body, and year if available. If input is empty or insufficient, return ONLY an empty string.
 Example:
@@ -1097,10 +1105,16 @@ Certified Kubernetes Administrator (CKA), Linux Foundation, 2022""",
         "publications": "Expand these publication titles and give a brief context suitable for a resume, using bullet points if multiple. If input is empty or insufficient, return ONLY an empty string.",
         "patents": "Describe patents briefly and professionally, using bullet points if multiple. If input is empty or insufficient, return ONLY an empty string.",
     }
+    # <<< BAAKI FUNCTION WAISA HI RAHEGA >>>
 
     for key, instruction in sections.items():
         value = data.get(key, "").strip()
         
+        # Skip AI call if input is empty to save resources
+        if not value:
+            smart_resume[key] = ""
+            continue
+
         prompt = f"""
 You are an expert resume writer. {instruction}
 Input: {value}
@@ -1125,16 +1139,12 @@ Output:
                 "empty"
             ]:
                 smart_resume[key] = ""
-            elif not value and result.strip(): # If original input was empty but AI returned something, use AI's clean output
-                 smart_resume[key] = result
-            elif value and not result.strip(): # If input was there but AI returned nothing, keep original input (as fallback, or force empty if preferred)
-                smart_resume[key] = value # Keep original if AI gives empty output for non-empty input
-            else: # Otherwise, use AI's result
+            else:
                 smart_resume[key] = result
 
         except Exception as e:
-            logger.error(f"Error generating smart content for {key}: {e}")
-            smart_resume[key] = "" # Force empty string on AI error for cleaner preview
+            # logger.error(f"Error generating smart content for {key}: {e}") # Uncomment if you have logger setup
+            smart_resume[key] = value # On error, fallback to original user input
 
     return smart_resume
 
