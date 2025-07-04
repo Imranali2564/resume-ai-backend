@@ -1070,7 +1070,6 @@ def generate_smart_resume_from_keywords(data: dict) -> dict:
     client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     smart_resume = {}
 
-    # <<< SIRF SKILLS KE PROMPT KO BEHTAR KIYA GAYA HAI >>>
     sections = {
         "summary": "Write a concise, impactful 2-3 line professional summary for a resume. Focus on key skills, experience, and career goals. If input is empty or insufficient, return ONLY an empty string. DO NOT use headings like 'Summary:'.",
         "experience": """For each work experience entry, convert the raw input into a list of 3-5 *very concise, action-verb-driven bullet points* for a resume. Each bullet point should be a single line, start with an action verb, and focus on quantifiable achievements and key responsibilities. Do NOT include job titles, companies, or dates in this output; ONLY the bullet points. If input is empty or insufficient, return ONLY an empty string.""",
@@ -1105,7 +1104,6 @@ Certified Kubernetes Administrator (CKA), Linux Foundation, 2022""",
         "publications": "Expand these publication titles and give a brief context suitable for a resume, using bullet points if multiple. If input is empty or insufficient, return ONLY an empty string.",
         "patents": "Describe patents briefly and professionally, using bullet points if multiple. If input is empty or insufficient, return ONLY an empty string.",
     }
-    # <<< BAAKI FUNCTION WAISA HI RAHEGA >>>
 
     for key, instruction in sections.items():
         value = data.get(key, "").strip()
@@ -1115,11 +1113,11 @@ Certified Kubernetes Administrator (CKA), Linux Foundation, 2022""",
             smart_resume[key] = ""
             continue
 
-        prompt = """
+        prompt = f"""
 You are an expert resume writer. {instruction}
 Input: {value}
 Output:
-""".format(instruction=instruction, value=value)
+"""
 
         try:
             response = client.chat.completions.create(
@@ -1158,7 +1156,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict, is_pdf=Fa
 
     def list_to_html(items_string):
         """
-        Smarter version to handle subheadings and multi-skill lines.
+        Smarter version to handle subheadings and multi-skill lines, ensuring proper rendering.
         """
         if not items_string:
             return ""
@@ -1187,14 +1185,14 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict, is_pdf=Fa
                 if current_subheading:
                     html_parts.append("</ul>")
                 current_subheading = line.strip()
-                html_parts.append("<h3 contenteditable=\"true\">{0}</h3><ul>".format(current_subheading))
+                html_parts.append(f"<h3 contenteditable=\"true\">{current_subheading}</h3><ul>")
             else:
-                # Split line by common delimiters like comma, asterisk, or multiple spaces
+                # Split line by common delimiters and ensure each skill is a separate <li>
                 skills = re.split(r'[,*•\t]+', line)
                 for skill in skills:
                     clean_skill = skill.strip().lstrip('-• ').strip()
                     if clean_skill:
-                        html_parts.append("<li contenteditable=\"true\">{0}</li>".format(clean_skill))
+                        html_parts.append(f"<li contenteditable=\"true\">{clean_skill}</li>")
 
         if current_subheading:
             html_parts.append("</ul>")
@@ -1239,7 +1237,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict, is_pdf=Fa
             section_data_processed = all_items
 
             if not section_data_processed:
-                return "<p contenteditable=\"true\">{0}</p>".format(section_data.strip()) if section_data.strip() else ""
+                return f"<p contenteditable=\"true\">{section_data.strip()}</p>" if section_data.strip() else ""
 
         elif isinstance(section_data, list):
             section_data_processed = section_data
@@ -1255,19 +1253,19 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict, is_pdf=Fa
 
             item_html = ""
 
-            item_html += "<div class='item-header'>"
-            item_html += "<h4 contenteditable=\"true\">{0}</h4>".format(title_text)
+            item_html += f"<div class='item-header'>"
+            item_html += f"<h4 contenteditable=\"true\">{title_text}</h4>"
             
-            item_html += "<p class='item-meta'>"
+            item_html += f"<p class='item-meta'>"
             if company_text:
-                item_html += "<span contenteditable=\"true\">{0}</span>".format(company_text)
+                item_html += f"<span contenteditable=\"true\">{company_text}</span>"
             if duration_text:
-                item_html += "<span class='duration' contenteditable=\"true\">{0}</span>".format(duration_text)
+                item_html += f"<span class='duration' contenteditable=\"true\">{duration_text}</span>"
             item_html += "</p>"
             item_html += "</div>"
 
             if description_text:
-                item_html += "<p class='item-description' contenteditable=\"true\">{0}</p>".format(description_text)
+                item_html += f"<p class='item-description' contenteditable=\"true\">{description_text}</p>"
 
             if details_list:
                 if isinstance(details_list, str):
@@ -1280,10 +1278,10 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict, is_pdf=Fa
                 if details_list_final:
                     item_html += "<ul>"
                     for detail in details_list_final:
-                        item_html += "<li contenteditable=\"true\">{0}</li>".format(detail)
+                        item_html += f"<li contenteditable=\"true\">{detail}</li>"
                     item_html += "</ul>"
             
-            html_output += "<div class='experience-item'>{0}</div>".format(item_html)
+            html_output += f"<div class='experience-item'>{item_html}</div>"
         
         return html_output
 
@@ -1300,15 +1298,15 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict, is_pdf=Fa
     # Contact info with icon/text toggle
     contact_html = ""
     if phone.strip():
-        contact_html += "<p contenteditable='true'>{0}{1}</p>".format(('📞 ' if is_pdf else '<i class=\'fas fa-phone-alt\'></i> '), phone)
+        contact_html += f"<p contenteditable='true'><i class='fas fa-phone-alt'></i> {phone}</p>" if not is_pdf else f"<p contenteditable='true'>📞 {phone}</p>"
     if email.strip():
-        contact_html += "<p contenteditable='true'>{0}{1}</p>".format(('📧 ' if is_pdf else '<i class=\'fas fa-envelope\'></i> '), email)
+        contact_html += f"<p contenteditable='true'><i class='fas fa-envelope'></i> {email}</p>" if not is_pdf else f"<p contenteditable='true'>📧 {email}</p>"
     if location.strip():
-        contact_html += "<p contenteditable='true'>{0}{1}</p>".format(('📍 ' if is_pdf else '<i class=\'fas fa-map-marker-alt\'></i> '), location)
+        contact_html += f"<p contenteditable='true'><i class='fas fa-map-marker-alt'></i> {location}</p>" if not is_pdf else f"<p contenteditable='true'>📍 {location}</p>"
     if linkedin.strip():
-        contact_html += "<p contenteditable='true'>{0}{1}</p>".format(('🔗 ' if is_pdf else '<i class=\'fab fa-linkedin\'></i> '), '<a href=\'' + linkedin + '\' target=\'_blank\'>' + linkedin + '</a>')
+        contact_html += f"<p contenteditable='true'><i class='fab fa-linkedin'></i> <a href='{linkedin}' target='_blank'>{linkedin}</a></p>" if not is_pdf else f"<p contenteditable='true'>🔗 <a href='{linkedin}' target='_blank'>{linkedin}</a></p>"
 
-    html_template = """
+    return f"""
     <div class="resume-container">
         <div class="content-wrapper">
             <aside class="resume-sidebar">
@@ -1318,52 +1316,39 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict, is_pdf=Fa
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Skills</h2>
-                    {skills_html}
+                    {list_to_html(smart_content.get('skills', ''))}
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Languages</h2>
-                    {languages_html}
+                    {list_to_html(smart_content.get('languages', ''))}
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Certifications</h2>
-                    {certifications_html}
+                    {list_to_html(smart_content.get('certifications', ''))}
                 </div>
             </aside>
             <main class="main-content">
                 <div class="name-title-header">
                     <h1 contenteditable="true" id="preview-name">{name}</h1>
-                    {job_title_html}
+                    {jobTitle.strip() and f"<p class='job-title' contenteditable='true' id='preview-title'>{jobTitle}</p>" or ""}
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Profile Summary</h2>
-                    <p contenteditable="true">{summary}</p>
+                    <p contenteditable="true">{smart_content.get('summary', '')}</p>
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Work Experience</h2>
-                    {experience_html}
+                    {parse_complex_section_html(smart_content.get('experience', ''), is_education=False)}
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Education</h2>
-                    {education_html}
+                    {parse_complex_section_html(smart_content.get('education', ''), is_education=True)}
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Projects</h2>
-                    {projects_html}
+                    {parse_complex_section_html(smart_content.get('projects', ''), is_education=False)}
                 </div>
             </main>
         </div>
     </div>
     """
-
-    return html_template.format(
-        contact_html=contact_html,
-        skills_html=list_to_html(smart_content.get('skills', '')),
-        languages_html=list_to_html(smart_content.get('languages', '')),
-        certifications_html=list_to_html(smart_content.get('certifications', '')),
-        name=name,
-        job_title_html=jobTitle.strip() and "<p class='job-title' contenteditable='true' id='preview-title'>{0}</p>".format(jobTitle) or "",
-        summary=smart_content.get('summary', ''),
-        experience_html=parse_complex_section_html(smart_content.get('experience', ''), is_education=False),
-        education_html=parse_complex_section_html(smart_content.get('education', ''), is_education=True),
-        projects_html=parse_complex_section_html(smart_content.get('projects', ''), is_education=False)
-    )
