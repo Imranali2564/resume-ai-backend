@@ -682,7 +682,8 @@ def optimize_keywords():
     results = compare_resume_with_keywords(resume_text, jd_keywords)
     return jsonify(results)
 
-# Yeh function app.py me replace karein@app.route("/generate-ai-resume", methods=["POST"])
+# Yeh function app.py me replace karein
+@app.route("/generate-ai-resume", methods=["POST"])
 def generate_ai_resume():
     try:
         data = request.get_json()
@@ -690,21 +691,17 @@ def generate_ai_resume():
         user_info = {key: data.get(key, "") for key in contact_fields}
         section_data = {key: value for key, value in data.items() if key not in contact_fields}
 
+        # Generate smart content from keywords
         smart_content = generate_smart_resume_from_keywords(section_data)
-        is_pdf = request.args.get('format') == 'pdf'  # Add query param ?format=pdf for PDF generation
-        html = generate_full_ai_resume_html(user_info, smart_content, is_pdf)
 
-        if is_pdf:
-            pdf = pdfkit.from_string(html, False)
-            response = make_response(pdf)
-            response.headers['Content-Type'] = 'application/pdf'
-            response.headers['Content-Disposition'] = 'attachment; filename=imran_ansari_resume.pdf'
-            return response
+        # Generate HTML with updated function
+        html = generate_full_ai_resume_html(user_info, smart_content)
+
         return jsonify({"success": True, "html": html})
     except Exception as e:
         import traceback
         traceback.print_exc()  # Debugging ke liye traceback print karen
-        return jsonify({"error": "❌ Exception in generate-ai-resume: {} - {}".format(type(e).__name__, str(e))}), 500
+        return jsonify({"error": f"❌ Exception in generate-ai-resume: {type(e).__name__} - {str(e)}"}), 500
 
 @app.route('/convert-format', methods=['POST'])
 def convert_format():

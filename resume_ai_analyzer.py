@@ -1070,6 +1070,7 @@ def generate_smart_resume_from_keywords(data: dict) -> dict:
     client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     smart_resume = {}
 
+    # <<< SIRF SKILLS KE PROMPT KO BEHTAR KIYA GAYA HAI >>>
     sections = {
         "summary": "Write a concise, impactful 2-3 line professional summary for a resume. Focus on key skills, experience, and career goals. If input is empty or insufficient, return ONLY an empty string. DO NOT use headings like 'Summary:'.",
         "experience": """For each work experience entry, convert the raw input into a list of 3-5 *very concise, action-verb-driven bullet points* for a resume. Each bullet point should be a single line, start with an action verb, and focus on quantifiable achievements and key responsibilities. Do NOT include job titles, companies, or dates in this output; ONLY the bullet points. If input is empty or insufficient, return ONLY an empty string.""",
@@ -1104,6 +1105,7 @@ Certified Kubernetes Administrator (CKA), Linux Foundation, 2022""",
         "publications": "Expand these publication titles and give a brief context suitable for a resume, using bullet points if multiple. If input is empty or insufficient, return ONLY an empty string.",
         "patents": "Describe patents briefly and professionally, using bullet points if multiple. If input is empty or insufficient, return ONLY an empty string.",
     }
+    # <<< BAAKI FUNCTION WAISA HI RAHEGA >>>
 
     for key, instruction in sections.items():
         value = data.get(key, "").strip()
@@ -1156,7 +1158,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
 
     def list_to_html(items_string):
         """
-        Smarter version to handle subheadings and multi-skill lines, ensuring proper rendering.
+        Smarter version to handle subheadings and multi-skill lines.
         """
         if not items_string:
             return ""
@@ -1183,11 +1185,11 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             # Handle subheadings (e.g., "Technical Skills:")
             if line.strip().endswith(':'):
                 if current_subheading:
-                    html_parts.append("</ul>")
+                    html_parts.append(f"</ul>")
                 current_subheading = line.strip()
                 html_parts.append(f"<h3 contenteditable=\"true\">{current_subheading}</h3><ul>")
             else:
-                # Split line by common delimiters and ensure each skill is a separate <li>
+                # Split line by common delimiters like comma, asterisk, or multiple spaces
                 skills = re.split(r'[,*•\t]+', line)
                 for skill in skills:
                     clean_skill = skill.strip().lstrip('-• ').strip()
@@ -1295,24 +1297,16 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
 
     title = smart_content.get("summary", "").split("\n")[0] if smart_content.get("summary") else jobTitle
 
-    # Contact info with icon/text toggle
-    contact_html = ""
-    if phone.strip():
-        contact_html += f"<p contenteditable='true'><i class='fas fa-phone-alt'></i> {phone}</p>" if not is_pdf else f"<p contenteditable='true'>📞 {phone}</p>"
-    if email.strip():
-        contact_html += f"<p contenteditable='true'><i class='fas fa-envelope'></i> {email}</p>" if not is_pdf else f"<p contenteditable='true'>📧 {email}</p>"
-    if location.strip():
-        contact_html += f"<p contenteditable='true'><i class='fas fa-map-marker-alt'></i> {location}</p>" if not is_pdf else f"<p contenteditable='true'>📍 {location}</p>"
-    if linkedin.strip():
-        contact_html += f"<p contenteditable='true'><i class='fab fa-linkedin'></i> <a href='{linkedin}' target='_blank'>{linkedin}</a></p>" if not is_pdf else f"<p contenteditable='true'>🔗 <a href='{linkedin}' target='_blank'>{linkedin}</a></p>"
-
     return f"""
     <div class="resume-container">
         <div class="content-wrapper">
             <aside class="resume-sidebar">
                 <div class="contact-info-sidebar preview-section">
                     <h3 contenteditable="true">Contact</h3>
-                    {contact_html}
+                    {phone.strip() and f"<p contenteditable='true'><i class='fas fa-phone-alt'></i> {phone}</p>" or ""}
+                    {email.strip() and f"<p contenteditable='true'><i class='fas fa-envelope'></i> {email}</p>" or ""}
+                    {location.strip() and f"<p contenteditable='true'><i class='fas fa-map-marker-alt'></i> {location}</p>" or ""}
+                    {linkedin.strip() and f"<p contenteditable='true'><i class='fab fa-linkedin'></i> <a href='{linkedin}' target='_blank'>{linkedin}</a></p>" or ""}
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Skills</h2>
