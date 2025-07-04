@@ -1147,75 +1147,62 @@ Output:
     return smart_resume
 
 
-def list_to_html(items_string):
-    if not items_string:
-        return ""
+def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
+    """
+    Ye function AI-generated resume content ko ek proper HTML resume format me convert karta hai.
+    Left section: contact, skills, languages, certifications, etc.
+    Right section: summary, experience, education, projects, etc.
+    """
+    import re
 
-    # Ensure items_string is a simple list of lines
-    if isinstance(items_string, list):
-        lines = [str(item).strip() for item in items_string if str(item).strip()]
-    elif isinstance(items_string, str):
-        lines = [line.strip() for line in items_string.split('\n') if line.strip()]
-    else:
-        return ""
+    def list_to_html(items_string):
+        """
+        Smarter version to handle subheadings and multi-skill lines.
+        """
+        if not items_string:
+            return ""
 
-    html_parts = []
-    current_subheading = None
-    for line in lines:
-        # Filter out empty or insufficient AI output messages
-        lower_line = line.lower()
-        if lower_line in [
-            "input is empty or insufficient.",
-            "no skills provided.",
-            "no certifications found.",
-            "no education details provided.",
-            "no projects found.",
-            "no languages provided.",
-            "i'm sorry, but i cannot generate certifications without any input.",
-            "the input provided seems to be incomplete.",
-            "kindly provide the education details that need to be reformatted in a standard resume format.",
-            "not provided.",
-            "empty"
-        ] or "i'm sorry, but i cannot" in lower_line or "kindly provide the" in lower_line:
-            continue
-
-        # Handle subheadings (e.g., "Technical Skills:")
-        if line.strip().endswith(':'):
-            if current_subheading:
-                html_parts.append(f"</ul>") # Close previous list if any
-            current_subheading = line.strip()
-            html_parts.append(f"<h4 contenteditable=\"true\" class=\"category-heading\">{current_subheading}</h4><ul>") # Use h4 with class
+        if isinstance(items_string, list):
+            lines = [str(item).strip() for item in items_string if str(item).strip()]
+        elif isinstance(items_string, str):
+            lines = [line.strip() for line in items_string.split('\n') if line.strip()]
         else:
-            # Split line by common delimiters to ensure one skill per li
-            # This handles cases where AI might output "Skill1, Skill2" or "Skill1* Skill2"
-            skills_on_line = re.split(r'[,*•\t]+', line)
-            for skill in skills_on_line:
-                clean_skill = skill.strip().lstrip('-• ').strip()
-                if clean_skill:
-                    html_parts.append(f"<li contenteditable=\"true\">{clean_skill}</li>")
+            return ""
 
-    if current_subheading: # Close the last ul if there was a subheading
-        html_parts.append("</ul>")
-    elif not current_subheading and html_parts: # If no subheading but list items were added, ensure ul wrap
-        # If the items were added without a subheading (e.g., direct skills list), wrap them in ul
-        if not html_parts[0].startswith("<ul"): # Avoid double wrap
-            html_parts.insert(0, "<ul>")
+        html_parts = []
+        current_subheading = None
+        for line in lines:
+            # Ignore generic filler messages
+            if line.lower() in [
+                "input is empty or insufficient.", "no skills provided.", "no certifications found.",
+                "no education details provided.", "no projects found.", "no languages provided.",
+                "not provided.", "empty"
+            ] or "i'm sorry, but i cannot" in line.lower() or "kindly provide the" in line.lower():
+                continue
+
+            if line.strip().endswith(':'):
+                if current_subheading:
+                    html_parts.append("</ul>")
+                current_subheading = line.strip()
+                html_parts.append(f"<h3 contenteditable=\"true\">{current_subheading}</h3><ul>")
+            else:
+                # Smarter handling: treat full line as single skill if no subheading
+                skills = [line] if current_subheading is None else re.split(r"[,*•\t\-–]+", line)
+                for skill in skills:
+                    clean_skill = skill.strip().strip('*').strip()
+                    if clean_skill:
+                        html_parts.append(f"<li contenteditable=\"true\">{clean_skill}</li>")
+
+        if current_subheading:
             html_parts.append("</ul>")
 
-    return "".join(html_parts)
-
-# --- generate_full_ai_resume_html function (Update only this function) ---
-# PASTE THIS ENTIRE FUNCTION INTO YOUR resume_ai_analyzer.py FILE,
-# REPLACING THE EXISTING generate_full_ai_resume_html FUNCTION.
-
-def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
-    # (list_to_html and parse_complex_section_html helper functions would be defined above this)
+        return "".join(html_parts)
 
     def parse_complex_section_html(section_data, is_education=False):
         if not section_data:
             return ""
 
-        html_output = "" 
+        html_output = ""
 
         if isinstance(section_data, str):
             lower_section_data = section_data.lower().strip()
@@ -1225,15 +1212,14 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                 "not provided.",
                 "empty"
             ]:
-                return "" # Return empty if it's just an error/empty message
+                return ""
 
             lines = [line.strip() for line in section_data.split('\n') if line.strip()]
-            
             current_item = {"title": "", "details": []}
             all_items = []
             
             for line in lines:
-                if not line.strip().lstrip('-• ').strip(): 
+                if not line.strip().lstrip('-• ').strip():
                     continue
 
                 if line.strip().startswith(('-', '•')):
@@ -1242,21 +1228,21 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                     current_item["title"] = line.strip()
                 elif current_item["title"] and not current_item["details"]:
                     current_item["details"].append(line.strip())
-                else: 
+                else:
                     all_items.append(current_item)
                     current_item = {"title": line.strip(), "details": []}
-            if current_item["title"] or current_item["details"]: 
+            if current_item["title"] or current_item["details"]:
                 all_items.append(current_item)
             
-            section_data_processed = all_items 
+            section_data_processed = all_items
 
-            if not section_data_processed: 
+            if not section_data_processed:
                 return f"<p contenteditable=\"true\">{section_data.strip()}</p>" if section_data.strip() else ""
 
         elif isinstance(section_data, list):
-             section_data_processed = section_data
+            section_data_processed = section_data
         else:
-             return "" 
+            return ""
 
         for item in section_data_processed:
             title_text = item.get("title", '')
@@ -1268,7 +1254,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             item_html = ""
 
             item_html += f"<div class='item-header'>"
-            item_html += f"<h4 contenteditable=\"true\">{title_text}</h4>" 
+            item_html += f"<h4 contenteditable=\"true\">{title_text}</h4>"
             
             item_html += f"<p class='item-meta'>"
             if company_text:
@@ -1276,13 +1262,13 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             if duration_text:
                 item_html += f"<span class='duration' contenteditable=\"true\">{duration_text}</span>"
             item_html += "</p>"
-            item_html += "</div>" 
+            item_html += "</div>"
 
             if description_text:
                 item_html += f"<p class='item-description' contenteditable=\"true\">{description_text}</p>"
 
             if details_list:
-                if isinstance(details_list, str): 
+                if isinstance(details_list, str):
                     details_list_final = [d.strip().lstrip('-• ').strip() for d in details_list.split('\n') if d.strip()]
                 elif isinstance(details_list, list):
                     details_list_final = [d.strip().lstrip('-• ').strip() for d in details_list if d.strip()]
@@ -1299,18 +1285,26 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
         
         return html_output
 
+    # Extract personal details more reliably
+    name = user_info.get("name", "Your Name")
+    phone = user_info.get("phone", "")
+    email = user_info.get("email", "")
+    location = user_info.get("location", "")
+    linkedin = user_info.get("linkedin", "")
+    jobTitle = user_info.get("jobTitle", "")
 
-    # --- UPDATED HTML STRUCTURE FOR BETTER LAYOUT AND ICONS ---
+    title = smart_content.get("summary", "").split("\n")[0] if smart_content.get("summary") else jobTitle
+
     return f"""
     <div class="resume-container">
         <div class="content-wrapper">
             <aside class="resume-sidebar">
                 <div class="contact-info-sidebar preview-section">
                     <h3 contenteditable="true">Contact</h3>
-                    {user_info.get('phone', '').strip() and f"<p contenteditable='true'><i class='fas fa-phone-alt'></i> {user_info['phone']}</p>" or ""} {/* Removed 'Phone: ' label */}
-                    {user_info.get('email', '').strip() and f"<p contenteditable='true'><i class='fas fa-envelope'></i> {user_info['email']}</p>" or ""} {/* Removed 'Email: ' label */}
-                    {user_info.get('location', '').strip() and f"<p contenteditable='true'><i class='fas fa-map-marker-alt'></i> {user_info['location']}</p>" or ""} {/* Removed 'Location: ' label */}
-                    {user_info.get('linkedin', '').strip() and f"<p contenteditable='true'><i class='fab fa-linkedin'></i> {user_info['linkedin']}</p>" or ""} {/* Removed 'LinkedIn: ' label */}
+                    {phone.strip() and f"<p contenteditable='true'><i class='fas fa-phone-alt'></i> {phone}</p>" or ""}
+                    {email.strip() and f"<p contenteditable='true'><i class='fas fa-envelope'></i> {email}</p>" or ""}
+                    {location.strip() and f"<p contenteditable='true'><i class='fas fa-map-marker-alt'></i> {location}</p>" or ""}
+                    {linkedin.strip() and f"<p contenteditable='true'><i class='fab fa-linkedin'></i> <a href='{linkedin}' target='_blank'>{linkedin}</a></p>" or ""}
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Skills</h2>
@@ -1327,8 +1321,8 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             </aside>
             <main class="main-content">
                 <div class="name-title-header">
-                    <h1 contenteditable="true" id="preview-name">{user_info.get('name', '')}</h1>
-                    {user_info.get('jobTitle', '').strip() and f"<p class='job-title' contenteditable='true' id='preview-title'>{user_info['jobTitle']}</p>" or ""}
+                    <h1 contenteditable="true" id="preview-name">{name}</h1>
+                    {jobTitle.strip() and f"<p class='job-title' contenteditable='true' id='preview-title'>{jobTitle}</p>" or ""}
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Profile Summary</h2>
