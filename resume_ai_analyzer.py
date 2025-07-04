@@ -1160,12 +1160,9 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     """
     Smarter version to handle subheadings and multi-skill lines.
     """
-    import re
-
     if not items_string:
         return ""
 
-    # Normalize input into lines
     if isinstance(items_string, list):
         lines = [str(item).strip() for item in items_string if str(item).strip()]
     elif isinstance(items_string, str):
@@ -1175,34 +1172,32 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
 
     html_parts = []
     current_subheading = None
-
     for line in lines:
-        # Skip generic invalid messages
-        if any(bad in line.lower() for bad in [
-            "no skills provided", "invalid input", "empty", "not provided", "input is empty"
-        ]) or "i'm sorry" in line.lower() or "kindly provide the" in line.lower():
+        # Ignore generic filler messages
+        if line.lower() in [
+            "input is empty or insufficient.", "no skills provided.", "no certifications found.",
+            "no education details provided.", "no projects found.", "no languages provided.",
+            "not provided.", "empty"
+        ] or "i'm sorry, but i cannot" in line.lower() or "kindly provide the" in line.lower():
             continue
 
-        # Handle subheading like "Technical Skills:"
-        if line.strip().endswith(":"):
+        if line.strip().endswith(':'):
             if current_subheading:
                 html_parts.append("</ul>")
             current_subheading = line.strip()
             html_parts.append(f"<h3 contenteditable=\"true\">{current_subheading}</h3><ul>")
-            continue
-
-        # Split using various delimiters
-        skills = re.split(r"[,*•|/\t\-–]+", line)
-        for skill in skills:
-            clean_skill = skill.strip().strip('*').strip()
-            if clean_skill:
-                html_parts.append(f"<li contenteditable=\"true\">{clean_skill}</li>")
+        else:
+            # Safely split multiple skills in one line
+            parts = re.split(r"[,*•\t\-–]+", line)
+            for skill in parts:
+                clean = skill.strip().strip('*').strip()
+                if clean:
+                    html_parts.append(f"<li contenteditable=\"true\">{clean}</li>")
 
     if current_subheading:
         html_parts.append("</ul>")
 
     return "".join(html_parts)
-
 
     def parse_complex_section_html(section_data, is_education=False):
         if not section_data:
