@@ -692,17 +692,17 @@ def generate_ai_resume():
         user_info = {key: data.get(key, "") for key in contact_fields}
         section_data = {key: value for key, value in data.items() if key not in contact_fields}
 
-        # generate_smart_resume_from_keywords function call pehle se hi sahi hai
-        smart_content = generate_smart_resume_from_keywords(section_data) #
+        # Generate smart content from keywords
+        smart_content = generate_smart_resume_from_keywords(section_data)
 
-        # generate_full_ai_resume_html को सही arguments के साथ कॉल करें।
-        html = generate_full_ai_resume_html(user_info, smart_content) #
+        # Generate HTML with updated function
+        html = generate_full_ai_resume_html(user_info, smart_content)
 
-        return jsonify({"success": True, "html": html}) #
+        return jsonify({"success": True, "html": html})
     except Exception as e:
         import traceback
-        traceback.print_exc() # Debugging के लिए traceback print करें
-        return jsonify({"error": f"❌ Exception in generate-ai-resume: {type(e).__name__} - {str(e)}"}), 500 #
+        traceback.print_exc()  # Debugging ke liye traceback print karen
+        return jsonify({"error": f"❌ Exception in generate-ai-resume: {type(e).__name__} - {str(e)}"}), 500
 
 @app.route('/convert-format', methods=['POST'])
 def convert_format():
