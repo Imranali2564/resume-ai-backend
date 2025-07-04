@@ -1186,12 +1186,12 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                 current_subheading = line.strip()
                 html_parts.append(f"<h3 contenteditable=\"true\">{current_subheading}</h3><ul>")
             else:
-                # Safely split multiple skills in one line
-                parts = re.split(r"[,*•\t\-–]+", line)
-                for skill in parts:
-                    clean = skill.strip().strip('*').strip()
-                    if clean:
-                        html_parts.append(f"<li contenteditable=\"true\">{clean}</li>")
+                # Smarter handling: treat full line as single skill if no subheading
+                skills = [line] if current_subheading is None else re.split(r"[,*•\t\-–]+", line)
+                for skill in skills:
+                    clean_skill = skill.strip().strip('*').strip()
+                    if clean_skill:
+                        html_parts.append(f"<li contenteditable=\"true\">{clean_skill}</li>")
 
         if current_subheading:
             html_parts.append("</ul>")
