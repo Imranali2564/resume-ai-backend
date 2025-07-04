@@ -1157,48 +1157,50 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     import re
 
     def list_to_html(items_string):
-        """
-        Smarter version to handle subheadings and multi-skill lines.
-        """
-        if not items_string:
-            return ""
+    """
+    Smarter version to handle subheadings and multi-skill lines robustly.
+    """
+    import re
+    if not items_string:
+        return ""
 
-        # Ensure items_string is a simple list of lines
-        if isinstance(items_string, list):
-            lines = [str(item).strip() for item in items_string if str(item).strip()]
-        elif isinstance(items_string, str):
-            lines = [line.strip() for line in items_string.split('\n') if line.strip()]
-        else:
-            return ""
+    if isinstance(items_string, list):
+        lines = [str(item).strip() for item in items_string if str(item).strip()]
+    elif isinstance(items_string, str):
+        lines = [line.strip() for line in items_string.split('\n') if line.strip()]
+    else:
+        return ""
 
-        html_parts = []
-        current_subheading = None
-        for line in lines:
-            # Check for generic AI filler messages
-            if line.lower() in [
-                "input is empty or insufficient.", "no skills provided.", "no certifications found.",
-                "no education details provided.", "no projects found.", "no languages provided.",
-                "not provided.", "empty"
-            ] or "i'm sorry, but i cannot" in line.lower() or "kindly provide the" in line.lower():
-                continue
+    html_parts = []
+    current_subheading = None
 
-            # Handle subheadings (e.g., "Technical Skills:")
-            if line.strip().endswith(':'):
-                if current_subheading:
-                    html_parts.append(f"</ul>")
-                current_subheading = line.strip()
-                html_parts.append(f"<h3 contenteditable=\"true\">{current_subheading}</h3><ul>")
-            else:
-                # Split line by common delimiters like comma, asterisk, or multiple spaces
-                skills = re.split(r'[,*•\t]+', line)
-                for skill in skills:
-                    clean_skill = skill.strip().lstrip('-• ').strip()
-                    if clean_skill:
-                        html_parts.append(f"<li contenteditable=\"true\">{clean_skill}</li>")
+    for line in lines:
+        # Skip filler
+        if any(skip in line.lower() for skip in [
+            "no skills provided", "invalid input", "empty", "not provided", "input is empty"
+        ]) or "i'm sorry" in line.lower():
+            continue
 
-        if current_subheading:
-            html_parts.append("</ul>")
-        return "".join(html_parts)
+        # Handle subheading
+        if line.strip().endswith(":"):
+            if current_subheading:
+                html_parts.append("</ul>")
+            current_subheading = line.strip()
+            html_parts.append(f"<h3 contenteditable=\"true\">{current_subheading}</h3><ul>")
+            continue
+
+        # ✅ Split aggressively using multiple separators
+        skills = re.split(r"[,*•|/\t\-–]+", line)
+        for skill in skills:
+            clean_skill = skill.strip().strip('*').strip()
+            if clean_skill:
+                html_parts.append(f"<li contenteditable=\"true\">{clean_skill}</li>")
+
+    if current_subheading:
+        html_parts.append("</ul>")
+
+    return "".join(html_parts)
+
 
     def parse_complex_section_html(section_data, is_education=False):
         if not section_data:
