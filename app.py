@@ -682,9 +682,7 @@ def optimize_keywords():
     results = compare_resume_with_keywords(resume_text, jd_keywords)
     return jsonify(results)
 
-# Yeh function app.py me replace karein
-
-@app.route("/generate-ai-resume", methods=["POST"])
+# Yeh function app.py me replace karein@app.route("/generate-ai-resume", methods=["POST"])
 def generate_ai_resume():
     try:
         data = request.get_json()
