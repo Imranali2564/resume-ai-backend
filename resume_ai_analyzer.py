@@ -1086,7 +1086,7 @@ Delhi University, Delhi, India
 • Relevant coursework: Data Structures, Algorithms, Machine Learning
 • GPA: 3.8/4.0""",
         "skills": """From the following text, extract ONLY the individual skills. List each skill on a new line. If there are categories like 'Technical Skills', list the category on its own line ending with a colon.
-        **Crucial Rule: DO NOT combine skills on one line. Never output something like "JavaScript* React".**
+        **Crucial Rule: DO NOT combine skills on one line. Never output something like \"JavaScript* React\".**
         Correct Example:
         Technical Skills:
         JavaScript
@@ -1109,7 +1109,7 @@ Certified Kubernetes Administrator (CKA), Linux Foundation, 2022""",
 
     for key, instruction in sections.items():
         value = data.get(key, "").strip()
-        
+
         # Skip AI call if input is empty to save resources
         if not value:
             smart_resume[key] = ""
@@ -1128,13 +1128,12 @@ Output:
                 timeout=20
             )
             result = response.choices[0].message.content.strip()
-            
-            # Additional safeguard: If AI still returns generic empty phrases, force empty string
+
             if result.lower() in [
-                "no skills provided.", "no certifications found.", "no education details provided.", 
-                "no projects found.", "no languages provided.", "invalid input.", 
-                "i'm sorry, but i cannot generate certifications without any input.", 
-                "the input provided seems to be incomplete.", 
+                "no skills provided.", "no certifications found.", "no education details provided.",
+                "no projects found.", "no languages provided.", "invalid input.",
+                "i'm sorry, but i cannot generate certifications without any input.",
+                "the input provided seems to be incomplete.",
                 "kindly provide the education details that need to be reformatted in a standard resume format.",
                 "empty"
             ]:
@@ -1143,10 +1142,10 @@ Output:
                 smart_resume[key] = result
 
         except Exception as e:
-            # logger.error(f"Error generating smart content for {key}: {e}") # Uncomment if you have logger setup
-            smart_resume[key] = value # On error, fallback to original user input
+            smart_resume[key] = value
 
     return smart_resume
+
 
 def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     """
