@@ -1084,13 +1084,7 @@ Delhi University, Delhi, India
 2019
 • Relevant coursework: Data Structures, Algorithms, Machine Learning
 • GPA: 3.8/4.0""",
-        # =========================================================================
-        # START: UPDATED SKILLS PROMPT
-        # =========================================================================
-        "skills": """From the user's input, extract all technical and soft skills. Return them as a single, clean, comma-separated string. For example: 'Java, Python, React, Project Management, Team Leadership'. If the input is empty, return an empty string.""",
-        # =========================================================================
-        # END: UPDATED SKILLS PROMPT
-        # =========================================================================
+        "skills": """List these skills as concise, individual bullet points. If the input explicitly provides categories (like 'Technical Skills:', 'Soft Skills:'), then include the category name on its own line, followed by bullet points for skills under that category. Otherwise, just list skills as bullet points. If input is empty or insufficient, return ONLY an empty string.""",
         "projects": """For each project entry, provide the concise project title on one line, followed by a list of 2-4 *very concise, action-verb-driven bullet points*. Each bullet should highlight technologies used, your role, and *key achievements/outcomes, especially quantifiable results*. Do NOT include numbering (1., 2., 3.) or labels like 'Project Description:' or 'Outcome/Result:'. The project title should be clearly distinguishable (e.g., by being on its own line). If input is empty or insufficient, return ONLY an empty string.""",
         "certifications": """List each certification clearly, one per line. Include certification name, issuing body, and year if available. If input is empty or insufficient, return ONLY an empty string.
 Example:
@@ -1151,27 +1145,30 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     Right section: summary, experience, education, projects, etc.
     """
 
-    def list_to_html(items_string, is_skills=False):
-        if not items_string or not isinstance(items_string, str):
-            items = []
+    def list_to_html(items_string):
+        if isinstance(items_string, list):
+            items = [item.strip().lstrip('-• ').strip() for item in items_string if item.strip()]
+        elif isinstance(items_string, str):
+            items = [item.strip().lstrip('-• ').strip() for item in items_string.split('\n') if item.strip()]
         else:
-            # START: UPDATED SKILLS PARSING LOGIC
-            if is_skills:
-                # Skills ko comma se todein
-                items = [item.strip() for item in items_string.split(',') if item.strip()]
-            else:
-                # Baaki lists ko newline se todein
-                items = [item.strip().lstrip('-• ').strip() for item in items_string.split('\n') if item.strip()]
-            # END: UPDATED SKILLS PARSING LOGIC
-
+            items = []
+        
         # Filter out empty or insufficient AI output messages
         filtered_items = []
         for item in items:
             lower_item = item.lower()
             if lower_item not in [
-                "input is empty or insufficient.", "no skills provided.",
-                "no certifications found.", "no education details provided.",
-                "no projects found.", "no languages provided.", "not provided.", "empty"
+                "input is empty or insufficient.",
+                "no skills provided.",
+                "no certifications found.",
+                "no education details provided.",
+                "no projects found.",
+                "no languages provided.",
+                "i'm sorry, but i cannot generate certifications without any input.",
+                "the input provided seems to be incomplete.",
+                "kindly provide the education details that need to be reformatted in a standard resume format.",
+                "not provided.",
+                "empty"
             ] and item.strip():
                 filtered_items.append(item)
         
@@ -1185,12 +1182,15 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
         html_output = "" 
 
         if isinstance(section_data, str):
+            # Filter out empty/insufficient messages at the section level
             lower_section_data = section_data.lower().strip()
             if lower_section_data in [
-                "sorry, but the input provided is insufficient.", "input is empty or insufficient.",
-                "not provided.", "empty"
+                "sorry, but the input provided is insufficient.",
+                "input is empty or insufficient.",
+                "not provided.",
+                "empty"
             ]:
-                return ""
+                return "" # Return empty if it's just an error/empty message
 
             lines = [line.strip() for line in section_data.split('\n') if line.strip()]
             
@@ -1265,42 +1265,35 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
         return html_output
 
 
-    # --- HTML STRUCTURE ---
-    # START: UPDATED list_to_html call for skills
-    skills_html = list_to_html(smart_content.get('skills', ''), is_skills=True)
-    # END: UPDATED list_to_html call for skills
-    
-    languages_html = list_to_html(smart_content.get('languages', ''))
-    certifications_html = list_to_html(smart_content.get('certifications', ''))
-
+    # --- UPDATED HTML STRUCTURE FOR BETTER LAYOUT AND ICONS ---
     return f"""
     <div class="resume-container">
         <div class="content-wrapper">
             <aside class="resume-sidebar">
                 <div class="contact-info-sidebar preview-section">
                     <h3 contenteditable="true">Contact</h3>
-                    {user_info.get('phone', '').strip() and f"<p contenteditable='true'><i class='fas fa-phone-alt'></i> {user_info['phone']}</p>" or ""}
-                    {user_info.get('email', '').strip() and f"<p contenteditable='true'><i class='fas fa-envelope'></i> {user_info['email']}</p>" or ""}
-                    {user_info.get('location', '').strip() and f"<p contenteditable='true'><i class='fas fa-map-marker-alt'></i> {user_info['location']}</p>" or ""}
-                    {user_info.get('linkedin', '').strip() and f"<p contenteditable='true'><i class='fab fa-linkedin'></i> <a href='{user_info['linkedin']}' target='_blank'>{user_info['linkedin']}</a></p>" or ""}
+                    {user_info.get('phone', '').strip() and f"<p contenteditable='true'><i class='fas fa-phone-alt'></i> Phone: {user_info['phone']}</p>" or ""}
+                    {user_info.get('email', '').strip() and f"<p contenteditable='true'><i class='fas fa-envelope'></i> Email: {user_info['email']}</p>" or ""}
+                    {user_info.get('location', '').strip() and f"<p contenteditable='true'><i class='fas fa-map-marker-alt'></i> Location: {user_info['location']}</p>" or ""}
+                    {user_info.get('linkedin', '').strip() and f"<p contenteditable='true'><i class='fab fa-linkedin'></i> LinkedIn: <a href='{user_info['linkedin']}' target='_blank'>{user_info['linkedin']}</a></p>" or ""}
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Skills</h2>
-                    <ul>{skills_html}</ul>
+                    <ul>{list_to_html(smart_content.get('skills', ''))}</ul>
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Languages</h2>
-                    <ul>{languages_html}</ul>
+                    <ul>{list_to_html(smart_content.get('languages', ''))}</ul>
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Certifications</h2>
-                    <ul>{certifications_html}</ul>
+                    <ul>{list_to_html(smart_content.get('certifications', ''))}</ul>
                 </div>
             </aside>
             <main class="main-content">
                 <div class="name-title-header">
                     <h1 contenteditable="true" id="preview-name">{user_info.get('name', '')}</h1>
-                    {user_info.get('jobTitle', '').strip() and f"<span class='job-title' contenteditable='true' id='preview-title'>{user_info['jobTitle']}</span>" or ""}
+                    {user_info.get('jobTitle', '').strip() and f"<p class='job-title' contenteditable='true' id='preview-title'>{user_info['jobTitle']}</p>" or ""}
                 </div>
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Profile Summary</h2>
