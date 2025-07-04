@@ -1146,7 +1146,7 @@ Output:
 
     return smart_resume
 
-def generate_full_ai_resume_html(user_info: dict, smart_content: dict, is_pdf=False) -> str:
+def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     """
     Ye function AI-generated resume content ko ek proper HTML resume format me convert karta hai.
     Left section: contact, skills, languages, certifications, etc.
