@@ -1013,13 +1013,20 @@ def ask_ai_handler():
     # Asli POST request ko handle karna
     if request.method == 'POST':
         try:
+            # --- OPENAI CLIENT FUNCTION KE ANDAR SET KIYA GAYA HAI ---
+            # Yeh 'client is not defined' error ko theek karega
+            client = OpenAI(
+                api_key=os.environ.get("OPENAI_API_KEY"),
+            )
+            # ---------------------------------------------------------
+
             data = request.get_json()
             if not data or 'question' not in data:
                 return jsonify({"success": False, "error": "Question is missing in the payload"}), 400
 
             question = data['question']
 
-            # --- YAHAN NAYA, SMART SYSTEM PROMPT ADD KIYA GAYA HAI ---
+            # --- SMART SYSTEM PROMPT ---
             system_prompt = """
             You are 'ProBot', the friendly and helpful AI assistant for ResumeFixerPro.com.
             Your primary goal is to assist users with questions about the website's tools and provide helpful, resume-related advice.
@@ -1030,23 +1037,23 @@ def ask_ai_handler():
             **About the Website:**
             - Founder: Imran Ali
             - Country of Origin: India
-            - Purpose: The main goal is to provide powerful, high-quality resume tools for free to help everyone, from students to professionals, in their career journey. The mission is to level the playing field so everyone has access to tools that can help them get a good job.
+            - Purpose: The main goal is to provide powerful, high-quality resume tools for free to help everyone, from students to professionals, in their career journey.
 
             **Our Tools (9 in total):**
-            1.  **AI Resume Generator:** Creates a complete, professional resume from scratch.
-            2.  **Cover Letter Generator:** Creates a tailored cover letter for a job.
-            3.  **Resume Score Checker:** Analyzes a resume and gives a score out of 100.
-            4.  **ATS Compatibility Checker:** Checks if a resume is friendly for company robots (ATS).
-            5.  **Format Converter:** Converts resume files between formats like PDF and DOCX.
-            6.  **Formatting Fixer:** Automatically corrects formatting errors.
-            7.  **Keyword Optimizer:** Suggests important keywords from a job description.
-            8.  **Job Description Analyzer:** Extracts key skills from a job description.
-            9.  **Summary Generator:** Creates a professional summary or objective statement.
+            1.  AI Resume Generator
+            2.  Cover Letter Generator
+            3.  Resume Score Checker
+            4.  ATS Compatibility Checker
+            5.  Format Converter
+            6.  Formatting Fixer
+            7.  Keyword Optimizer
+            8.  Job Description Analyzer
+            9.  Summary Generator
 
             **Contact Information:**
             - For any detailed help, users can visit the contact page: https://resumefixerpro.com/contact-us/
             
-            When a user asks a question, use this information to provide an accurate response. If the question is general (e.g., "what is a good font?"), provide a helpful, brief answer.
+            When a user asks a question, use this information to provide an accurate response.
             """
 
             # OpenAI se jawab paane ke liye
