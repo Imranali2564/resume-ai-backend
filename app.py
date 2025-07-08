@@ -1003,7 +1003,70 @@ Message:
     except Exception as e:
         logger.error(f"Error sending message: {str(e)}")
         return jsonify({"error": f"Failed to send message: {str(e)}"}), 500
+    
+@app.route('/ask-ai', methods=['POST', 'OPTIONS'])
+def ask_ai_handler():
+    # CORS preflight request ko handle karna
+    if request.method == 'OPTIONS':
+        return '', 200
+    
+    # Asli POST request ko handle karna
+    if request.method == 'POST':
+        try:
+            data = request.get_json()
+            if not data or 'question' not in data:
+                return jsonify({"success": False, "error": "Question is missing in the payload"}), 400
 
+            question = data['question']
+
+            # --- YAHAN NAYA, SMART SYSTEM PROMPT ADD KIYA GAYA HAI ---
+            system_prompt = """
+            You are 'ProBot', the friendly and helpful AI assistant for ResumeFixerPro.com.
+            Your primary goal is to assist users with questions about the website's tools and provide helpful, resume-related advice.
+            Your personality is encouraging, professional, and supportive. Always keep your answers concise.
+
+            Here is the key information about ResumeFixerPro.com you must know:
+
+            **About the Website:**
+            - Founder: Imran Ali
+            - Country of Origin: India
+            - Purpose: The main goal is to provide powerful, high-quality resume tools for free to help everyone, from students to professionals, in their career journey. The mission is to level the playing field so everyone has access to tools that can help them get a good job.
+
+            **Our Tools (9 in total):**
+            1.  **AI Resume Generator:** Creates a complete, professional resume from scratch.
+            2.  **Cover Letter Generator:** Creates a tailored cover letter for a job.
+            3.  **Resume Score Checker:** Analyzes a resume and gives a score out of 100.
+            4.  **ATS Compatibility Checker:** Checks if a resume is friendly for company robots (ATS).
+            5.  **Format Converter:** Converts resume files between formats like PDF and DOCX.
+            6.  **Formatting Fixer:** Automatically corrects formatting errors.
+            7.  **Keyword Optimizer:** Suggests important keywords from a job description.
+            8.  **Job Description Analyzer:** Extracts key skills from a job description.
+            9.  **Summary Generator:** Creates a professional summary or objective statement.
+
+            **Contact Information:**
+            - For any detailed help, users can visit the contact page: https://resumefixerpro.com/contact-us/
+            
+            When a user asks a question, use this information to provide an accurate response. If the question is general (e.g., "what is a good font?"), provide a helpful, brief answer.
+            """
+
+            # OpenAI se jawab paane ke liye
+            completion = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": question}
+                ]
+            )
+            
+            ai_answer = completion.choices[0].message.content
+            
+            # Jawab ko JSON format mein wapas bhejna
+            return jsonify({"success": True, "answer": ai_answer})
+
+        except Exception as e:
+            logging.error(f"Error in /ask-ai: {str(e)}")
+            return jsonify({"success": False, "error": "An error occurred while processing your question."}), 500
+        
 @app.route('/extract-sections', methods=['POST'])
 def extract_sections():
     try:
