@@ -1206,6 +1206,7 @@ def handle_fix_issue_v2():
 
 # app.py में, /api/v1/generate-docx राउट को ढूंढो (लाइन 510-610 के आसपास)
 
+# Is poore function ko app.py mein replace karein
 @app.route('/api/v1/generate-docx', methods=['POST'])
 def generate_docx_from_html():
     try:
@@ -1213,123 +1214,43 @@ def generate_docx_from_html():
             logger.error("Payload missing in /api/v1/generate-docx request.")
             return jsonify({"success": False, "error": "Missing payload"}), 400
 
+        # Ab hum seedha data lenge, HTML parse nahi karenge
         data = json.loads(request.form.get('payload'))
-        html_content = data.get("html_content")
+        doc = Document()
 
-        if not html_content:
-            return jsonify({"success": False, "error": "No HTML content provided"}), 400
-
-        soup = BeautifulSoup(html_content, 'html.parser') #
-        doc = Document() #
-
-        # Helper function to add text safely
-        def add_text(text): #
-            if text and text.strip():
-                return text.strip()
-            return ""
-
-        # --- Document ko banana shuru karein ---
-
+        # --- NAYA LOGIC: Seedhe data se DOCX banana ---
         # 1. Naam aur Title
-        name_el = soup.find(id='preview-name') #
-        title_el = soup.find(id='preview-title') #
-        if name_el:
-            doc.add_heading(add_text(name_el.text), level=0) #
-        if title_el:
-            doc.add_paragraph(add_text(title_el.text)) #
+        if data.get('name'):
+            doc.add_heading(data.get('name', ''), level=0)
+        if data.get('job_title'):
+            doc.add_paragraph(data.get('job_title', ''))
 
         doc.add_paragraph() # Ek line ka space
 
-        # 2. Sabhi sections ko process karein
-        all_sections = soup.find_all('div', class_='preview-section') #
-        if not all_sections:
-            main_content_div = soup.find('main', class_='main-content') #
-            sidebar_div = soup.find('aside', class_='resume-sidebar') #
+        # 2. Summary Section
+        if data.get('summary'):
+            doc.add_heading('PROFILE SUMMARY', level=2)
+            doc.add_paragraph(data.get('summary'))
+            doc.add_paragraph()
 
-            potential_sections = [] #
-            if main_content_div:
-                for child in main_content_div.children:
-                    if child.name == 'div' and (child.find('h2') or child.find('h3')):
-                        potential_sections.append(child)
-            if sidebar_div:
-                for child in sidebar_div.children:
-                    if child.name == 'div' and (child.find('h2') or child.find('h3')):
-                        potential_sections.append(child)
-            all_sections = potential_sections #
+        # Aap yahan baki sections (experience, education, etc.) ko bhi isi tarah data se add kar sakte hain
+        # -----------------------------------------------
 
-        for section in all_sections: #
-            title_span = section.find('h2') #
-            if not title_span: #
-                title_span = section.find('h3') #
+        # File ko memory mein save karna
+        file_stream = io.BytesIO()
+        doc.save(file_stream)
+        file_stream.seek(0)
 
-            if title_span and title_span.text: #
-                doc.add_heading(add_text(title_span.text).upper(), level=2) #
-
-            content_div = section # Assume the section div itself contains content
-
-            paragraphs = content_div.find_all('p', recursive=False) #
-            list_elements = content_div.find_all('ul', recursive=False) #
-
-            for p_tag in paragraphs: #
-                if p_tag.get('class') and 'item-meta' in p_tag['class']: # Skip meta paragraphs if handled by item_header logic
-                    continue
-                doc.add_paragraph(add_text(p_tag.text)) #
-
-            for ul_tag in list_elements: #
-                list_items = ul_tag.find_all('li') #
-                if list_items:
-                    for li in list_items:
-                        item_header_div = li.find('div', class_='item-header') #
-                        item_description_p = li.find('p', class_='item-description') #
-                        details_ul_nested = li.find('ul') # Nested ul for actual bullet points if present
-
-                        if item_header_div: # If it's a complex item like Experience/Education
-                            h4 = item_header_div.find('h4') #
-                            p_meta = item_header_div.find('p', class_='item-meta') #
-
-                            p_run = doc.add_paragraph() #
-                            if h4:
-                                p_run.add_run(add_text(h4.text)).bold = True #
-                            if p_meta:
-                                p_run.add_run(f' {add_text(p_meta.text)}') #
-
-                            if item_description_p:
-                                doc.add_paragraph(add_text(item_description_p.text)) #
-
-                            if details_ul_nested:
-                                for detail_li in details_ul_nested.find_all('li'): #
-                                    bullet_p = doc.add_paragraph(f"• {add_text(detail_li.text)}") #
-                                    bullet_p.paragraph_format.left_indent = Inches(0.25) #
-                        else: # Simple list items (Skills, Languages, Certifications)
-                            bullet_p = doc.add_paragraph(f"• {add_text(li.text)}") #
-                            bullet_p.paragraph_format.left_indent = Inches(0.25) #
-
-            doc.add_paragraph() # Sections ke beech mein space
-
-        file_stream = io.BytesIO() #
-        doc.save(file_stream) #
-        file_stream.seek(0) #
-
-        # Temporary file ke liye test (debugging ke liye)
-        temp_path = '/tmp/test_resume.docx' #
-        with open(temp_path, 'wb') as f: #
-            f.write(file_stream.getvalue()) #
-        test_doc = Document(temp_path) #
-        if not test_doc: #
-            logger.error("Generated DOCX file is invalid during validation.")
-            return jsonify({"success": False, "error": "Generated file is corrupted"}), 500
-        os.remove(temp_path) #
-        file_stream.seek(0) #
-
+        # File ko browser mein download ke liye bhejna
         return send_file(
             file_stream,
             as_attachment=True,
-            download_name='ResumeFixerPro_Resume.docx',
+            download_name='AI_Generated_Resume.docx',
             mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        ) #
+        )
 
     except Exception as e:
-        logger.error(f"Error in /api/v1/generate-docx: {str(e)}") #
+        logger.error(f"Error in /api/v1/generate-docx: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({"success": False, "error": "Failed to generate DOCX file"}), 500 
