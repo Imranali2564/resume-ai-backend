@@ -1288,6 +1288,16 @@ def generate_docx_from_json():
 # Function to download DOCX from backend (PDF will be client-side now, so no PDF logic here)
 @app.route('/api/v1/generate-ai-docx-from-json', methods=['POST'])
 def generate_ai_docx_from_json():
+    # --- START: DEBUGGING CODE ---
+    # यह कोड हमें बताएगा कि प्रॉक्सी से क्या रिक्वेस्ट आ रही है
+    print("--- HEADERS RECEIVED FROM PROXY ---")
+    print(request.headers)
+    print("--- REQUEST FORM DATA ---")
+    print(request.form)
+    print("--- RAW REQUEST DATA ---")
+    print(request.data)
+    print("--- END OF DEBUG INFO ---")
+    # --- END: DEBUGGING CODE ---
     try:
         if 'payload' not in request.form:
             return jsonify({"success": False, "error": "Missing payload"}), 400
