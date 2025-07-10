@@ -1335,6 +1335,55 @@ def markdown_to_docx_handler():
         traceback.print_exc()
         return jsonify({"success": False, "error": "Failed to convert Markdown to DOCX"}), 500
     
+@app.route('/api/v1/markdown-to-docx-fixer', methods=['POST'])
+def markdown_to_docx_fixer_handler():
+    try:
+        if 'payload' not in request.form:
+            return jsonify({"success": False, "error": "Missing payload"}), 400
+
+        data = json.loads(request.form.get('payload'))
+        markdown_content = data.get("markdown_content")
+        
+        if not markdown_content:
+            return jsonify({"success": False, "error": "Markdown content is empty"}), 400
+
+        doc = Document()
+        
+        for line in markdown_content.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+
+            # Handle Headings
+            if line.startswith('###'):
+                doc.add_heading(line.lstrip('# ').strip(), level=3)
+            elif line.startswith('##'):
+                doc.add_heading(line.lstrip('# ').strip(), level=2)
+            elif line.startswith('#'):
+                doc.add_heading(line.lstrip('# ').strip(), level=1)
+            # Handle Bullet Points
+            elif line.startswith('*'):
+                doc.add_paragraph(line.lstrip('* ').strip(), style='List Bullet')
+            # Handle everything else
+            else:
+                doc.add_paragraph(line)
+
+        file_stream = io.BytesIO()
+        doc.save(file_stream)
+        file_stream.seek(0)
+
+        return send_file(
+            file_stream,
+            as_attachment=True,
+            download_name='ResumeFixerPro_Resume.docx',
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": "Failed to convert Markdown for Fixer"}), 500
+    
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     logger.info(f"Starting Flask app on port {port}")
