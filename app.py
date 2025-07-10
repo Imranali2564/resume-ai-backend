@@ -1285,65 +1285,64 @@ def generate_docx_from_json():
         traceback.print_exc()
         return jsonify({"success": False, "error": "Failed to generate DOCX file from JSON"}), 500 
 
-# app.py
-
-# ... (rest of the code above) ...
-
 # Function to download DOCX from backend (PDF will be client-side now, so no PDF logic here)
-@app.route('/download-generated-resume', methods=['POST'])
-def download_generated_resume():
+@app.route('/api/v1/generate-ai-docx-from-json', methods=['POST'])
+def generate_ai_docx_from_json():
     try:
-        # FIX: Change request.get_json() to read from the form payload
         if 'payload' not in request.form:
-            print("Error: 'payload' not found in form for /download-generated-resume")
-            return jsonify({"error": "Missing payload from proxy"}), 400
+            return jsonify({"success": False, "error": "Missing payload"}), 400
 
         data = json.loads(request.form.get('payload'))
-        
-        # The rest of your function remains the same
-        html_content = data.get("html_content")
-        file_format = data.get("format", "docx") 
-        user_name_for_filename = data.get("name", "Generated_Resume")
+        doc = Document()
 
-        if not html_content:
-            return jsonify({"error": "No HTML content provided"}), 400
+        # Document Styling
+        style = doc.styles['Normal']
+        font = style.font
+        font.name = 'Calibri'
+        font.size = Pt(11)
 
-        css_for_docx = """
-        /* Your CSS styles here... */
-        body { font-family: 'Roboto', sans-serif; color: #333; font-size: 9.5pt; }
-        h1 { font-size: 28pt; font-weight: 700; }
-        h2 { font-size: 11.5pt; font-weight: 700; color: #1976D2; border-bottom: 1px solid #ddd; }
-        """
+        # Name and Title
+        if data.get('name'):
+            doc.add_heading(data['name'], level=1)
+        if data.get('title'):
+            p = doc.add_paragraph(data['title'])
+            p.paragraph_format.space_after = Pt(18)
 
-        full_html_for_docx = f"""
-        <html>
-            <head><meta charset="UTF-8"><style>{css_for_docx}</style></head>
-            <body>{html_content}</body>
-        </html>
-        """
-
-        if file_format == 'docx':
-            if html2docx is None:
-                return jsonify({"error": "DOCX conversion library (html2docx) not available on server."}), 500
+        # Loop through sections
+        for section in data.get('sections', []):
+            if section.get('title'):
+                doc.add_heading(section['title'].upper(), level=2)
             
-            docx_io_object = html2docx(full_html_for_docx, title=f'{user_name_for_filename}.docx')
-            docx_bytes_content = docx_io_object.getvalue() 
+            for content_item in section.get('content', []):
+                if content_item.get('type') == 'paragraph':
+                    doc.add_paragraph(content_item.get('text', ''))
+                elif content_item.get('type') == 'list':
+                    for item in content_item.get('items', []):
+                        if item.get('type') == 'experience':
+                            p = doc.add_paragraph()
+                            p.add_run(item.get('heading', '')).bold = True
+                            if item.get('subheading'):
+                                p.add_run(f"\n{item.get('subheading')}")
+                            for detail in item.get('details', []):
+                                doc.add_paragraph(detail, style='List Bullet')
+                        else: # Simple bullet
+                            doc.add_paragraph(item.get('text', ''), style='List Bullet')
+            doc.add_paragraph().paragraph_format.space_after = Pt(6)
 
-            return send_file(
-                io.BytesIO(docx_bytes_content), 
-                as_attachment=True, 
-                download_name=f'{user_name_for_filename}.docx', 
-                mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-            )
-            
-        else:
-            return jsonify({"error": "Unsupported format for backend download."}), 400
+        file_stream = io.BytesIO()
+        doc.save(file_stream)
+        file_stream.seek(0)
 
+        return send_file(
+            file_stream,
+            as_attachment=True,
+            download_name='AI_Generated_Resume.docx',
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
     except Exception as e:
-        print(f"Error in /download-generated-resume: {str(e)}")
         import traceback
         traceback.print_exc()
-        return jsonify({"error": "Failed to generate file on server."}), 500
+        return jsonify({"success": False, "error": "Failed to generate AI DOCX from JSON"}), 500
     
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
