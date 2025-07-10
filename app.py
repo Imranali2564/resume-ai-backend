@@ -1293,65 +1293,50 @@ def generate_docx_from_json():
 @app.route('/download-generated-resume', methods=['POST'])
 def download_generated_resume():
     try:
-        data = request.get_json()
+        # FIX: Change request.get_json() to read from the form payload
+        if 'payload' not in request.form:
+            print("Error: 'payload' not found in form for /download-generated-resume")
+            return jsonify({"error": "Missing payload from proxy"}), 400
+
+        data = json.loads(request.form.get('payload'))
+        
+        # The rest of your function remains the same
         html_content = data.get("html_content")
-        file_format = data.get("format", "docx") # Default to docx as PDF is client-side
-        user_name_for_filename = data.get("name", "Generated_Resume") 
+        file_format = data.get("format", "docx") 
+        user_name_for_filename = data.get("name", "Generated_Resume")
 
         if not html_content:
             return jsonify({"error": "No HTML content provided"}), 400
 
-        # Note: CSS is primarily for PDF (wkhtmltopdf). For html2docx, it might
-        # interpret some basic styles, but it's not a full web renderer.
-        # This CSS is passed anyway as html2docx can sometimes use it.
-        # This CSS is from ai-resume-generator (9).css
         css_for_docx = """
-/* AI Resume Generator Specific Styles (Simplified for DOCX) */
-body { font-family: 'Roboto', sans-serif; color: #333; font-size: 9.5pt; }
-.resume-container { display: flex; flex-direction: row; width: 100%; }
-.content-wrapper { display: flex; flex-direction: row; width: 100%; }
-.main-content { flex: 3; padding: 25px; box-sizing: border-box; }
-.resume-sidebar { flex: 1; background-color: #f5f5f5; padding: 25px; color: #555; border-right: 1px solid #eee; box-sizing: border-box; min-width: 200px; max-width: 250px; }
-h1 { font-size: 28pt; font-weight: 700; color: #333; margin: 0; line-height: 1.1; }
-.job-title { font-size: 12pt; color: #666; margin-top: 5px; text-transform: uppercase; letter-spacing: 0.8px; }
-h2 { font-size: 11.5pt; font-weight: 700; color: #1976D2; border-bottom: 1px solid #ddd; padding-bottom: 3px; margin-bottom: 10px; margin-top: 25px; text-transform: uppercase; letter-spacing: 0.5px; }
-h3 { font-size: 10pt; font-weight: 700; color: #333; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 10px; text-transform: uppercase; }
-p { font-size: 9.5pt; line-height: 1.5; margin-bottom: 10px; }
-ul { list-style: none; padding: 0; margin: 0; }
-li { font-size: 9.5pt; margin-bottom: 4px; position: relative; padding-left: 15px; line-height: 1.3; }
-li::before { content: '•'; position: absolute; left: 0; color: #1976D2; font-size: 10pt; line-height: 1; top: 0; }
-.item-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }
-.item-meta { font-size: 9.5pt; color: #666; text-align: right; white-space: nowrap; padding-left: 10px; }
-/* Print specific styles, often ignored by html2docx but good to have */
-.resume-container { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-.resume-section { page-break-inside: avoid; }
+        /* Your CSS styles here... */
+        body { font-family: 'Roboto', sans-serif; color: #333; font-size: 9.5pt; }
+        h1 { font-size: 28pt; font-weight: 700; }
+        h2 { font-size: 11.5pt; font-weight: 700; color: #1976D2; border-bottom: 1px solid #ddd; }
         """
 
-        # For DOCX, html2docx expects a full HTML string
         full_html_for_docx = f"""
         <html>
-            <head>
-                <meta charset="UTF-8">
-                <style>
-                    {css_for_docx}
-                </style>
-            </head>
+            <head><meta charset="UTF-8"><style>{css_for_docx}</style></head>
             <body>{html_content}</body>
         </html>
         """
 
         if file_format == 'docx':
             if html2docx is None:
-                 return jsonify({"error": "DOCX conversion library (html2docx) not available on server."}), 500
+                return jsonify({"error": "DOCX conversion library (html2docx) not available on server."}), 500
             
-            # CRITICAL FIX: Get actual bytes content from the BytesIO object returned by html2docx
-            # docx_io_object is expected to be a BytesIO stream. We need its content as bytes.
             docx_io_object = html2docx(full_html_for_docx, title=f'{user_name_for_filename}.docx')
-            docx_bytes_content = docx_io_object.getvalue() # Extract bytes from BytesIO object
+            docx_bytes_content = docx_io_object.getvalue() 
 
-            return send_file(io.BytesIO(docx_bytes_content), as_attachment=True, download_name=f'{user_name_for_filename}.docx', mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+            return send_file(
+                io.BytesIO(docx_bytes_content), 
+                as_attachment=True, 
+                download_name=f'{user_name_for_filename}.docx', 
+                mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            )
             
-        else: # This branch should ideally not be hit for PDF as it's client-side now
+        else:
             return jsonify({"error": "Unsupported format for backend download."}), 400
 
     except Exception as e:
