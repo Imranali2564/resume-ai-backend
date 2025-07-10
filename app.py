@@ -1286,58 +1286,38 @@ def generate_docx_from_json():
         return jsonify({"success": False, "error": "Failed to generate DOCX file from JSON"}), 500 
 
 # Function to download DOCX from backend (PDF will be client-side now, so no PDF logic here)
-@app.route('/api/v1/generate-ai-docx-from-json', methods=['POST'])
-def generate_ai_docx_from_json():
-    # --- START: DEBUGGING CODE ---
-    # यह कोड हमें बताएगा कि प्रॉक्सी से क्या रिक्वेस्ट आ रही है
-    print("--- HEADERS RECEIVED FROM PROXY ---")
-    print(request.headers)
-    print("--- REQUEST FORM DATA ---")
-    print(request.form)
-    print("--- RAW REQUEST DATA ---")
-    print(request.data)
-    print("--- END OF DEBUG INFO ---")
-    # --- END: DEBUGGING CODE ---
+@app.route('/api/v1/markdown-to-docx', methods=['POST'])
+def markdown_to_docx_handler():
     try:
         if 'payload' not in request.form:
             return jsonify({"success": False, "error": "Missing payload"}), 400
 
         data = json.loads(request.form.get('payload'))
+        markdown_content = data.get("markdown_content")
+        
+        if not markdown_content:
+            return jsonify({"success": False, "error": "Markdown content is empty"}), 400
+
         doc = Document()
+        
+        for line in markdown_content.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
 
-        # Document Styling
-        style = doc.styles['Normal']
-        font = style.font
-        font.name = 'Calibri'
-        font.size = Pt(11)
-
-        # Name and Title
-        if data.get('name'):
-            doc.add_heading(data['name'], level=1)
-        if data.get('title'):
-            p = doc.add_paragraph(data['title'])
-            p.paragraph_format.space_after = Pt(18)
-
-        # Loop through sections
-        for section in data.get('sections', []):
-            if section.get('title'):
-                doc.add_heading(section['title'].upper(), level=2)
-            
-            for content_item in section.get('content', []):
-                if content_item.get('type') == 'paragraph':
-                    doc.add_paragraph(content_item.get('text', ''))
-                elif content_item.get('type') == 'list':
-                    for item in content_item.get('items', []):
-                        if item.get('type') == 'experience':
-                            p = doc.add_paragraph()
-                            p.add_run(item.get('heading', '')).bold = True
-                            if item.get('subheading'):
-                                p.add_run(f"\n{item.get('subheading')}")
-                            for detail in item.get('details', []):
-                                doc.add_paragraph(detail, style='List Bullet')
-                        else: # Simple bullet
-                            doc.add_paragraph(item.get('text', ''), style='List Bullet')
-            doc.add_paragraph().paragraph_format.space_after = Pt(6)
+            # Handle Headings (H1, H2, H3)
+            if line.startswith('###'):
+                doc.add_heading(line.lstrip('# ').strip(), level=3)
+            elif line.startswith('##'):
+                doc.add_heading(line.lstrip('# ').strip(), level=2)
+            elif line.startswith('#'):
+                doc.add_heading(line.lstrip('# ').strip(), level=1)
+            # Handle Bullet Points
+            elif line.startswith('*'):
+                p = doc.add_paragraph(line.lstrip('* ').strip(), style='List Bullet')
+            # Handle everything else as a normal paragraph
+            else:
+                doc.add_paragraph(line)
 
         file_stream = io.BytesIO()
         doc.save(file_stream)
@@ -1349,10 +1329,11 @@ def generate_ai_docx_from_json():
             download_name='AI_Generated_Resume.docx',
             mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         )
+
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({"success": False, "error": "Failed to generate AI DOCX from JSON"}), 500
+        return jsonify({"success": False, "error": "Failed to convert Markdown to DOCX"}), 500
     
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
