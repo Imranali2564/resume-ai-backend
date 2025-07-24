@@ -1265,7 +1265,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             item_html += "</div>"
 
             if description_text:
-                item_html += f"<p class='item-description' contenteditable=\"true\">{description_text}</p>"
+                item_html += f"<p classt='item-description' contenteditable=\"true\">{description_text}</p>"
 
             if details_list:
                 if isinstance(details_list, str):
@@ -1293,7 +1293,8 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     linkedin = user_info.get("linkedin", "")
     jobTitle = user_info.get("jobTitle", "")
 
-    title = smart_content.get("summary", "").split("\n")[0] if smart_content.get("summary") else jobTitle
+    # Title is no longer derived from summary, but from jobTitle or default
+    # title = smart_content.get("summary", "").split("\n")[0] if smart_content.get("summary") else jobTitle
 
     return f"""
     <div class="resume-container">
@@ -1306,54 +1307,54 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                     {location.strip() and f"<p contenteditable='true'><i class='fas fa-map-marker-alt'></i> {location}</p>" or ""}
                     {linkedin.strip() and f"<p contenteditable='true'><i class='fab fa-linkedin'></i> <a href='{linkedin}' target='_blank'>{linkedin}</a></p>" or ""}
                 </div>
-                {smart_content.get('skills', '').strip() and f"""
+                {"" if not smart_content.get('skills', '').strip() else f"""
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Skills</h2>
                     {list_to_html(smart_content.get('skills', ''))}
                 </div>
-                """ or ""}
-                {smart_content.get('languages', '').strip() and f"""
+                """}
+                {"" if not smart_content.get('languages', '').strip() else f"""
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Languages</h2>
                     {list_to_html(smart_content.get('languages', ''))}
                 </div>
-                """ or ""}
-                {smart_content.get('certifications', '').strip() and f"""
+                """}
+                {"" if not smart_content.get('certifications', '').strip() else f"""
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Certifications</h2>
                     {list_to_html(smart_content.get('certifications', ''))}
                 </div>
-                """ or ""}
+                """}
             </aside>
             <main class="main-content">
                 <div class="name-title-header">
                     <h1 contenteditable="true" id="preview-name">{name}</h1>
                     {jobTitle.strip() and f"<p class='job-title' contenteditable='true' id='preview-title'>{jobTitle}</p>" or ""}
                 </div>
-                {smart_content.get('summary', '').strip() and f"""
+                {"" if not smart_content.get('summary', '').strip() else f"""
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Profile Summary</h2>
                     <p contenteditable="true">{smart_content.get('summary', '')}</p>
                 </div>
-                """ or ""}
-                {smart_content.get('experience', '').strip() and f"""
+                """}
+                {"" if not smart_content.get('experience', '').strip() else f"""
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Work Experience</h2>
                     {parse_complex_section_html(smart_content.get('experience', ''), is_education=False)}
                 </div>
-                """ or ""}
-                {smart_content.get('education', '').strip() and f"""
+                """}
+                {"" if not smart_content.get('education', '').strip() else f"""
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Education</h2>
                     {parse_complex_section_html(smart_content.get('education', ''), is_education=True)}
                 </div>
-                """ or ""}
-                {smart_content.get('projects', '').strip() and f"""
+                """}
+                {"" if not smart_content.get('projects', '').strip() else f"""
                 <div class="resume-section preview-section">
                     <h2 contenteditable="true">Projects</h2>
                     {parse_complex_section_html(smart_content.get('projects', ''), is_education=False)}
                 </div>
-                """ or ""}
+                """}
             </main>
         </div>
     </div>
