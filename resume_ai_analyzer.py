@@ -1304,54 +1304,19 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                     {location.strip() and f"<p contenteditable='true'><i class='fas fa-map-marker-alt'></i> {location}</p>" or ""}
                     {linkedin.strip() and f"<p contenteditable='true'><i class='fab fa-linkedin'></i> <a href='{linkedin}' target='_blank'>{linkedin}</a></p>" or ""}
                 </div>
-                {list_to_html(smart_content.get('skills', '')).strip() and f"""
-                <div class="resume-section preview-section">
-                    <h2 contenteditable="true">Skills</h2>
-                    {list_to_html(smart_content.get('skills', ''))}
-                </div>
-                """ or ""}
-                {list_to_html(smart_content.get('languages', '')).strip() and f"""
-                <div class="resume-section preview-section">
-                    <h2 contenteditable="true">Languages</h2>
-                    {list_to_html(smart_content.get('languages', ''))}
-                </div>
-                """ or ""}
-                {list_to_html(smart_content.get('certifications', '')).strip() and f"""
-                <div class="resume-section preview-section">
-                    <h2 contenteditable="true">Certifications</h2>
-                    {list_to_html(smart_content.get('certifications', ''))}
-                </div>
-                """ or ""}
+                {skills_section_html}
+                {languages_section_html}
+                {certifications_section_html}
             </aside>
             <main class="main-content">
                 <div class="name-title-header">
                     <h1 contenteditable="true" id="preview-name">{name}</h1>
                     {jobTitle.strip() and f"<p class='job-title' contenteditable='true' id='preview-title'>{jobTitle}</p>" or ""}
                 </div>
-                {smart_content.get('summary', '').strip() and f"""
-                <div class="resume-section preview-section">
-                    <h2 contenteditable="true">Profile Summary</h2>
-                    <p contenteditable="true">{smart_content.get('summary', '')}</p>
-                </div>
-                """ or ""}
-                {parse_complex_section_html(smart_content.get('experience', ''), is_education=False).strip() and f"""
-                <div class="resume-section preview-section">
-                    <h2 contenteditable="true">Work Experience</h2>
-                    {parse_complex_section_html(smart_content.get('experience', ''), is_education=False)}
-                </div>
-                """ or ""}
-                {parse_complex_section_html(smart_content.get('education', ''), is_education=True).strip() and f"""
-                <div class="resume-section preview-section">
-                    <h2 contenteditable="true">Education</h2>
-                    {parse_complex_section_html(smart_content.get('education', ''), is_education=True)}
-                </div>
-                """ or ""}
-                {parse_complex_section_html(smart_content.get('projects', ''), is_education=False).strip() and f"""
-                <div class="resume-section preview-section">
-                    <h2 contenteditable="true">Projects</h2>
-                    {parse_complex_section_html(smart_content.get('projects', ''), is_education=False)}
-                </div>
-                """ or ""}
+                {summary_section_html}
+                {experience_section_html}
+                {education_section_html}
+                {projects_section_html}
             </main>
         </div>
     </div>
