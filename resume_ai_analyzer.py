@@ -1199,6 +1199,57 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
 
         return "".join(html_parts)
 
+    def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
+    """
+    Ye function AI-generated resume content ko ek proper HTML resume format me convert karta hai.
+    Left section: contact, skills, languages, certifications, etc.
+    Right section: summary, experience, education, projects, etc.
+    """
+    import re
+
+    def list_to_html(items_string):
+        """
+        Smarter version to handle subheadings and multi-skill lines.
+        """
+        if not items_string:
+            return ""
+
+        if isinstance(items_string, list):
+            lines = [str(item).strip() for item in items_string if str(item).strip()]
+        elif isinstance(items_string, str):
+            lines = [line.strip() for line in items_string.split('\n') if line.strip()]
+        else:
+            return ""
+
+        html_parts = []
+        current_subheading = None
+        for line in lines:
+            # Ignore generic filler messages
+            if line.lower() in [
+                "input is empty or insufficient.", "no skills provided.", "no certifications found.",
+                "no education details provided.", "no projects found.", "no languages provided.",
+                "not provided.", "empty"
+            ] or "i'm sorry, but i cannot" in line.lower() or "kindly provide the" in line.lower():
+                continue
+
+            if line.strip().endswith(':'):
+                if current_subheading:
+                    html_parts.append("</ul>")
+                current_subheading = line.strip()
+                html_parts.append(f"<h3 contenteditable=\"true\">{current_subheading}</h3><ul>")
+            else:
+                # Smarter handling: treat full line as single skill if no subheading
+                skills = [line] if current_subheading is None else re.split(r"[,*•\t\-–]+", line)
+                for skill in skills:
+                    clean_skill = skill.strip().strip('*').strip()
+                    if clean_skill:
+                        html_parts.append(f"<li contenteditable=\"true\">{clean_skill}</li>")
+
+        if current_subheading:
+            html_parts.append("</ul>")
+
+        return "".join(html_parts)
+
     def parse_complex_section_html(section_data, is_education=False):
         if not section_data:
             return ""
@@ -1266,6 +1317,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             item_html += "</div>"
 
             if description_text:
+                # FIXED TYPO: changed 'classt' to 'class'
                 item_html += f"<p class='item-description' contenteditable=\"true\">{description_text}</p>"
 
             if details_list:
@@ -1371,7 +1423,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                     {projects_content}
                 </div>
         """
-      # Achievements Section
+    # Achievements Section
     achievements_content = list_to_html(smart_content.get('achievements', ''))
     achievements_section_html = ""
     if achievements_content.strip():
@@ -1391,7 +1443,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                     <h2 contenteditable="true">Extra-curricular Activities</h2>
                     {extra_curricular_content}
                 </div>
-        """  
+        """
 
     return f"""
     <div class="resume-container">
@@ -1417,6 +1469,8 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                 {experience_section_html}
                 {education_section_html}
                 {projects_section_html}
+                {achievements_section_html}
+                {extra_curricular_section_html}
             </main>
         </div>
     </div>
