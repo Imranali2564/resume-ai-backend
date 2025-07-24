@@ -1293,6 +1293,19 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     linkedin = user_info.get("linkedin", "")
     jobTitle = user_info.get("jobTitle", "")
 
+    # Pre-render content for optional sections
+    # Ye variables ab conditional HTML blocks ko hold karenge, bina 'f-string' nesting ke.
+    skills_html_content = list_to_html(smart_content.get('skills', ''))
+    languages_html_content = list_to_html(smart_content.get('languages', ''))
+    certifications_html_content = list_to_html(smart_content.get('certifications', ''))
+    
+    summary_paragraph_html = f"<p contenteditable=\"true\">{smart_content.get('summary', '')}</p>" if smart_content.get('summary', '').strip() else ""
+    
+    experience_section_content = parse_complex_section_html(smart_content.get('experience', ''), is_education=False)
+    education_section_content = parse_complex_section_html(smart_content.get('education', ''), is_education=True)
+    projects_section_content = parse_complex_section_html(smart_content.get('projects', ''), is_education=False)
+
+
     return f"""
     <div class="resume-container">
         <div class="content-wrapper">
@@ -1304,19 +1317,54 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                     {location.strip() and f"<p contenteditable='true'><i class='fas fa-map-marker-alt'></i> {location}</p>" or ""}
                     {linkedin.strip() and f"<p contenteditable='true'><i class='fab fa-linkedin'></i> <a href='{linkedin}' target='_blank'>{linkedin}</a></p>" or ""}
                 </div>
-                {skills_section_html}
-                {languages_section_html}
-                {certifications_section_html}
+                {skills_html_content.strip() and f'''
+                <div class="resume-section preview-section">
+                    <h2 contenteditable="true">Skills</h2>
+                    {skills_html_content}
+                </div>
+                ''' or ""}
+                {languages_html_content.strip() and f'''
+                <div class="resume-section preview-section">
+                    <h2 contenteditable="true">Languages</h2>
+                    {languages_html_content}
+                </div>
+                ''' or ""}
+                {certifications_html_content.strip() and f'''
+                <div class="resume-section preview-section">
+                    <h2 contenteditable="true">Certifications</h2>
+                    {certifications_html_content}
+                </div>
+                ''' or ""}
             </aside>
             <main class="main-content">
                 <div class="name-title-header">
                     <h1 contenteditable="true" id="preview-name">{name}</h1>
                     {jobTitle.strip() and f"<p class='job-title' contenteditable='true' id='preview-title'>{jobTitle}</p>" or ""}
                 </div>
-                {summary_section_html}
-                {experience_section_html}
-                {education_section_html}
-                {projects_section_html}
+                {summary_paragraph_html.strip() and f'''
+                <div class="resume-section preview-section">
+                    <h2 contenteditable="true">Profile Summary</h2>
+                    {summary_paragraph_html}
+                </div>
+                ''' or ""}
+                {experience_section_content.strip() and f'''
+                <div class="resume-section preview-section">
+                    <h2 contenteditable="true">Work Experience</h2>
+                    {experience_section_content}
+                </div>
+                ''' or ""}
+                {education_section_content.strip() and f'''
+                <div class="resume-section preview-section">
+                    <h2 contenteditable="true">Education</h2>
+                    {education_section_content}
+                </div>
+                ''' or ""}
+                {projects_section_content.strip() and f'''
+                <div class="resume-section preview-section">
+                    <h2 contenteditable="true">Projects</h2>
+                    {projects_section_content}
+                </div>
+                ''' or ""}
             </main>
         </div>
     </div>
