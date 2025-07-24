@@ -1087,8 +1087,7 @@ Delhi University, Delhi, India
 • GPA: 3.8/4.0""",
         "skills": """From the following text, extract ONLY the individual skills. List each skill on a new line. If there are categories like 'Technical Skills', list the category on its own line ending with a colon.
         **Crucial Rule: DO NOT combine skills on one line. Never output something like \"JavaScript* React\".**
-        Correct Example:
-        Technical Skills:
+        Correct Example:        
         JavaScript
         React
         Python
@@ -1104,6 +1103,8 @@ Certified Kubernetes Administrator (CKA), Linux Foundation, 2022""",
         "interests": "Convert these interests into professional sounding phrases suitable for a resume. List them concisely. If input is empty or insufficient, return ONLY an empty string.",
         "publications": "Expand these publication titles and give a brief context suitable for a resume, using bullet points if multiple. If input is empty or insufficient, return ONLY an empty string.",
         "patents": "Describe patents briefly and professionally, using bullet points if multiple. If input is empty or insufficient, return ONLY an empty string.",
+        "achievements": "List each achievement, award, or notable success concisely, one per line, suitable for a professional resume. If input is empty or insufficient, return ONLY an empty string.",
+        "extraCurricular": "List extra-curricular activities and relevant contributions concisely, using bullet points or short phrases. Highlight leadership, teamwork, or organizational skills. If input is empty or insufficient, return ONLY an empty string.",
     }
     # <<< BAAKI FUNCTION WAISA HI RAHEGA >>>
 
@@ -1370,6 +1371,27 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                     {projects_content}
                 </div>
         """
+      # Achievements Section
+    achievements_content = list_to_html(smart_content.get('achievements', ''))
+    achievements_section_html = ""
+    if achievements_content.strip():
+        achievements_section_html = f"""
+                <div class="resume-section preview-section">
+                    <h2 contenteditable="true">Awards & Achievements</h2>
+                    {achievements_content}
+                </div>
+        """
+
+    # Extra-curricular Activities Section
+    extra_curricular_content = list_to_html(smart_content.get('extraCurricular', ''))
+    extra_curricular_section_html = ""
+    if extra_curricular_content.strip():
+        extra_curricular_section_html = f"""
+                <div class="resume-section preview-section">
+                    <h2 contenteditable="true">Extra-curricular Activities</h2>
+                    {extra_curricular_content}
+                </div>
+        """  
 
     return f"""
     <div class="resume-container">
