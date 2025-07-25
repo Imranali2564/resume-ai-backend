@@ -1107,65 +1107,61 @@ Certified Kubernetes Administrator (CKA), Linux Foundation, 2022""",
         "extraCurricular": "List extra-curricular activities and relevant contributions concisely, using bullet points or short phrases. Highlight leadership, teamwork, or organizational skills. If input is empty or insufficient, return ONLY an empty string."
     }
 
-    # NEW TEMPORARY DEBUGGING LINE: Check what data is received for fresher_check, jobTitle, and skills
-    print(f"DEBUG_FRESHER_INPUT: fresher_check: {data.get('fresher_check', False)}, jobTitle: '{data.get('jobTitle', '')}', skills: '{data.get('skills', '')}'") #
-
     # Smart fresher handling logic - Updated to directly set 'experience' and skip AI call
-    is_fresher = data.get("fresher_check", False) in [True, "true", "on", "1"] #
+    is_fresher = data.get("fresher_check", False) in [True, "true", "on", "1"]
     
-    if is_fresher: #
-        job_title = data.get("jobTitle", "entry-level role") #
-        skills_raw = data.get("skills", "") #
-        skills = ", ".join([s.strip() for s in skills_raw.split(",") if s.strip()]) or "my field" #
-        dynamic_experience_line = f"As a fresher in {job_title}, I am eager to apply my skills in {skills} and grow professionally." #
+    if is_fresher:
+        job_title = data.get("jobTitle", "entry-level role")
+        skills_raw = data.get("skills", "")
+        skills = ", ".join([s.strip() for s in skills_raw.split(",") if s.strip()]) or "my field"
+        dynamic_experience_line = f"As a fresher in {job_title}, I am eager to apply my skills in {skills} and grow professionally."
         
         # Add directly to smart_resume, no need to send for AI processing
-        smart_resume["experience"] = dynamic_experience_line #
-        print(f"DEBUG_FRESHER_OUTPUT: Dynamic experience line generated: '{dynamic_experience_line}'") #
+        smart_resume["experience"] = dynamic_experience_line 
             
     # <<< REST OF THE FUNCTION REMAINS THE SAME >>>
-    for key, instruction in sections.items(): #
+    for key, instruction in sections.items():
         # If we have already handled fresher experience, skip AI call for this key
-        if is_fresher and key == "experience": #
-            continue #
+        if is_fresher and key == "experience": 
+            continue # Skip AI call for this key
 
-        value = data.get(key, "").strip() #
+        value = data.get(key, "").strip()
 
         # Skip AI call if input is empty to save resources
-        if not value: #
-            smart_resume[key] = "" #
-            continue #
+        if not value:
+            smart_resume[key] = ""
+            continue
 
-        prompt = f""" #
+        prompt = f"""
 You are an expert resume writer. {instruction}
 Input: {value}
 Output:
 """
 
         try:
-            response = client.chat.completions.create( #
-                model="gpt-3.5-turbo", #
-                messages=[{"role": "user", "content": prompt}], #
-                timeout=20 #
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                timeout=20
             )
-            result = response.choices[0].message.content.strip() #
+            result = response.choices[0].message.content.strip()
 
-            if result.lower() in [ #
+            if result.lower() in [
                 "no skills provided.", "no certifications found.", "no education details provided.",
                 "no projects found.", "no languages provided.", "invalid input.",
                 "i'm sorry, but i cannot generate certifications without any input.",
                 "the input provided seems to be incomplete.",
                 "kindly provide the education details that need to be reformatted in a standard resume format.",
                 "empty"
-            ]: #
-                smart_resume[key] = "" #
-            else: #
-                smart_resume[key] = result #
+            ]:
+                smart_resume[key] = ""
+            else:
+                smart_resume[key] = result
 
-        except Exception as e: #
-            smart_resume[key] = value #
+        except Exception as e:
+            smart_resume[key] = value
 
-    return smart_resume #
+    return smart_resume
 
 def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     """
