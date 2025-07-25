@@ -1149,6 +1149,7 @@ Output:
                 smart_resume[key] = ""
             else:
                 smart_resume[key] = result
+                print(f"DEBUG: AI response for '{key}': '{result}'")
 
         except Exception as e:
             smart_resume[key] = value
