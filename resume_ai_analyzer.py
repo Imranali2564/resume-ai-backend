@@ -1242,14 +1242,14 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             if current_item["title"] or current_item["details"]:
                 all_items.append(current_item)
             
-            section_data_processed = all_items
+                        section_data_processed = all_items
 
             if not section_data_processed:
-    # This allows single-line fresher content to still render
-    if section_data.strip():
-        return f"<div class='experience-item'><p contenteditable=\"true\">{section_data.strip()}</p></div>"
-    else:
-        return ""
+                # This allows single-line fresher content to still render
+                if section_data.strip():
+                    return f"<div class='experience-item'><p contenteditable=\"true\">{section_data.strip()}</p></div>"
+                else:
+                    return ""
 
         elif isinstance(section_data, list):
             section_data_processed = section_data
