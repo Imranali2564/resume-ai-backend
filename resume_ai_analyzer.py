@@ -1105,8 +1105,7 @@ Certified Kubernetes Administrator (CKA), Linux Foundation, 2022""",
         "patents": "Describe patents briefly and professionally, using bullet points if multiple. If input is empty or insufficient, return ONLY an empty string.",
         "achievements": "List each achievement, award, or notable success concisely, one per line, suitable for a professional resume. If input is empty or insufficient, return ONLY an empty string.",
         "extraCurricular": "List extra-curricular activities and relevant contributions concisely, using bullet points or short phrases. Highlight leadership, teamwork, or organizational skills. If input is empty or insufficient, return ONLY an empty string.",
-    }
-    # ✅ Smart fresher handling logic
+        # ✅ Smart fresher handling logic
 if data.get("fresher_check", False) in [True, "true", "on", "1"]:
     job_title = data.get("jobTitle", "entry-level role")
     skills_raw = data.get("skills", "")
@@ -1114,6 +1113,8 @@ if data.get("fresher_check", False) in [True, "true", "on", "1"]:
 
     dynamic_experience_line = f"As a fresher in {job_title}, I am eager to apply my skills in {skills} and grow professionally."
     data["experience"] = dynamic_experience_line
+    }
+    
 
     # <<< BAAKI FUNCTION WAISA HI RAHEGA >>>
 
