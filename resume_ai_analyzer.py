@@ -1164,51 +1164,50 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     import re
 
     def list_to_html(items_string):
-    """
-    Always render lines as list items, with or without subheadings.
-    """
+        """
+        Always render lines as list items, with or without subheadings.
+        """
+        if not items_string:
+            return ""
 
-    if not items_string:
-        return ""
-
-    if isinstance(items_string, list):
-        lines = [str(item).strip() for item in items_string if str(item).strip()]
-    elif isinstance(items_string, str):
-        lines = [line.strip() for line in items_string.split('\n') if line.strip()]
-    else:
-        return ""
-
-    html_parts = []
-    current_subheading = None
-    list_open = False
-
-    for line in lines:
-        if line.lower() in [
-            "input is empty or insufficient.", "no skills provided.", "no certifications found.",
-            "no education details provided.", "no projects found.", "no languages provided.",
-            "not provided.", "empty"
-        ] or "i'm sorry, but i cannot" in line.lower() or "kindly provide the" in line.lower():
-            continue
-
-        if line.strip().endswith(':'):
-            if list_open:
-                html_parts.append("</ul>")
-                list_open = False
-
-            current_subheading = line.strip()
-            html_parts.append(f"<h3 contenteditable=\"true\">{current_subheading}</h3><ul>")
-            list_open = True
+        if isinstance(items_string, list):
+            lines = [str(item).strip() for item in items_string if str(item).strip()]
+        elif isinstance(items_string, str):
+            lines = [line.strip() for line in items_string.split('\n') if line.strip()]
         else:
-            if not list_open:
-                html_parts.append("<ul>")
+            return ""
+
+        html_parts = []
+        current_subheading = None
+        list_open = False
+
+        for line in lines:
+            if line.lower() in [
+                "input is empty or insufficient.", "no skills provided.", "no certifications found.",
+                "no education details provided.", "no projects found.", "no languages provided.",
+                "not provided.", "empty"
+            ] or "i'm sorry, but i cannot" in line.lower() or "kindly provide the" in line.lower():
+                continue
+
+            if line.strip().endswith(':'):
+                if list_open:
+                    html_parts.append("</ul>")
+                    list_open = False
+
+                current_subheading = line.strip()
+                html_parts.append(f"<h3 contenteditable=\"true\">{current_subheading}</h3><ul>")
                 list_open = True
+            else:
+                if not list_open:
+                    html_parts.append("<ul>")
+                    list_open = True
 
-            html_parts.append(f"<li contenteditable=\"true\">{line}</li>")
+                html_parts.append(f"<li contenteditable=\"true\">{line}</li>")
 
-    if list_open:
-        html_parts.append("</ul>")
+        if list_open:
+            html_parts.append("</ul>")
 
-    return "".join(html_parts)
+        return "".join(html_parts)
 
     def parse_complex_section_html(section_data, is_education=False):
         if not section_data:
