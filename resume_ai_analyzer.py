@@ -1203,7 +1203,8 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                     html_parts.append("<ul>")
                     list_open = True
 
-                html_parts.append(f"<li contenteditable=\"true\">{line}</li>")
+                clean_line = line.strip().lstrip('-• ').strip()
+                html_parts.append(f"<li contenteditable=\"true\">{clean_line}</li>")
 
         if list_open:
             html_parts.append("</ul>")
