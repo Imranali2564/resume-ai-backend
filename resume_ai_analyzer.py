@@ -1251,7 +1251,6 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     else:
         return ""
 
-
         elif isinstance(section_data, list):
             section_data_processed = section_data
         else:
