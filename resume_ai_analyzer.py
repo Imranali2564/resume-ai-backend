@@ -1157,7 +1157,7 @@ Output:
 
 def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     """
-    Ye function AI-generated resume content ko ek proper HTML resume format me convert karta hai.
+    This function converts AI-generated resume content into a proper HTML resume format.
     Left section: contact, skills, languages, certifications, etc.
     Right section: summary, experience, education, projects, etc.
     """
@@ -1206,106 +1206,106 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
 
         return "".join(html_parts)
 
+    # Corrected indentation for parse_complex_section_html
     def parse_complex_section_html(section_data, is_education=False):
-    if not section_data:
-        return ""
-
-    html_output = ""
-
-    if isinstance(section_data, str):
-        lower_section_data = section_data.lower().strip()
-        if lower_section_data in [
-            "sorry, but the input provided is insufficient.",
-            "input is empty or insufficient.",
-            "not provided.",
-            "empty",
-            "kindly provide the education details that need to be reformatted in a standard resume format." # Added this common AI empty response
-        ]:
+        if not section_data:
             return ""
-        
-        # --- NEW LOGIC ADDED HERE (with correct indentation) ---
-        # Initialize lines once
-        lines = [line.strip() for line in section_data.split('\n') if line.strip()]
 
-        # If it's a single line and doesn't start with a bullet point, treat it as a simple paragraph
-        if len(lines) == 1 and not lines[0].startswith(('-', '•')):
-            return f"<p class='item-description' contenteditable=\"true\">{lines[0]}</p>"
-        # --- END NEW LOGIC ---
+        html_output = ""
 
-        # Continue with parsing for complex items (if not returned as a simple paragraph)
-        current_item = {"title": "", "details": []}
-        all_items = []
-        
-        for line in lines:
-            if not line.strip().lstrip('-• ').strip():
-                continue
-
-            if line.strip().startswith(('-', '•')):
-                current_item["details"].append(line.strip().lstrip('-• ').strip())
-            elif not current_item["title"] and not current_item["details"]:
-                current_item["title"] = line.strip()
-            elif current_item["title"] and not current_item["details"]:
-                current_item["details"].append(line.strip())
-            else:
-                all_items.append(current_item)
-                current_item = {"title": line.strip(), "details": []}
-        if current_item["title"] or current_item["details"]:
-            all_items.append(current_item)
-
-        section_data_processed = all_items
-
-        if not all_items: # If after all parsing, no items were extracted but input was not empty
-            if section_data.strip(): # Fallback for unparsed but non-empty string inputs
-                return f"<div class='experience-item'><p contenteditable=\"true\">{section_data.strip()}</p></div>"
-            else:
-                return "" # Should ideally not be hit if initial empty check works
-    
-    elif isinstance(section_data, list): # This needs to be at the same indentation level as the 'if isinstance(section_data, str):'
-        section_data_processed = section_data
-    else: # This needs to be at the same indentation level as the 'if isinstance(section_data, str):'
-        return ""
-
-    # This loop processes the 'section_data_processed' which could be from string parsing or directly a list
-    for item in section_data_processed:
-        title_text = item.get("title", '')
-        company_text = item.get("company", '')
-        duration_text = item.get("duration", '')
-        details_list = item.get("details", [])
-        description_text = item.get("description", '')
-
-        item_html = ""
-
-        item_html += f"<div class='item-header'>"
-        item_html += f"<h4 contenteditable=\"true\">{title_text}</h4>"
-        
-        item_html += f"<p class='item-meta'>"
-        if company_text:
-            item_html += f"<span contenteditable=\"true\">{company_text}</span>"
-        if duration_text:
-            item_html += f"<span class='duration' contenteditable=\"true\">{duration_text}</span>"
-        item_html += "</p>"
-        item_html += "</div>"
-
-        if description_text:
-            item_html += f"<p class='item-description' contenteditable=\"true\">{description_text}</p>"
-
-        if details_list:
-            if isinstance(details_list, str):
-                details_list_final = [d.strip().lstrip('-• ').strip() for d in details_list.split('\n') if d.strip()]
-            elif isinstance(details_list, list):
-                details_list_final = [d.strip().lstrip('-• ').strip() for d in details_list if d.strip()]
-            else:
-                details_list_final = []
-
-            if details_list_final:
-                item_html += "<ul>"
-                for detail in details_list_final:
-                    item_html += f"<li contenteditable=\"true\">{detail}</li>"
-                item_html += "</ul>"
+        if isinstance(section_data, str):
+            lower_section_data = section_data.lower().strip()
+            if lower_section_data in [
+                "sorry, but the input provided is insufficient.",
+                "input is empty or insufficient.",
+                "not provided.",
+                "empty",
+                "kindly provide the education details that need to be reformatted in a standard resume format." 
+            ]:
+                return ""
             
-        html_output += f"<div class='experience-item'>{item_html}</div>"
+            # Initialize lines once for processing
+            lines = [line.strip() for line in section_data.split('\n') if line.strip()]
+
+            # If it's a single line and doesn't look like a bullet point, treat it as a simple paragraph
+            if len(lines) == 1 and not lines[0].startswith(('-', '•')):
+                return f"<p class='item-description' contenteditable=\"true\">{lines[0]}</p>"
+            
+            # Continue with parsing for complex items (if not returned as a simple paragraph)
+            current_item = {"title": "", "details": []}
+            all_items = []
+            
+            for line in lines:
+                if not line.strip().lstrip('-• ').strip():
+                    continue
+
+                if line.strip().startswith(('-', '•')):
+                    current_item["details"].append(line.strip().lstrip('-• ').strip())
+                elif not current_item["title"] and not current_item["details"]:
+                    current_item["title"] = line.strip()
+                elif current_item["title"] and not current_item["details"]:
+                    current_item["details"].append(line.strip())
+                else:
+                    all_items.append(current_item)
+                    current_item = {"title": line.strip(), "details": []}
+            if current_item["title"] or current_item["details"]:
+                all_items.append(current_item)
+
+            section_data_processed = all_items
+
+            if not all_items: # Fallback if no structured items were extracted but input was not empty
+                if section_data.strip():
+                    return f"<div class='experience-item'><p contenteditable=\"true\">{section_data.strip()}</p></div>"
+                else:
+                    return ""
         
-    return html_output
+        # These elif/else blocks MUST be at the same indentation level as the first 'if isinstance(section_data, str):'
+        elif isinstance(section_data, list):
+            section_data_processed = section_data
+        else:
+            return ""
+
+        # This loop processes the 'section_data_processed' which could be from string parsing or directly a list
+        for item in section_data_processed:
+            title_text = item.get("title", '')
+            company_text = item.get("company", '')
+            duration_text = item.get("duration", '')
+            details_list = item.get("details", [])
+            description_text = item.get("description", '')
+
+            item_html = ""
+
+            item_html += f"<div class='item-header'>"
+            item_html += f"<h4 contenteditable=\"true\">{title_text}</h4>"
+            
+            item_html += f"<p class='item-meta'>"
+            if company_text:
+                item_html += f"<span contenteditable=\"true\">{company_text}</span>"
+            if duration_text:
+                item_html += f"<span class='duration' contenteditable=\"true\">{duration_text}</span>"
+            item_html += "</p>"
+            item_html += "</div>"
+
+            if description_text:
+                item_html += f"<p class='item-description' contenteditable=\"true\">{description_text}</p>"
+
+            if details_list:
+                if isinstance(details_list, str):
+                    details_list_final = [d.strip().lstrip('-• ').strip() for d in details_list.split('\n') if d.strip()]
+                elif isinstance(details_list, list):
+                    details_list_final = [d.strip().lstrip('-• ').strip() for d in details_list if d.strip()]
+                else:
+                    details_list_final = []
+
+                if details_list_final:
+                    item_html += "<ul>"
+                    for detail in details_list_final:
+                        item_html += f"<li contenteditable=\"true\">{detail}</li>"
+                    item_html += "</ul>"
+            
+            html_output += f"<div class='experience-item'>{item_html}</div>"
+            
+        return html_output
 
     # Extract personal details more reliably
     name = user_info.get("name", "Your Name")
