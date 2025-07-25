@@ -1367,8 +1367,8 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
         """
 
 
-   # NEW TEMPORARY DEBUGGING LINE: Check content for experience section before rendering
-print(f"DEBUG_HTML_GEN: Experience content received by HTML generator: '{smart_content.get('experience', '')}'")
+    # NEW TEMPORARY DEBUGGING LINE: Check content for experience section before rendering
+    print(f"DEBUG_HTML_GEN: Experience content received by HTML generator: '{smart_content.get('experience', '')}'")
     # Work Experience Section
     experience_content = parse_complex_section_html(smart_content.get('experience', ''), is_education=False)
     experience_section_html = ""
