@@ -1244,12 +1244,11 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
 
             section_data_processed = all_items
 
-            if not section_data_processed:
-                # This allows single-line fresher content to still render
-                if section_data.strip():
-                    return f"<div class='experience-item'><p contenteditable=\"true\">{section_data.strip()}</p></div>"
-                else:
-                    return ""
+            if not all_items:
+    if section_data.strip():
+        return f"<div class='experience-item'><p contenteditable=\"true\">{section_data.strip()}</p></div>"
+    else:
+        return ""
 
         elif isinstance(section_data, list):
             section_data_processed = section_data
