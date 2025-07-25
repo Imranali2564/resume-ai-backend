@@ -1104,20 +1104,18 @@ Certified Kubernetes Administrator (CKA), Linux Foundation, 2022""",
         "publications": "Expand these publication titles and give a brief context suitable for a resume, using bullet points if multiple. If input is empty or insufficient, return ONLY an empty string.",
         "patents": "Describe patents briefly and professionally, using bullet points if multiple. If input is empty or insufficient, return ONLY an empty string.",
         "achievements": "List each achievement, award, or notable success concisely, one per line, suitable for a professional resume. If input is empty or insufficient, return ONLY an empty string.",
-        "extraCurricular": "List extra-curricular activities and relevant contributions concisely, using bullet points or short phrases. Highlight leadership, teamwork, or organizational skills. If input is empty or insufficient, return ONLY an empty string.",
-        # ✅ Smart fresher handling logic
-if data.get("fresher_check", False) in [True, "true", "on", "1"]:
-    job_title = data.get("jobTitle", "entry-level role")
-    skills_raw = data.get("skills", "")
-    skills = ", ".join([s.strip() for s in skills_raw.split(",") if s.strip()]) or "my field"
-
-    dynamic_experience_line = f"As a fresher in {job_title}, I am eager to apply my skills in {skills} and grow professionally."
-    data["experience"] = dynamic_experience_line
+        "extraCurricular": "List extra-curricular activities and relevant contributions concisely, using bullet points or short phrases. Highlight leadership, teamwork, or organizational skills. If input is empty or insufficient, return ONLY an empty string."
     }
-    
+
+    # ✅ Smart fresher handling logic
+    if data.get("fresher_check", False) in [True, "true", "on", "1"]:
+        job_title = data.get("jobTitle", "entry-level role")
+        skills_raw = data.get("skills", "")
+        skills = ", ".join([s.strip() for s in skills_raw.split(",") if s.strip()]) or "my field"
+        dynamic_experience_line = f"As a fresher in {job_title}, I am eager to apply my skills in {skills} and grow professionally."
+        data["experience"] = dynamic_experience_line
 
     # <<< BAAKI FUNCTION WAISA HI RAHEGA >>>
-
     for key, instruction in sections.items():
         value = data.get(key, "").strip()
 
@@ -1156,7 +1154,6 @@ Output:
             smart_resume[key] = value
 
     return smart_resume
-
 
 def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     """
