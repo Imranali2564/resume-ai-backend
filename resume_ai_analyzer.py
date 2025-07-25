@@ -1112,7 +1112,7 @@ if data.get("fresher_check", False) in [True, "true", "on", "1"]:
     skills_raw = data.get("skills", "")
     skills = ", ".join([s.strip() for s in skills_raw.split(",") if s.strip()]) or "my field"
 
-    dynamic_experience_line = f"As a fresher in {job_title}, I am eager to apply my skills in {skills} to a real-world professional environment."
+    dynamic_experience_line = f"As a fresher in {job_title}, I am eager to apply my skills in {skills} and grow professionally."
     data["experience"] = dynamic_experience_line
 
     # <<< BAAKI FUNCTION WAISA HI RAHEGA >>>
