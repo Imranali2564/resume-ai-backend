@@ -1157,7 +1157,7 @@ Output:
 
 def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     """
-    This function converts AI-generated resume content into a proper HTML resume format.
+    Ye function AI-generated resume content ko ek proper HTML resume format me convert karta hai.
     Left section: contact, skills, languages, certifications, etc.
     Right section: summary, experience, education, projects, etc.
     """
@@ -1206,7 +1206,6 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
 
         return "".join(html_parts)
 
-    # Corrected indentation for parse_complex_section_html
     def parse_complex_section_html(section_data, is_education=False):
         if not section_data:
             return ""
@@ -1219,19 +1218,11 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                 "sorry, but the input provided is insufficient.",
                 "input is empty or insufficient.",
                 "not provided.",
-                "empty",
-                "kindly provide the education details that need to be reformatted in a standard resume format." 
+                "empty"
             ]:
                 return ""
-            
-            # Initialize lines once for processing
-            lines = [line.strip() for line in section_data.split('\n') if line.strip()]
 
-            # If it's a single line and doesn't look like a bullet point, treat it as a simple paragraph
-            if len(lines) == 1 and not lines[0].startswith(('-', '•')):
-                return f"<p class='item-description' contenteditable=\"true\">{lines[0]}</p>"
-            
-            # Continue with parsing for complex items (if not returned as a simple paragraph)
+            lines = [line.strip() for line in section_data.split('\n') if line.strip()]
             current_item = {"title": "", "details": []}
             all_items = []
             
@@ -1253,19 +1244,17 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
 
             section_data_processed = all_items
 
-            if not all_items: # Fallback if no structured items were extracted but input was not empty
+            if not all_items:
                 if section_data.strip():
                     return f"<div class='experience-item'><p contenteditable=\"true\">{section_data.strip()}</p></div>"
                 else:
                     return ""
-        
-        # These elif/else blocks MUST be at the same indentation level as the first 'if isinstance(section_data, str):'
+
         elif isinstance(section_data, list):
             section_data_processed = section_data
         else:
             return ""
 
-        # This loop processes the 'section_data_processed' which could be from string parsing or directly a list
         for item in section_data_processed:
             title_text = item.get("title", '')
             company_text = item.get("company", '')
@@ -1287,6 +1276,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             item_html += "</div>"
 
             if description_text:
+                # FIXED TYPO: changed 'classt' to 'class'
                 item_html += f"<p class='item-description' contenteditable=\"true\">{description_text}</p>"
 
             if details_list:
@@ -1304,7 +1294,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                     item_html += "</ul>"
             
             html_output += f"<div class='experience-item'>{item_html}</div>"
-            
+        
         return html_output
 
     # Extract personal details more reliably
