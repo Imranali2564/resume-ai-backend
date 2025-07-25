@@ -1221,6 +1221,17 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                 "empty"
             ]:
                 return ""
+            # --- NEW LOGIC ADDED HERE ---        
+        lines = [line.strip() for line in section_data.split('\n') if line.strip()]
+
+                if len(lines) == 1 and not lines[0].startswith(('-', '•')):
+            return f"<p contenteditable=\"true\">{lines[0]}</p>"
+        # --- END NEW LOGIC ---
+
+        lines = [line.strip() for line in section_data.split('\n') if line.strip()] # यह लाइन डुप्लिकेट हो सकती है, ध्यान दें
+        current_item = {"title": "", "details": []}
+        all_items = []
+
 
             lines = [line.strip() for line in section_data.split('\n') if line.strip()]
             current_item = {"title": "", "details": []}
