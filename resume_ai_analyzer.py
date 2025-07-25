@@ -1106,6 +1106,8 @@ Certified Kubernetes Administrator (CKA), Linux Foundation, 2022""",
         "achievements": "List each achievement, award, or notable success concisely, one per line, suitable for a professional resume. If input is empty or insufficient, return ONLY an empty string.",
         "extraCurricular": "List extra-curricular activities and relevant contributions concisely, using bullet points or short phrases. Highlight leadership, teamwork, or organizational skills. If input is empty or insufficient, return ONLY an empty string."
     }
+    # NEW TEMPORARY DEBUGGING LINE: Check what data is received for fresher_check, jobTitle, and skills
+print(f"DEBUG_FRESHER_INPUT: fresher_check: {data.get('fresher_check', False)}, jobTitle: '{data.get('jobTitle', '')}', skills: '{data.get('skills', '')}'")
 
     # Smart fresher handling logic - Updated to directly set 'experience' and skip AI call
     is_fresher = data.get("fresher_check", False) in [True, "true", "on", "1"]
@@ -1118,7 +1120,7 @@ Certified Kubernetes Administrator (CKA), Linux Foundation, 2022""",
         
         # Add directly to smart_resume, no need to send for AI processing
         smart_resume["experience"] = dynamic_experience_line 
-            
+        print(f"DEBUG_FRESHER_OUTPUT: Dynamic experience line generated: '{dynamic_experience_line}'")    
     # <<< REST OF THE FUNCTION REMAINS THE SAME >>>
     for key, instruction in sections.items():
         # If we have already handled fresher experience, skip AI call for this key
@@ -1362,6 +1364,9 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                 </div>
         """
 
+
+   # NEW TEMPORARY DEBUGGING LINE: Check content for experience section before rendering
+print(f"DEBUG_HTML_GEN: Experience content received by HTML generator: '{smart_content.get('experience', '')}'")
     # Work Experience Section
     experience_content = parse_complex_section_html(smart_content.get('experience', ''), is_education=False)
     experience_section_html = ""
