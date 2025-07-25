@@ -1241,8 +1241,8 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
                     current_item = {"title": line.strip(), "details": []}
             if current_item["title"] or current_item["details"]:
                 all_items.append(current_item)
-            
-                        section_data_processed = all_items
+
+            section_data_processed = all_items
 
             if not section_data_processed:
                 # This allows single-line fresher content to still render
