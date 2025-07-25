@@ -1060,8 +1060,8 @@ def get_field_suggestions(extracted_data, resume_text):
 
 def generate_smart_resume_from_keywords(data: dict) -> dict:
     """
-    Ye function har resume section ke liye AI se professionally rewritten content laata hai.
-    Jo fields user bharta hai, unke basis pe response deta hai.
+    This function retrieves professionally rewritten content from AI for each resume section.
+    It provides a response based on the fields filled by the user.
     """
 
     from openai import OpenAI
@@ -1070,7 +1070,7 @@ def generate_smart_resume_from_keywords(data: dict) -> dict:
     client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     smart_resume = {}
 
-    # <<< SIRF SKILLS KE PROMPT KO BEHTAR KIYA GAYA HAI >>>
+    # <<< IMPROVED PROMPT FOR SKILLS SECTION >>>
     sections = {
         "summary": "Write a concise, impactful 2-3 line professional summary for a resume. Focus on key skills, experience, and career goals. If input is empty or insufficient, return ONLY an empty string. DO NOT use headings like 'Summary:'.",
         "experience": """For each work experience entry, convert the raw input into a list of 3-5 *very concise, action-verb-driven bullet points* for a resume. Each bullet point should be a single line, start with an action verb, and focus on quantifiable achievements and key responsibilities. Do NOT include job titles, companies, or dates in this output; ONLY the bullet points. If input is empty or insufficient, return ONLY an empty string.""",
@@ -1107,16 +1107,24 @@ Certified Kubernetes Administrator (CKA), Linux Foundation, 2022""",
         "extraCurricular": "List extra-curricular activities and relevant contributions concisely, using bullet points or short phrases. Highlight leadership, teamwork, or organizational skills. If input is empty or insufficient, return ONLY an empty string."
     }
 
-    # ✅ Smart fresher handling logic
-    if data.get("fresher_check", False) in [True, "true", "on", "1"]:
+    # Smart fresher handling logic - Updated to directly set 'experience' and skip AI call
+    is_fresher = data.get("fresher_check", False) in [True, "true", "on", "1"]
+    
+    if is_fresher:
         job_title = data.get("jobTitle", "entry-level role")
         skills_raw = data.get("skills", "")
         skills = ", ".join([s.strip() for s in skills_raw.split(",") if s.strip()]) or "my field"
         dynamic_experience_line = f"As a fresher in {job_title}, I am eager to apply my skills in {skills} and grow professionally."
-        data["experience"] = dynamic_experience_line
-
-    # <<< BAAKI FUNCTION WAISA HI RAHEGA >>>
+        
+        # Add directly to smart_resume, no need to send for AI processing
+        smart_resume["experience"] = dynamic_experience_line 
+            
+    # <<< REST OF THE FUNCTION REMAINS THE SAME >>>
     for key, instruction in sections.items():
+        # If we have already handled fresher experience, skip AI call for this key
+        if is_fresher and key == "experience": 
+            continue # Skip AI call for this key
+
         value = data.get(key, "").strip()
 
         # Skip AI call if input is empty to save resources
@@ -1149,7 +1157,6 @@ Output:
                 smart_resume[key] = ""
             else:
                 smart_resume[key] = result
-                print(f"DEBUG: AI response for '{key}': '{result}'")
 
         except Exception as e:
             smart_resume[key] = value
