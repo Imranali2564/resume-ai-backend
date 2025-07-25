@@ -1167,6 +1167,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     """
     Always render lines as list items, with or without subheadings.
     """
+
     if not items_string:
         return ""
 
@@ -1193,6 +1194,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             if list_open:
                 html_parts.append("</ul>")
                 list_open = False
+
             current_subheading = line.strip()
             html_parts.append(f"<h3 contenteditable=\"true\">{current_subheading}</h3><ul>")
             list_open = True
@@ -1200,6 +1202,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             if not list_open:
                 html_parts.append("<ul>")
                 list_open = True
+
             html_parts.append(f"<li contenteditable=\"true\">{line}</li>")
 
     if list_open:
