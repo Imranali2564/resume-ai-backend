@@ -1115,11 +1115,11 @@ If input is empty or insufficient, return ONLY an empty string.""",
     }
     
     # Dynamic fresher experience line based on user's skills and job title
-    if is_fresher:
-    job_title = data.get("jobTitle", "an entry-level role")
-    skills_raw = data.get("skills", "")
-    skills_list = [s.strip() for s in re.split(r',|\n', skills_raw) if s.strip()]
-    skills_text = ", ".join(skills_list) if skills_list else "digital tools and business concepts"
+  if is_fresher:
+      job_title = data.get("jobTitle", "an entry-level role")
+      skills_raw = data.get("skills", "")
+      skills_list = [s.strip() for s in re.split(r',|\n', skills_raw) if s.strip()]
+      skills_text = ", ".join(skills_list) if skills_list else "digital tools and business concepts"
     
     fresher_experience_prompt = f"""
 You are an expert resume writer. Write 3–4 bullet points to describe a fresher’s readiness for a {job_title} role, based on the following skills: {skills_text}.
