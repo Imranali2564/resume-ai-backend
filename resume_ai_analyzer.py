@@ -1058,393 +1058,235 @@ def get_field_suggestions(extracted_data, resume_text):
         logger.error(f"Could not get field suggestions: {e}")
         return {"field": "General / Fresher", "suggestions": [{"type": "Recommended", "section": "Projects"}]}
 
+import os
+import re
+from openai import OpenAI
+
+# It's recommended to initialize the client once if the script is part of a larger application.
+# For a serverless function, initializing it inside the main handler is fine.
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
 def generate_smart_resume_from_keywords(data: dict) -> dict:
     """
     This function retrieves professionally rewritten content from AI for each resume section.
-    It provides a response based on the fields filled by the user.
+    It now uses enhanced, more robust prompts and better error handling.
     """
-
-    from openai import OpenAI
-    import os
-
-    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     smart_resume = {}
 
-    # <<< IMPROVED PROMPT FOR SKILLS SECTION >>>
+    # --- ENHANCED, MORE PROFESSIONAL PROMPTS ---
+    # These prompts are more specific to guide the AI for better, structured output.
     sections = {
-        "summary": "Write a concise, impactful 2-3 line professional summary for a resume. Focus on key skills, experience, and career goals. If input is empty or insufficient, return ONLY an empty string. DO NOT use headings like 'Summary:'.",
-        "experience": """For each work experience entry, convert the raw input into a list of 3-5 *very concise, action-verb-driven bullet points* for a resume. Each bullet point should be a single line, start with an action verb, and focus on quantifiable achievements and key responsibilities. Do NOT include job titles, companies, or dates in this output; ONLY the bullet points. If input is empty or insufficient, return ONLY an empty string.""",
-        "education": """Reformat these education details into a standard resume education format. For each entry, provide:
-        - Degree Name (on one line)
-        - University/Institute, City, State/Country (on the next line, comma separated)
-        - Graduation/Completion Year (on the same line as university, right-aligned, or clearly separated)
-        If there are relevant bullet points (e.g., GPA, specializations, honors), list them concisely below the main entry, each starting with a bullet. If input is empty or insufficient, return ONLY an empty string.
-Example Output Format:
-B.Tech in Computer Science
-Delhi University, Delhi, India
-2019
-• Relevant coursework: Data Structures, Algorithms, Machine Learning
-• GPA: 3.8/4.0""",
-        "skills": """From the following text, extract ONLY the individual skills. List each skill on a new line. If there are categories like 'Technical Skills', list the category on its own line ending with a colon.
-        **Crucial Rule: DO NOT combine skills on one line. Never output something like \"JavaScript* React\".**
-        Correct Example:        
-        JavaScript
-        React
-        Python
-        """,
-        "projects": """For each project entry, provide the concise project title on one line, followed by a list of 2-4 *very concise, action-verb-driven bullet points*. Each bullet should highlight technologies used, your role, and *key achievements/outcomes, especially quantifiable results*. Do NOT include numbering (1., 2., 3.) or labels like 'Project Description:' or 'Outcome/Result:'. The project title should be clearly distinguishable (e.g., by being on its own line). If input is empty or insufficient, return ONLY an empty string.""",
-        "certifications": """List each certification clearly, one per line. Include certification name, issuing body, and year if available. If input is empty or insufficient, return ONLY an empty string.
-Example:
-AWS Certified Solutions Architect, Amazon Web Services, 2023
-Certified Kubernetes Administrator (CKA), Linux Foundation, 2022""",
-        "languages": """List each language clearly, one per line, along with proficiency level (e.g., English: Fluent, French: Intermediate). If input is empty or insufficient, return ONLY an empty string.""",
-        "awards": "List each award on a new line in a professional resume format (e.g., 'Employee of the Year, ABC Corp, 2023'). If input is empty or insufficient, return ONLY an empty string.",
-        "volunteering": "Describe volunteering activities and contributions concisely, using bullet points. If input is empty or insufficient, return ONLY an empty string.",
-        "interests": "Convert these interests into professional sounding phrases suitable for a resume. List them concisely. If input is empty or insufficient, return ONLY an empty string.",
-        "publications": "Expand these publication titles and give a brief context suitable for a resume, using bullet points if multiple. If input is empty or insufficient, return ONLY an empty string.",
-        "patents": "Describe patents briefly and professionally, using bullet points if multiple. If input is empty or insufficient, return ONLY an empty string.",
-        "achievements": "List each achievement, award, or notable success concisely, one per line, suitable for a professional resume. If input is empty or insufficient, return ONLY an empty string.",
-        "extraCurricular": "List extra-curricular activities and relevant contributions concisely, using bullet points or short phrases. Highlight leadership, teamwork, or organizational skills. If input is empty or insufficient, return ONLY an empty string."
+        "summary": (
+            "You are an expert resume writer. Write a concise, impactful 2-3 line professional summary for a resume based on the provided keywords. "
+            "Focus on key skills, experience level, and career goals. The tone should be professional and confident. "
+            "If the input is insufficient to create a meaningful summary, return the single phrase: '[Insufficient Data]'. "
+            "Do not use headings like 'Summary:'."
+        ),
+        "experience": (
+            "You are an expert resume writer. For each work experience entry provided, convert the raw input into a list of 3-5 concise, action-verb-driven bullet points. "
+            "Each bullet point MUST start with a strong action verb (e.g., 'Managed', 'Developed', 'Increased') and focus on quantifiable achievements (e.g., 'Increased sales by 20%', 'Reduced costs by 15%'). "
+            "Do NOT include job titles, companies, or dates in the output; ONLY the bullet points. "
+            "If the input is empty or insufficient, return the single phrase: '[Insufficient Data]'."
+        ),
+        "education": (
+            "You are an expert resume writer. Reformat the provided education details into a standard, professional resume format. "
+            "For each entry, extract and provide: Degree Name, University/Institute, City, Country, and Graduation Year. "
+            "Combine University, City, and Country on one line. Place the year on a separate line or alongside the university. "
+            "If there are relevant details like GPA, specializations, or honors, list them as concise bullet points below the main entry. "
+            "Crucially, REMOVE any labels like 'Input:' or 'Output:'. "
+            "If the input is insufficient, return the single phrase: '[Insufficient Data]'.\n"
+            "Example Output Format:\n"
+            "B.Tech in Computer Science\n"
+            "Delhi University, Delhi, India | 2019\n"
+            "• Relevant coursework: Data Structures, Algorithms\n"
+            "• GPA: 3.8/4.0"
+        ),
+        "skills": (
+            "You are a skills extractor. From the following text, extract ONLY the individual skills. List each skill on a new line. "
+            "If you identify categories (e.g., 'Technical Skills', 'Languages'), list the category on its own line ending with a colon. "
+            "Crucial Rule: DO NOT combine skills on one line. If the input is insufficient, return the single phrase: '[Insufficient Data]'."
+        ),
+        "projects": (
+            "You are an expert resume writer. For each project, provide a concise project title on one line, followed by a list of 2-4 action-verb-driven bullet points. "
+            "Each bullet should highlight technologies used, your role, and key achievements, especially quantifiable results (e.g., 'improved performance by 30%'). "
+            "Do NOT use labels like 'Project Description:'. If the input is insufficient, return the single phrase: '[Insufficient Data]'."
+        ),
+        "certifications": (
+            "You are an expert resume writer. List each certification on a new line. Include the certification name, issuing body, and year if available. "
+            "If the input is insufficient, return the single phrase: '[Insufficient Data]'.\n"
+            "Example:\nAWS Certified Solutions Architect, Amazon Web Services, 2023"
+        ),
+        "languages": (
+            "You are an expert resume writer. List each language on a new line with its proficiency level (e.g., 'English: Fluent', 'French: Intermediate'). "
+            "If the input is insufficient, return the single phrase: '[Insufficient Data]'."
+        ),
+        "achievements": (
+            "You are an expert resume writer. List each achievement, award, or notable success concisely, one per line, in a professional format (e.g., 'Employee of the Year, ABC Corp, 2023'). "
+            "If the input is insufficient, return the single phrase: '[Insufficient Data]'."
+        ),
+        "extraCurricular": (
+            "You are an expert resume writer. List extra-curricular activities and relevant contributions concisely, using bullet points or short phrases. "
+            "Highlight leadership, teamwork, or organizational skills. If the input is insufficient, return the single phrase: '[Insufficient Data]'."
+        )
     }
 
-    # Smart fresher handling logic - Updated to directly set 'experience' and skip AI call
     is_fresher = data.get("fresher_check", False) in [True, "true", "on", "1"]
     
     if is_fresher:
-        job_title = data.get("jobTitle", "entry-level role")
+        job_title = data.get("jobTitle") or "an entry-level role"
         skills_raw = data.get("skills", "")
-        skills = ", ".join([s.strip() for s in skills_raw.split(",") if s.strip()]) or "my field"
-        dynamic_experience_line = f"As a fresher in {job_title}, I am eager to apply my skills in {skills} and grow professionally."
-        
-        # Add directly to smart_resume, no need to send for AI processing
-        smart_resume["experience"] = dynamic_experience_line 
-            
-    # <<< REST OF THE FUNCTION REMAINS THE SAME >>>
+        skills = ", ".join([s.strip() for s in skills_raw.split(",") if s.strip()]) or "my field of interest"
+        # A more professional and dynamic line for freshers
+        smart_resume["experience"] = f"As a recent graduate, I am eager to apply my academic knowledge and skills in {skills} to contribute to a dynamic team and grow professionally in {job_title}."
+
     for key, instruction in sections.items():
-        # If we have already handled fresher experience, skip AI call for this key
-        if is_fresher and key == "experience": 
-            continue # Skip AI call for this key
+        if is_fresher and key == "experience":
+            continue
 
         value = data.get(key, "").strip()
 
-        # Skip AI call if input is empty to save resources
         if not value:
             smart_resume[key] = ""
             continue
 
-        prompt = f"""
-You are an expert resume writer. {instruction}
-Input: {value}
-Output:
-"""
+        prompt = f"{instruction}\nInput: {value}\nOutput:"
 
         try:
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
-                timeout=20
+                timeout=20,
+                temperature=0.5 # A bit of creativity but still professional
             )
             result = response.choices[0].message.content.strip()
 
-            if result.lower() in [
-                "no skills provided.", "no certifications found.", "no education details provided.",
-                "no projects found.", "no languages provided.", "invalid input.",
-                "i'm sorry, but i cannot generate certifications without any input.",
-                "the input provided seems to be incomplete.",
-                "kindly provide the education details that need to be reformatted in a standard resume format.",
-                "empty"
-            ]:
-                smart_resume[key] = ""
+            # Check for insufficient data placeholder or other negative AI responses
+            if result == '[Insufficient Data]' or not result:
+                smart_resume[key] = "Please provide more details in this section for a better AI-generated result."
             else:
                 smart_resume[key] = result
 
         except Exception as e:
+            # If AI fails, return the original user input as a fallback
+            print(f"Error calling OpenAI for key '{key}': {e}")
             smart_resume[key] = value
 
     return smart_resume
 
 def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     """
-    Ye function AI-generated resume content ko ek proper HTML resume format me convert karta hai.
-    Left section: contact, skills, languages, certifications, etc.
-    Right section: summary, experience, education, projects, etc.
+    This function converts AI-generated resume content into a proper HTML resume format.
+    It's enhanced to handle different content types and create a clean layout.
     """
-    import re
 
     def list_to_html(items_string):
-        """
-        Always render lines as list items, with or without subheadings.
-        """
-        if not items_string:
-            return ""
+        if not items_string or "Please provide more details" in items_string:
+            return f"<p contenteditable='true'>{items_string}</p>" if items_string else ""
 
-        if isinstance(items_string, list):
-            lines = [str(item).strip() for item in items_string if str(item).strip()]
-        elif isinstance(items_string, str):
-            lines = [line.strip() for line in items_string.split('\n') if line.strip()]
-        else:
-            return ""
-
-        html_parts = []
-        current_subheading = None
-        list_open = False
-
+        lines = [line.strip() for line in items_string.split('\n') if line.strip()]
+        html = "<ul>"
         for line in lines:
-            if line.lower() in [
-                "input is empty or insufficient.", "no skills provided.", "no certifications found.",
-                "no education details provided.", "no projects found.", "no languages provided.",
-                "not provided.", "empty"
-            ] or "i'm sorry, but i cannot" in line.lower() or "kindly provide the" in line.lower():
-                continue
+            clean_line = line.lstrip('-• ').strip()
+            html += f"<li contenteditable='true'>{clean_line}</li>"
+        html += "</ul>"
+        return html
 
-            if line.strip().endswith(':'):
-                if list_open:
-                    html_parts.append("</ul>")
-                    list_open = False
+    def parse_complex_section_html(section_data):
+        if not section_data or "Please provide more details" in section_data:
+             return f"<p contenteditable='true'>{section_data}</p>" if section_data else ""
 
-                current_subheading = line.strip()
-                html_parts.append(f"<h3 contenteditable=\"true\">{current_subheading}</h3><ul>")
-                list_open = True
-            else:
-                if not list_open:
-                    html_parts.append("<ul>")
-                    list_open = True
-
-                clean_line = line.strip().lstrip('-• ').strip()
-                html_parts.append(f"<li contenteditable=\"true\">{clean_line}</li>")
-
-        if list_open:
-            html_parts.append("</ul>")
-
-        return "".join(html_parts)
-
-    def parse_complex_section_html(section_data, is_education=False):
-        if not section_data:
-            return ""
-
+        # This regex helps split entries that start with a bolded title (like a job title)
+        entries = re.split(r'\n(?=\*\*.+\*\*)', section_data.strip())
         html_output = ""
 
-        if isinstance(section_data, str):
-            lower_section_data = section_data.lower().strip()
-            if lower_section_data in [
-                "sorry, but the input provided is insufficient.",
-                "input is empty or insufficient.",
-                "not provided.",
-                "empty"
-            ]:
-                return ""
+        for entry in entries:
+            if not entry.strip():
+                continue
 
-            lines = [line.strip() for line in section_data.split('\n') if line.strip()]
-            current_item = {"title": "", "details": []}
-            all_items = []
-            
-            for line in lines:
-                if not line.strip().lstrip('-• ').strip():
-                    continue
+            lines = [line.strip() for line in entry.split('\n') if line.strip()]
+            title = lines[0].replace("**", "") if lines and lines[0].startswith("**") else ""
+            meta = lines[1].replace("*", "") if len(lines) > 1 and lines[1].startswith("*") else ""
+            details = [line.lstrip('• ').strip() for line in lines if line.startswith('•')]
 
-                if line.strip().startswith(('-', '•')):
-                    current_item["details"].append(line.strip().lstrip('-• ').strip())
-                elif not current_item["title"] and not current_item["details"]:
-                    current_item["title"] = line.strip()
-                elif current_item["title"] and not current_item["details"]:
-                    current_item["details"].append(line.strip())
-                else:
-                    all_items.append(current_item)
-                    current_item = {"title": line.strip(), "details": []}
-            if current_item["title"] or current_item["details"]:
-                all_items.append(current_item)
+            item_html = "<div class='experience-item'>"
+            if title:
+                item_html += f"<h4 contenteditable='true'>{title}</h4>"
+            if meta:
+                item_html += f"<p class='item-meta' contenteditable='true'>{meta}</p>"
+            if details:
+                item_html += "<ul>"
+                for detail in details:
+                    item_html += f"<li contenteditable='true'>{detail}</li>"
+                item_html += "</ul>"
+            # Handle cases where the content is just a single paragraph (like fresher experience)
+            elif not title and not meta and lines:
+                 item_html += f"<p contenteditable='true'>{' '.join(lines)}</p>"
 
-            section_data_processed = all_items
-
-            if not section_data_processed:
-                if section_data.strip():
-                    return f"<div class='experience-item'><p contenteditable=\"true\">{section_data.strip()}</p></div>"
-                else:
-                    return ""
-
-        elif isinstance(section_data, list):
-            section_data_processed = section_data
-        else:
-            return ""
-
-        for item in section_data_processed:
-            title_text = item.get("title", '')
-            company_text = item.get("company", '')
-            duration_text = item.get("duration", '')
-            details_list = item.get("details", [])
-            description_text = item.get("description", '')
-
-            item_html = ""
-
-            item_html += f"<div class='item-header'>"
-            item_html += f"<h4 contenteditable=\"true\">{title_text}</h4>"
-            
-            item_html += f"<p class='item-meta'>"
-            if company_text:
-                item_html += f"<span contenteditable=\"true\">{company_text}</span>"
-            if duration_text:
-                item_html += f"<span class='duration' contenteditable=\"true\">{duration_text}</span>"
-            item_html += "</p>"
             item_html += "</div>"
-
-            if description_text:
-                # FIXED TYPO: changed 'classt' to 'class'
-                item_html += f"<p class='item-description' contenteditable=\"true\">{description_text}</p>"
-
-            if details_list:
-                if isinstance(details_list, str):
-                    details_list_final = [d.strip().lstrip('-• ').strip() for d in details_list.split('\n') if d.strip()]
-                elif isinstance(details_list, list):
-                    details_list_final = [d.strip().lstrip('-• ').strip() for d in details_list if d.strip()]
-                else:
-                    details_list_final = []
-
-                if details_list_final:
-                    item_html += "<ul>"
-                    for detail in details_list_final:
-                        item_html += f"<li contenteditable=\"true\">{detail}</li>"
-                    item_html += "</ul>"
-            
-            html_output += f"<div class='experience-item'>{item_html}</div>"
+            html_output += item_html
         
-        return html_output
+        return html_output if html_output else f"<p contenteditable='true'>{section_data}</p>"
 
-    # Extract personal details more reliably
+
+    # --- Extract and prepare data ---
     name = user_info.get("name", "Your Name")
+    jobTitle = user_info.get("jobTitle", "")
     phone = user_info.get("phone", "")
     email = user_info.get("email", "")
     location = user_info.get("location", "")
     linkedin = user_info.get("linkedin", "")
-    jobTitle = user_info.get("jobTitle", "")
 
-    # Pre-render conditional HTML blocks to simplify the main f-string
-    # Skills Section
-    skills_content = list_to_html(smart_content.get('skills', ''))
-    skills_section_html = ""
-    if skills_content.strip():
-        skills_section_html = f"""
-                <div class="resume-section preview-section">
-                    <h2 contenteditable="true">Skills</h2>
-                    {skills_content}
-                </div>
-        """
+    # Ensure LinkedIn URL is a proper link
+    linkedin_html = ""
+    if linkedin.strip():
+        # Add http:// if missing for the link to work correctly
+        url = linkedin.strip()
+        if not url.startswith(('http://', 'https://')):
+            url = 'https://' + url
+        # Display a cleaner version of the link text
+        display_url = re.sub(r'https?://(www\.)?', '', url)
+        linkedin_html = f"<p contenteditable='true'><i class='fab fa-linkedin'></i> <a href='{url}' target='_blank'>{display_url}</a></p>"
 
-    # Languages Section
-    languages_content = list_to_html(smart_content.get('languages', ''))
-    languages_section_html = ""
-    if languages_content.strip():
-        languages_section_html = f"""
-                <div class="resume-section preview-section">
-                    <h2 contenteditable="true">Languages</h2>
-                    {languages_content}
-                </div>
-        """
+    # --- Generate HTML for each section if content exists ---
+    sections_html = {
+        'summary': f"<div class='resume-section'><h2 contenteditable='true'>Profile Summary</h2><p contenteditable='true'>{smart_content.get('summary', '')}</p></div>" if smart_content.get('summary') else "",
+        'experience': f"<div class='resume-section'><h2 contenteditable='true'>Work Experience</h2>{parse_complex_section_html(smart_content.get('experience', ''))}</div>" if smart_content.get('experience') else "",
+        'education': f"<div class='resume-section'><h2 contenteditable='true'>Education</h2>{parse_complex_section_html(smart_content.get('education', ''))}</div>" if smart_content.get('education') else "",
+        'projects': f"<div class='resume-section'><h2 contenteditable='true'>Projects</h2>{parse_complex_section_html(smart_content.get('projects', ''))}</div>" if smart_content.get('projects') else "",
+        'skills': f"<div class='resume-section'><h2 contenteditable='true'>Skills</h2>{list_to_html(smart_content.get('skills', ''))}</div>" if smart_content.get('skills') else "",
+        'languages': f"<div class='resume-section'><h2 contenteditable='true'>Languages</h2>{list_to_html(smart_content.get('languages', ''))}</div>" if smart_content.get('languages') else "",
+        'certifications': f"<div class='resume-section'><h2 contenteditable='true'>Certifications</h2>{list_to_html(smart_content.get('certifications', ''))}</div>" if smart_content.get('certifications') else "",
+        'achievements': f"<div class='resume-section'><h2 contenteditable='true'>Awards & Achievements</h2>{list_to_html(smart_content.get('achievements', ''))}</div>" if smart_content.get('achievements') else "",
+        'extraCurricular': f"<div class='resume-section'><h2 contenteditable='true'>Extra-curricular Activities</h2>{list_to_html(smart_content.get('extraCurricular', ''))}</div>" if smart_content.get('extraCurricular') else ""
+    }
 
-    # Certifications Section
-    certifications_content = list_to_html(smart_content.get('certifications', ''))
-    certifications_section_html = ""
-    if certifications_content.strip():
-        certifications_section_html = f"""
-                <div class="resume-section preview-section">
-                    <h2 contenteditable="true">Certifications</h2>
-                    {certifications_content}
-                </div>
-        """
-
-    # Profile Summary Section
-    summary_text = smart_content.get('summary', '')
-    summary_section_html = ""
-    if summary_text.strip():
-        summary_section_html = f"""
-                <div class="resume-section preview-section">
-                    <h2 contenteditable="true">Profile Summary</h2>
-                    <p contenteditable="true">{summary_text}</p>
-                </div>
-        """
-
-
-    # NEW TEMPORARY DEBUGGING LINE: Check content for experience section before rendering
-    print(f"DEBUG_HTML_GEN: Experience content received by HTML generator: '{smart_content.get('experience', '')}'")
-    # Work Experience Section
-    experience_content = parse_complex_section_html(smart_content.get('experience', ''), is_education=False)
-    experience_section_html = ""
-    if experience_content.strip():
-        experience_section_html = f"""
-                <div class="resume-section preview-section">
-                    <h2 contenteditable="true">Work Experience</h2>
-                    {experience_content}
-                </div>
-        """
-
-    # Education Section
-    education_content = parse_complex_section_html(smart_content.get('education', ''), is_education=True)
-    education_section_html = ""
-    if education_content.strip():
-        education_section_html = f"""
-                <div class="resume-section preview-section">
-                    <h2 contenteditable="true">Education</h2>
-                    {education_content}
-                </div>
-        """
-
-    # Projects Section
-    projects_content = parse_complex_section_html(smart_content.get('projects', ''), is_education=False)
-    projects_section_html = ""
-    if projects_content.strip():
-        projects_section_html = f"""
-                <div class="resume-section preview-section">
-                    <h2 contenteditable="true">Projects</h2>
-                    {projects_content}
-                </div>
-        """
-    # Achievements Section
-    achievements_content = list_to_html(smart_content.get('achievements', ''))
-    achievements_section_html = ""
-    if achievements_content.strip():
-        achievements_section_html = f"""
-                <div class="resume-section preview-section">
-                    <h2 contenteditable="true">Awards & Achievements</h2>
-                    {achievements_content}
-                </div>
-        """
-
-    # Extra-curricular Activities Section
-    extra_curricular_content = list_to_html(smart_content.get('extraCurricular', ''))
-    extra_curricular_section_html = ""
-    if extra_curricular_content.strip():
-        extra_curricular_section_html = f"""
-                <div class="resume-section preview-section">
-                    <h2 contenteditable="true">Extra-curricular Activities</h2>
-                    {extra_curricular_content}
-                </div>
-        """
-
+    # --- Assemble the final HTML structure ---
     return f"""
     <div class="resume-container">
         <div class="content-wrapper">
             <aside class="resume-sidebar">
-                <div class="contact-info-sidebar preview-section">
+                <div class="contact-info-sidebar resume-section">
                     <h3 contenteditable="true">Contact</h3>
-                    {phone.strip() and f"<p contenteditable='true'><i class='fas fa-phone-alt'></i> {phone}</p>" or ""}
-                    {email.strip() and f"<p contenteditable='true'><i class='fas fa-envelope'></i> {email}</p>" or ""}
-                    {location.strip() and f"<p contenteditable='true'><i class='fas fa-map-marker-alt'></i> {location}</p>" or ""}
-                    {linkedin.strip() and f"<p contenteditable='true'><i class='fab fa-linkedin'></i> <a href='{linkedin}' target='_blank'>{linkedin}</a></p>" or ""}
+                    {f"<p contenteditable='true'><i class='fas fa-envelope'></i> {email}</p>" if email.strip() else ""}
+                    {f"<p contenteditable='true'><i class='fas fa-phone-alt'></i> {phone}</p>" if phone.strip() else ""}
+                    {f"<p contenteditable='true'><i class='fas fa-map-marker-alt'></i> {location}</p>" if location.strip() else ""}
+                    {linkedin_html}
                 </div>
-                {skills_section_html}
-                {languages_section_html}
-                {certifications_section_html}
+                {sections_html['skills']}
+                {sections_html['languages']}
+                {sections_html['certifications']}
             </aside>
             <main class="main-content">
                 <div class="name-title-header">
                     <h1 contenteditable="true" id="preview-name">{name}</h1>
-                    {jobTitle.strip() and f"<p class='job-title' contenteditable='true' id='preview-title'>{jobTitle}</p>" or ""}
+                    {f"<p class='job-title' contenteditable='true' id='preview-title'>{jobTitle}</p>" if jobTitle.strip() else ""}
                 </div>
-                {summary_section_html}
-                {experience_section_html}
-                {education_section_html}
-                {projects_section_html}
-                {achievements_section_html}
-                {extra_curricular_section_html}
+                {sections_html['summary']}
+                {sections_html['experience']}
+                {sections_html['education']}
+                {sections_html['projects']}
+                {sections_html['achievements']}
+                {sections_html['extraCurricular']}
             </main>
         </div>
     </div>
