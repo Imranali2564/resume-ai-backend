@@ -1115,13 +1115,13 @@ If input is empty or insufficient, return ONLY an empty string.""",
     }
     
     # Dynamic fresher experience line based on user's skills and job title
-  if is_fresher:
-      job_title = data.get("jobTitle", "an entry-level role")
-      skills_raw = data.get("skills", "")
-      skills_list = [s.strip() for s in re.split(r',|\n', skills_raw) if s.strip()]
-      skills_text = ", ".join(skills_list) if skills_list else "digital tools and business concepts"
-    
-    fresher_experience_prompt = f"""
+    if is_fresher:
+        job_title = data.get("jobTitle", "an entry-level role")
+        skills_raw = data.get("skills", "")
+        skills_list = [s.strip() for s in re.split(r',|\n', skills_raw) if s.strip()]
+        skills_text = ", ".join(skills_list) if skills_list else "digital tools and business concepts"
+        
+        fresher_experience_prompt = f"""
 You are an expert resume writer. Write 3–4 bullet points to describe a fresher’s readiness for a {job_title} role, based on the following skills: {skills_text}.
 Each bullet point should:
 - Begin with a strong action verb
@@ -1132,9 +1132,18 @@ Each bullet point should:
 Only return the bullet points — do not include job title or duration. If information is not enough, generate relevant bullets assuming this is a marketing/business/tech fresher.
 Output:"""
 
-    # Use AI to get bullet points
-    experience_output = call_openai(fresher_experience_prompt.strip())
-    smart_resume["experience"] = experience_output.strip()
+        # Use AI to get bullet points
+        try:
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": fresher_experience_prompt.strip()}],
+                timeout=20
+            )
+            experience_output = response.choices[0].message.content.strip()
+            smart_resume["experience"] = experience_output
+        except Exception as e:
+            print(f"Error calling OpenAI for fresher experience: {e}")
+            smart_resume["experience"] = "Could not generate experience points."
 
 
     for key, instruction in sections.items():
@@ -1166,7 +1175,7 @@ Output:
             result = response.choices[0].message.content.strip()
 
             if "i cannot" in result.lower() or "insufficient" in result.lower() or "provide the details" in result.lower() or not result:
-                 smart_resume[key] = "Not Provided"
+                smart_resume[key] = "Not Provided"
             else:
                 smart_resume[key] = result
 
