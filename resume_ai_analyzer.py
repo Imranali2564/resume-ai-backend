@@ -1069,11 +1069,12 @@ client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 def generate_smart_resume_from_keywords(data: dict) -> dict:
     """
     This function retrieves professionally rewritten content from AI for each resume section.
-    This is the corrected version based on user feedback, reverting unnecessary changes.
+    It provides a response based on the fields filled by the user.
     """
     smart_resume = {}
 
-    # <<< Using the original prompts with a specific fix for the 'education' section >>>
+    # <<< REVERTED TO SIMPLER PROMPTS WITH KEY FIXES >>>
+    # This version focuses on fixing the education and skills parsing, and providing a short message for empty fields.
     sections = {
         "summary": "Write a concise, impactful 2-3 line professional summary for a resume. Focus on key skills, experience, and career goals. If input is empty or insufficient, return ONLY an empty string. DO NOT use headings like 'Summary:'.",
         "experience": """For each work experience entry, convert the raw input into a list of 3-5 *very concise, action-verb-driven bullet points* for a resume. Each bullet point should be a single line, start with an action verb, and focus on quantifiable achievements and key responsibilities. Do NOT include job titles, companies, or dates in this output; ONLY the bullet points. If input is empty or insufficient, return ONLY an empty string.""",
@@ -1081,7 +1082,7 @@ def generate_smart_resume_from_keywords(data: dict) -> dict:
         - Degree Name (on one line)
         - University/Institute, City, State/Country (on the next line)
         - Graduation/Completion Year (on the same line as university)
-        If there are relevant bullet points (e.g., GPA, specializations, honors), list them concisely below the main entry, each starting with a bullet. If input is empty or insufficient, return ONLY an empty string. CRUCIAL: REMOVE any 'Input:' or 'Output:' labels from the final text.
+        If there are relevant bullet points (e.g., GPA, specializations), list them concisely below the main entry, each starting with a bullet. If input is empty or insufficient, return ONLY an empty string. CRUCIAL: REMOVE any 'Input:' or 'Output:' labels from the final text.
 Example Output Format:
 B.Tech in Computer Science
 Delhi University, Delhi, India | 2019
@@ -1102,13 +1103,9 @@ Delhi University, Delhi, India | 2019
 
     is_fresher = data.get("fresher_check", False) in [True, "true", "on", "1"]
     
-    # Reverted to the original, dynamic fresher experience line as requested.
     if is_fresher:
-        job_title = data.get("jobTitle", "an entry-level role")
-        skills_raw = data.get("skills", "")
-        skills = ", ".join([s.strip() for s in skills_raw.split(",") if s.strip()]) or "my field"
-        dynamic_experience_line = f"As a fresher in {job_title}, I am eager to apply my skills in {skills} and grow professionally."
-        smart_resume["experience"] = dynamic_experience_line
+        # Reverted to the original, shorter fresher text as requested.
+        smart_resume["experience"] = "As a fresher, I am eager to apply my skills and grow professionally."
 
     for key, instruction in sections.items():
         if is_fresher and key == "experience":
@@ -1148,7 +1145,7 @@ Output:
 def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     """
     This function converts AI-generated resume content into a proper HTML resume format.
-    Reverted to the original structure to ensure stability.
+    It's enhanced to handle different content types and create a clean layout.
     """
 
     def list_to_html(items_string):
@@ -1172,7 +1169,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             return f"<p contenteditable='true'>{section_data}</p>"
 
         # Logic to handle multi-entry sections like Education and Experience
-        entries = re.split(r'\n(?=[A-Z])', section_data.strip())
+        entries = re.split(r'\n(?=[A-Z])', section_data.strip()) # Split based on lines starting with a capital letter (potential new entry)
         html_output = ""
         
         for entry_text in entries:
@@ -1267,4 +1264,3 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
         </div>
     </div>
     """
-
