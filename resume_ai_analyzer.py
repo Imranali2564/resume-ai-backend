@@ -1163,7 +1163,11 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
         html = "<ul>"
         for line in lines:
             clean_line = line.lstrip('-• ').strip()
-            html += f"<li contenteditable='true'>{clean_line}</li>"
+            # Check for bold category
+            if clean_line.endswith(':'):
+                html += f"<strong>{clean_line}</strong>"
+            else:
+                html += f"<li contenteditable='true'>{clean_line}</li>"
         html += "</ul>"
         return html
 
