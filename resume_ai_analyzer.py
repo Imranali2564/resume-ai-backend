@@ -1076,7 +1076,7 @@ def generate_smart_resume_from_keywords(data: dict) -> dict:
 
     # --- DYNAMIC PROMPTS BASED ON FRESHER STATUS ---
     summary_prompt = (
-        "Write a concise, impactful 2-3 line **Career Objective** for a fresher's resume. Focus on the desired role, key skills, and enthusiasm to learn and contribute. DO NOT mention 'years of experience'. If input is empty or insufficient, return ONLY an empty string."
+        "Write a concise, impactful 2-3 line **Career Objective** for a fresher's resume. Focus on the desired role and key skills provided. If the user's input for summary is empty, create a general but professional objective based on their Job Title and Skills. DO NOT mention 'years of experience'. If all inputs are insufficient, return ONLY an empty string."
         if is_fresher else
         "Write a concise, impactful 2-3 line **Professional Summary** for a resume. Focus on key skills, years of experience, and career achievements. If input is empty or insufficient, return ONLY an empty string."
     )
@@ -1096,10 +1096,10 @@ Example of perfect output:
 Harvard Business School, Cambridge, MA, USA | 2020
 • GPA: 3.9/4.0
 """,
-        "skills": """From the following text, extract ONLY the individual skills. List each skill on a new line. If there are categories like 'Technical Skills', list the category on its own line ending with a colon.
+        "skills": """From the following text, extract ONLY the individual skills. List each skill on a new line. If you identify a category like 'Technical Skills', make that category bold using markdown (e.g., **Technical Skills:**).
         **Crucial Rule: DO NOT combine skills on one line.**
         """,
-        "projects": """For each project entry, provide the **Project Title in bold** on one line, followed by a list of 2-4 concise, action-verb-driven bullet points. Each bullet should highlight your key contributions and outcomes. This format is for ATS, so keep it clean and simple. If input is empty or insufficient, return ONLY an empty string.""",
+        "projects": """For each project entry, provide the **Project Title in bold** on one line, followed by a list of ALL provided bullet points. Each bullet should highlight key contributions and outcomes. This format is for ATS, so keep it clean and simple. If input is empty or insufficient, return ONLY an empty string.""",
         "certifications": """List each certification clearly, one per line. Include certification name, issuing body, and year if available. If input is empty or insufficient, return ONLY an empty string.""",
         "languages": """List each language clearly, one per line, along with proficiency level (e.g., English: Fluent, French: Intermediate). If input is empty or insufficient, return ONLY an empty string.""",
         "achievements": "List each achievement, award, or notable success concisely, one per line, suitable for a professional resume. If input is empty or insufficient, return ONLY an empty string.",
@@ -1112,14 +1112,19 @@ Harvard Business School, Cambridge, MA, USA | 2020
         skills_raw = data.get("skills", "")
         skills_list = [s.strip() for s in re.split(r',|\n', skills_raw) if s.strip()]
         skills_text = ", ".join(skills_list) if skills_list else "my academic knowledge"
-        # A simple, human-like sentence.
-        smart_resume["experience"] = f"As a recent graduate, I am eager to apply my skills in {skills_text} to contribute to a dynamic team and grow professionally in {job_title}."
+        # A simple, human-like sentence starting with "As a fresher".
+        smart_resume["experience"] = f"As a fresher in {job_title}, I am eager to apply my skills in {skills_text} and grow professionally."
 
     for key, instruction in sections.items():
         if is_fresher and key == "experience":
             continue
 
         value = data.get(key, "").strip()
+        
+        # For a fresher's summary, we also provide the job title and skills for context if the summary is empty
+        if is_fresher and key == "summary" and not value:
+            value = f"Job Title: {data.get('jobTitle', '')}, Skills: {data.get('skills', '')}"
+
 
         if not value:
             smart_resume[key] = ""
@@ -1162,11 +1167,12 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
         lines = [line.strip() for line in items_string.split('\n') if line.strip()]
         html = "<ul>"
         for line in lines:
-            clean_line = line.lstrip('-• ').strip()
-            # Check for bold category
-            if clean_line.endswith(':'):
+            # Check for bold category (e.g., **Technical Skills:**)
+            if line.startswith('**') and line.endswith('**'):
+                clean_line = line.replace("**", "")
                 html += f"<strong>{clean_line}</strong>"
             else:
+                clean_line = line.lstrip('-• ').strip()
                 html += f"<li contenteditable='true'>{clean_line}</li>"
         html += "</ul>"
         return html
@@ -1194,7 +1200,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             title = lines[0].replace("**", "") if lines and lines[0].startswith("**") else ""
             meta = lines[1] if len(lines) > 1 and not lines[1].startswith('•') else ""
             details_start_index = 2 if title and meta else 1 if title else 0
-            details = [line.lstrip('• ').strip() for line in lines[details_start_index:] if line.startswith('•')]
+            details = [line.lstrip('• ').strip() for line in lines[details_start_index:]]
 
             if title:
                 item_html += f"<h4 contenteditable='true'>{title}</h4>"
@@ -1204,7 +1210,8 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             if details:
                 item_html += "<ul>"
                 for detail in details:
-                    item_html += f"<li contenteditable='true'>{detail}</li>"
+                    # Ensure that even non-bullet lines get included in the list for projects
+                    item_html += f"<li contenteditable='true'>{detail.lstrip('• ').strip()}</li>"
                 item_html += "</ul>"
             
             item_html += "</div>"
