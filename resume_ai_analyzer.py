@@ -1099,15 +1099,7 @@ Harvard Business School, Cambridge, MA, USA | 2020
         "skills": """From the following text, extract ONLY the individual skills. List each skill on a new line. If you identify a category like 'Technical Skills', make that category bold using markdown (e.g., **Technical Skills:**).
         **Crucial Rule: DO NOT combine skills on one line.**
         """,
-        "projects": """For each project entry, generate a clear and well-formatted output for a professional resume:
-- The first line should be the **Project Title in bold**.
-- Optionally add a short one-line description or role context (if available).
-- Then list 2–4 bullet points, each starting with an action verb.
-- Use measurable outcomes (e.g., "increased by X%", "saved Y hours").
-- Avoid long paragraphs or redundant phrasing.
-- Maintain clean and ATS-friendly formatting.
-If input is empty or insufficient, return ONLY an empty string.""",
-
+        "projects": """For each project entry, provide the **Project Title in bold** on one line, followed by a list of ALL provided bullet points. Each bullet should highlight key contributions and outcomes. This format is for ATS, so keep it clean and simple. If input is empty or insufficient, return ONLY an empty string.""",
         "certifications": """List each certification clearly, one per line. Include certification name, issuing body, and year if available. If input is empty or insufficient, return ONLY an empty string.""",
         "languages": """List each language clearly, one per line, along with proficiency level (e.g., English: Fluent, French: Intermediate). If input is empty or insufficient, return ONLY an empty string.""",
         "achievements": "List each achievement, award, or notable success concisely, one per line, suitable for a professional resume. If input is empty or insufficient, return ONLY an empty string.",
@@ -1119,32 +1111,9 @@ If input is empty or insufficient, return ONLY an empty string.""",
         job_title = data.get("jobTitle", "an entry-level role")
         skills_raw = data.get("skills", "")
         skills_list = [s.strip() for s in re.split(r',|\n', skills_raw) if s.strip()]
-        skills_text = ", ".join(skills_list) if skills_list else "digital tools and business concepts"
-        
-        fresher_experience_prompt = f"""
-You are an expert resume writer. Write 3–4 bullet points to describe a fresher’s readiness for a {job_title} role, based on the following skills: {skills_text}.
-Each bullet point should:
-- Begin with a strong action verb
-- Mention a real-world or academic project, internship, or skill application
-- Be short, professional, and ATS-friendly
-- Avoid generic or vague language
-
-Only return the bullet points — do not include job title or duration. If information is not enough, generate relevant bullets assuming this is a marketing/business/tech fresher.
-Output:"""
-
-        # Use AI to get bullet points
-        try:
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": fresher_experience_prompt.strip()}],
-                timeout=20
-            )
-            experience_output = response.choices[0].message.content.strip()
-            smart_resume["experience"] = experience_output
-        except Exception as e:
-            print(f"Error calling OpenAI for fresher experience: {e}")
-            smart_resume["experience"] = "Could not generate experience points."
-
+        skills_text = ", ".join(skills_list) if skills_list else "my academic knowledge"
+        # A simple, human-like sentence starting with "As a fresher".
+        smart_resume["experience"] = f"As a fresher in {job_title}, I am eager to apply my skills in {skills_text} and grow professionally."
 
     for key, instruction in sections.items():
         if is_fresher and key == "experience":
@@ -1175,7 +1144,7 @@ Output:
             result = response.choices[0].message.content.strip()
 
             if "i cannot" in result.lower() or "insufficient" in result.lower() or "provide the details" in result.lower() or not result:
-                smart_resume[key] = "Not Provided"
+                 smart_resume[key] = "Not Provided"
             else:
                 smart_resume[key] = result
 
