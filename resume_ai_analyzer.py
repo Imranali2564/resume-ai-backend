@@ -1069,75 +1069,43 @@ client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 def generate_smart_resume_from_keywords(data: dict) -> dict:
     """
     This function retrieves professionally rewritten content from AI for each resume section.
-    It now uses enhanced, more robust prompts and better error handling.
+    It provides a response based on the fields filled by the user.
     """
     smart_resume = {}
 
-    # --- ENHANCED, MORE PROFESSIONAL PROMPTS ---
-    # These prompts are more specific to guide the AI for better, structured output.
+    # <<< REVERTED TO SIMPLER PROMPTS WITH KEY FIXES >>>
+    # This version focuses on fixing the education and skills parsing, and providing a short message for empty fields.
     sections = {
-        "summary": (
-            "You are an expert resume writer. Write a concise, impactful 2-3 line professional summary for a resume based on the provided keywords. "
-            "Focus on key skills, experience level, and career goals. The tone should be professional and confident. "
-            "If the input is insufficient to create a meaningful summary, return the single phrase: '[Insufficient Data]'. "
-            "Do not use headings like 'Summary:'."
-        ),
-        "experience": (
-            "You are an expert resume writer. For each work experience entry provided, convert the raw input into a list of 3-5 concise, action-verb-driven bullet points. "
-            "Each bullet point MUST start with a strong action verb (e.g., 'Managed', 'Developed', 'Increased') and focus on quantifiable achievements (e.g., 'Increased sales by 20%', 'Reduced costs by 15%'). "
-            "Do NOT include job titles, companies, or dates in the output; ONLY the bullet points. "
-            "If the input is empty or insufficient, return the single phrase: '[Insufficient Data]'."
-        ),
-        "education": (
-            "You are an expert resume writer. Reformat the provided education details into a standard, professional resume format. "
-            "For each entry, extract and provide: Degree Name, University/Institute, City, Country, and Graduation Year. "
-            "Combine University, City, and Country on one line. Place the year on a separate line or alongside the university. "
-            "If there are relevant details like GPA, specializations, or honors, list them as concise bullet points below the main entry. "
-            "Crucially, REMOVE any labels like 'Input:' or 'Output:'. "
-            "If the input is insufficient, return the single phrase: '[Insufficient Data]'.\n"
-            "Example Output Format:\n"
-            "B.Tech in Computer Science\n"
-            "Delhi University, Delhi, India | 2019\n"
-            "• Relevant coursework: Data Structures, Algorithms\n"
-            "• GPA: 3.8/4.0"
-        ),
-        "skills": (
-            "You are a skills extractor. From the following text, extract ONLY the individual skills. List each skill on a new line. "
-            "If you identify categories (e.g., 'Technical Skills', 'Languages'), list the category on its own line ending with a colon. "
-            "Crucial Rule: DO NOT combine skills on one line. If the input is insufficient, return the single phrase: '[Insufficient Data]'."
-        ),
-        "projects": (
-            "You are an expert resume writer. For each project, provide a concise project title on one line, followed by a list of 2-4 action-verb-driven bullet points. "
-            "Each bullet should highlight technologies used, your role, and key achievements, especially quantifiable results (e.g., 'improved performance by 30%'). "
-            "Do NOT use labels like 'Project Description:'. If the input is insufficient, return the single phrase: '[Insufficient Data]'."
-        ),
-        "certifications": (
-            "You are an expert resume writer. List each certification on a new line. Include the certification name, issuing body, and year if available. "
-            "If the input is insufficient, return the single phrase: '[Insufficient Data]'.\n"
-            "Example:\nAWS Certified Solutions Architect, Amazon Web Services, 2023"
-        ),
-        "languages": (
-            "You are an expert resume writer. List each language on a new line with its proficiency level (e.g., 'English: Fluent', 'French: Intermediate'). "
-            "If the input is insufficient, return the single phrase: '[Insufficient Data]'."
-        ),
-        "achievements": (
-            "You are an expert resume writer. List each achievement, award, or notable success concisely, one per line, in a professional format (e.g., 'Employee of the Year, ABC Corp, 2023'). "
-            "If the input is insufficient, return the single phrase: '[Insufficient Data]'."
-        ),
-        "extraCurricular": (
-            "You are an expert resume writer. List extra-curricular activities and relevant contributions concisely, using bullet points or short phrases. "
-            "Highlight leadership, teamwork, or organizational skills. If the input is insufficient, return the single phrase: '[Insufficient Data]'."
-        )
+        "summary": "Write a concise, impactful 2-3 line professional summary for a resume. Focus on key skills, experience, and career goals. If input is empty or insufficient, return ONLY an empty string. DO NOT use headings like 'Summary:'.",
+        "experience": """For each work experience entry, convert the raw input into a list of 3-5 *very concise, action-verb-driven bullet points* for a resume. Each bullet point should be a single line, start with an action verb, and focus on quantifiable achievements and key responsibilities. Do NOT include job titles, companies, or dates in this output; ONLY the bullet points. If input is empty or insufficient, return ONLY an empty string.""",
+        "education": """Reformat these education details into a standard resume education format. For each entry, provide:
+        - Degree Name (on one line)
+        - University/Institute, City, State/Country (on the next line)
+        - Graduation/Completion Year (on the same line as university)
+        If there are relevant bullet points (e.g., GPA, specializations), list them concisely below the main entry, each starting with a bullet. If input is empty or insufficient, return ONLY an empty string. CRUCIAL: REMOVE any 'Input:' or 'Output:' labels from the final text.
+Example Output Format:
+B.Tech in Computer Science
+Delhi University, Delhi, India | 2019
+• GPA: 3.8/4.0""",
+        "skills": """From the following text, extract ONLY the individual skills. List each skill on a new line. If there are categories like 'Technical Skills', list the category on its own line ending with a colon.
+        **Crucial Rule: DO NOT combine skills on one line.**
+        Correct Example:
+        JavaScript
+        React
+        Python
+        """,
+        "projects": """For each project entry, provide the concise project title on one line, followed by a list of 2-4 *very concise, action-verb-driven bullet points*. Each bullet should highlight technologies used, your role, and *key achievements/outcomes*. Do NOT include numbering or labels like 'Project Description:'. If input is empty or insufficient, return ONLY an empty string.""",
+        "certifications": """List each certification clearly, one per line. Include certification name, issuing body, and year if available. If input is empty or insufficient, return ONLY an empty string.""",
+        "languages": """List each language clearly, one per line, along with proficiency level (e.g., English: Fluent, French: Intermediate). If input is empty or insufficient, return ONLY an empty string.""",
+        "achievements": "List each achievement, award, or notable success concisely, one per line, suitable for a professional resume. If input is empty or insufficient, return ONLY an empty string.",
+        "extraCurricular": "List extra-curricular activities and relevant contributions concisely, using bullet points or short phrases. Highlight leadership, teamwork, or organizational skills. If input is empty or insufficient, return ONLY an empty string."
     }
 
     is_fresher = data.get("fresher_check", False) in [True, "true", "on", "1"]
     
     if is_fresher:
-        job_title = data.get("jobTitle") or "an entry-level role"
-        skills_raw = data.get("skills", "")
-        skills = ", ".join([s.strip() for s in skills_raw.split(",") if s.strip()]) or "my field of interest"
-        # A more professional and dynamic line for freshers
-        smart_resume["experience"] = f"As a recent graduate, I am eager to apply my academic knowledge and skills in {skills} to contribute to a dynamic team and grow professionally in {job_title}."
+        # Reverted to the original, shorter fresher text as requested.
+        smart_resume["experience"] = "As a fresher, I am eager to apply my skills and grow professionally."
 
     for key, instruction in sections.items():
         if is_fresher and key == "experience":
@@ -1149,27 +1117,28 @@ def generate_smart_resume_from_keywords(data: dict) -> dict:
             smart_resume[key] = ""
             continue
 
-        prompt = f"{instruction}\nInput: {value}\nOutput:"
-
+        prompt = f"""
+You are an expert resume writer. {instruction}
+Input: {value}
+Output:
+"""
         try:
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
-                timeout=20,
-                temperature=0.5 # A bit of creativity but still professional
+                timeout=20
             )
             result = response.choices[0].message.content.strip()
 
-            # Check for insufficient data placeholder or other negative AI responses
-            if result == '[Insufficient Data]' or not result:
-                smart_resume[key] = "Please provide more details in this section for a better AI-generated result."
+            # A simple check for common AI refusal phrases
+            if "i cannot" in result.lower() or "insufficient" in result.lower() or "provide the details" in result.lower() or not result:
+                 smart_resume[key] = "Not Provided" # Short message for empty/invalid input
             else:
                 smart_resume[key] = result
 
         except Exception as e:
-            # If AI fails, return the original user input as a fallback
             print(f"Error calling OpenAI for key '{key}': {e}")
-            smart_resume[key] = value
+            smart_resume[key] = value # Fallback to user's original text on error
 
     return smart_resume
 
@@ -1180,7 +1149,7 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     """
 
     def list_to_html(items_string):
-        if not items_string or "Please provide more details" in items_string:
+        if not items_string or items_string == "Not Provided":
             return f"<p contenteditable='true'>{items_string}</p>" if items_string else ""
 
         lines = [line.strip() for line in items_string.split('\n') if line.strip()]
@@ -1192,36 +1161,42 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
         return html
 
     def parse_complex_section_html(section_data):
-        if not section_data or "Please provide more details" in section_data:
+        if not section_data or section_data == "Not Provided":
              return f"<p contenteditable='true'>{section_data}</p>" if section_data else ""
 
-        # This regex helps split entries that start with a bolded title (like a job title)
-        entries = re.split(r'\n(?=\*\*.+\*\*)', section_data.strip())
-        html_output = ""
+        # A simpler logic to handle both single paragraph (fresher) and multi-entry (experience)
+        if '\n' not in section_data and not section_data.startswith('•'):
+            return f"<p contenteditable='true'>{section_data}</p>"
 
-        for entry in entries:
-            if not entry.strip():
+        # Logic to handle multi-entry sections like Education and Experience
+        entries = re.split(r'\n(?=[A-Z])', section_data.strip()) # Split based on lines starting with a capital letter (potential new entry)
+        html_output = ""
+        
+        for entry_text in entries:
+            if not entry_text.strip():
                 continue
 
-            lines = [line.strip() for line in entry.split('\n') if line.strip()]
-            title = lines[0].replace("**", "") if lines and lines[0].startswith("**") else ""
-            meta = lines[1].replace("*", "") if len(lines) > 1 and lines[1].startswith("*") else ""
-            details = [line.lstrip('• ').strip() for line in lines if line.startswith('•')]
-
+            lines = [line.strip() for line in entry_text.split('\n') if line.strip()]
             item_html = "<div class='experience-item'>"
-            if title:
-                item_html += f"<h4 contenteditable='true'>{title}</h4>"
-            if meta:
-                item_html += f"<p class='item-meta' contenteditable='true'>{meta}</p>"
+            
+            is_first_line_title = not lines[0].startswith('•')
+            
+            if is_first_line_title:
+                item_html += f"<h4 contenteditable='true'>{lines[0]}</h4>"
+                if len(lines) > 1 and not lines[1].startswith('•'):
+                     item_html += f"<p class='item-meta' contenteditable='true'>{lines[1]}</p>"
+                     details = lines[2:]
+                else:
+                     details = lines[1:]
+            else:
+                details = lines
+
             if details:
                 item_html += "<ul>"
                 for detail in details:
-                    item_html += f"<li contenteditable='true'>{detail}</li>"
+                    item_html += f"<li contenteditable='true'>{detail.lstrip('• ').strip()}</li>"
                 item_html += "</ul>"
-            # Handle cases where the content is just a single paragraph (like fresher experience)
-            elif not title and not meta and lines:
-                 item_html += f"<p contenteditable='true'>{' '.join(lines)}</p>"
-
+            
             item_html += "</div>"
             html_output += item_html
         
@@ -1239,11 +1214,9 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
     # Ensure LinkedIn URL is a proper link
     linkedin_html = ""
     if linkedin.strip():
-        # Add http:// if missing for the link to work correctly
         url = linkedin.strip()
         if not url.startswith(('http://', 'https://')):
             url = 'https://' + url
-        # Display a cleaner version of the link text
         display_url = re.sub(r'https?://(www\.)?', '', url)
         linkedin_html = f"<p contenteditable='true'><i class='fab fa-linkedin'></i> <a href='{url}' target='_blank'>{display_url}</a></p>"
 
