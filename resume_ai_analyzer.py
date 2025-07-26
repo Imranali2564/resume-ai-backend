@@ -1069,20 +1069,26 @@ client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 def generate_smart_resume_from_keywords(data: dict) -> dict:
     """
     This function retrieves professionally rewritten content from AI for each resume section.
-    It provides a response based on the fields filled by the user.
+    It now includes specific logic and prompts for freshers.
     """
     smart_resume = {}
+    is_fresher = data.get("fresher_check", False) in [True, "true", "on", "1"]
 
-    # <<< REVERTED TO SIMPLER PROMPTS WITH KEY FIXES >>>
-    # This version focuses on fixing the education and skills parsing, and providing a short message for empty fields.
+    # --- DYNAMIC PROMPTS BASED ON FRESHER STATUS ---
+    summary_prompt = (
+        "Write a concise, impactful 2-3 line **Career Objective** for a fresher's resume. Focus on the desired role, key skills, and enthusiasm to learn and contribute. If input is empty or insufficient, return ONLY an empty string."
+        if is_fresher else
+        "Write a concise, impactful 2-3 line **Professional Summary** for a resume. Focus on key skills, years of experience, and career achievements. If input is empty or insufficient, return ONLY an empty string."
+    )
+
     sections = {
-        "summary": "Write a concise, impactful 2-3 line professional summary for a resume. Focus on key skills, experience, and career goals. If input is empty or insufficient, return ONLY an empty string. DO NOT use headings like 'Summary:'.",
+        "summary": summary_prompt,
         "experience": """For each work experience entry, convert the raw input into a list of 3-5 *very concise, action-verb-driven bullet points* for a resume. Each bullet point should be a single line, start with an action verb, and focus on quantifiable achievements and key responsibilities. Do NOT include job titles, companies, or dates in this output; ONLY the bullet points. If input is empty or insufficient, return ONLY an empty string.""",
         "education": """Reformat these education details into a standard resume education format. For each entry, provide:
         - Degree Name (on one line)
         - University/Institute, City, State/Country (on the next line)
         - Graduation/Completion Year (on the same line as university)
-        If there are relevant bullet points (e.g., GPA, specializations), list them concisely below the main entry, each starting with a bullet. If input is empty or insufficient, return ONLY an empty string. CRUCIAL: REMOVE any 'Input:' or 'Output:' labels from the final text.
+        If there are relevant bullet points (e.g., GPA, specializations, honors), list them concisely below the main entry, each starting with a bullet. If input is empty or insufficient, return ONLY an empty string. CRUCIAL: REMOVE any 'Input:' or 'Output:' labels from the final text.
 Example Output Format:
 B.Tech in Computer Science
 Delhi University, Delhi, India | 2019
@@ -1100,12 +1106,15 @@ Delhi University, Delhi, India | 2019
         "achievements": "List each achievement, award, or notable success concisely, one per line, suitable for a professional resume. If input is empty or insufficient, return ONLY an empty string.",
         "extraCurricular": "List extra-curricular activities and relevant contributions concisely, using bullet points or short phrases. Highlight leadership, teamwork, or organizational skills. If input is empty or insufficient, return ONLY an empty string."
     }
-
-    is_fresher = data.get("fresher_check", False) in [True, "true", "on", "1"]
     
     if is_fresher:
-        # Reverted to the original, shorter fresher text as requested.
-        smart_resume["experience"] = "As a fresher, I am eager to apply my skills and grow professionally."
+        # Dynamic fresher experience line based on user's skills and job title
+        job_title = data.get("jobTitle", "an entry-level role")
+        skills_raw = data.get("skills", "")
+        # Extract skills more cleanly
+        skills_list = [s.strip() for s in re.split(r',|\n', skills_raw) if s.strip()]
+        skills_text = ", ".join(skills_list) if skills_list else "my academic knowledge"
+        smart_resume["experience"] = f"As a fresher in {job_title}, I am eager to apply my skills in {skills_text} and grow professionally."
 
     for key, instruction in sections.items():
         if is_fresher and key == "experience":
@@ -1169,7 +1178,8 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             return f"<p contenteditable='true'>{section_data}</p>"
 
         # Logic to handle multi-entry sections like Education and Experience
-        entries = re.split(r'\n(?=[A-Z])', section_data.strip()) # Split based on lines starting with a capital letter (potential new entry)
+        # This regex is more robust for splitting education/experience entries.
+        entries = re.split(r'\n(?=[A-Z])', section_data.strip())
         html_output = ""
         
         for entry_text in entries:
@@ -1179,10 +1189,12 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             lines = [line.strip() for line in entry_text.split('\n') if line.strip()]
             item_html = "<div class='experience-item'>"
             
+            # Check if the first line looks like a title (doesn't start with a bullet)
             is_first_line_title = not lines[0].startswith('•')
             
             if is_first_line_title:
                 item_html += f"<h4 contenteditable='true'>{lines[0]}</h4>"
+                # Check if the second line is meta-data (e.g., University | Year)
                 if len(lines) > 1 and not lines[1].startswith('•'):
                      item_html += f"<p class='item-meta' contenteditable='true'>{lines[1]}</p>"
                      details = lines[2:]
