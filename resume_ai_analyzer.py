@@ -1069,7 +1069,7 @@ client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 def generate_smart_resume_from_keywords(data: dict) -> dict:
     """
     This function retrieves professionally rewritten content from AI for each resume section.
-    This version includes specific logic and prompts for freshers and improved formatting.
+    This version includes specific logic and prompts for freshers and improved formatting for all sections.
     """
     smart_resume = {}
     is_fresher = data.get("fresher_check", False) in [True, "true", "on", "1"]
@@ -1083,11 +1083,24 @@ def generate_smart_resume_from_keywords(data: dict) -> dict:
 
     sections = {
         "summary": summary_prompt,
-        "experience": """For each work experience entry, convert the raw input into a list of 3-5 *very concise, action-verb-driven bullet points* for a resume. Each bullet point should be a single line, start with an action verb, and focus on quantifiable achievements and key responsibilities. Do NOT include job titles, companies, or dates in this output; ONLY the bullet points. If input is empty or insufficient, return ONLY an empty string.""",
+        "experience": """You are an expert resume writer. Your task is to reformat the following work experience details into a clean, professional, and standard resume format.
+        - For each job, the first line must be the **Job Title in bold**.
+        - The second line must be the 'Company Name, City, Country | Start Year - End Year'.
+        - Below that, list 3-5 concise, action-verb-driven bullet points describing achievements and responsibilities. Each bullet MUST start with '•'.
+        - **CRITICAL RULE:** You MUST include the company and duration details provided in the input. Do not omit them.
+        - If the input is completely empty or nonsensical, return ONLY an empty string.
+
+Example of perfect output:
+**Marketing Manager**
+ABC Corp, New York, NY | 2020 - Present
+• Led SEO campaigns that boosted organic traffic by 150%.
+• Managed a $50k/month advertising budget across multiple platforms.
+• Increased blog engagement by 300% through a new content strategy.
+""",
         "education": """You are an expert resume writer. Your task is to reformat the following education details into a clean, professional, and standard resume format.
         - For each entry, the first line must be the **Degree Name in bold**.
         - The second line must be the 'University/Institute, City, Country | Year'.
-        - Any additional details like GPA or specializations should be simple bullet points below.
+        - Any additional details like GPA or specializations should be simple bullet points below that start with '•'.
         - **CRITICAL RULE:** You MUST remove any and all labels like 'Input:', 'Output:'. The output should only contain the formatted education details.
         - If the input is completely empty or nonsensical, return ONLY an empty string.
 
@@ -1099,8 +1112,8 @@ Harvard Business School, Cambridge, MA, USA | 2020
         "skills": """From the following text, extract ONLY the individual skills. List each skill on a new line. If you identify a category like 'Technical Skills', make that category bold using markdown (e.g., **Technical Skills:**).
         **Crucial Rule: DO NOT combine skills on one line.**
         """,
-        "projects": """For each project entry, provide the **Project Title in bold** on one line, followed by a list of ALL provided bullet points. Each bullet should highlight key contributions and outcomes. This format is for ATS, so keep it clean and simple. If input is empty or insufficient, return ONLY an empty string.""",
-        "certifications": """List each certification clearly, one per line. Include certification name, issuing body, and year if available. If input is empty or insufficient, return ONLY an empty string.""",
+        "projects": """For each project entry, provide the **Project Title in bold** on one line, followed by a list of ALL provided bullet points. Each bullet MUST start with '•' and should highlight key contributions and outcomes. This format is for ATS, so keep it clean and simple. If input is empty or insufficient, return ONLY an empty string.""",
+        "certifications": """List each certification clearly, one per line, in the format 'Certification Name - Issuing Body'. If a year is provided, add it at the end. If input is empty or insufficient, return ONLY an empty string.""",
         "languages": """List each language clearly, one per line, along with proficiency level (e.g., English: Fluent, French: Intermediate). If input is empty or insufficient, return ONLY an empty string.""",
         "achievements": "List each achievement, award, or notable success concisely, one per line, suitable for a professional resume. If input is empty or insufficient, return ONLY an empty string.",
         "extraCurricular": "List extra-curricular activities and relevant contributions concisely, using bullet points or short phrases. Highlight leadership, teamwork, or organizational skills. If input is empty or insufficient, return ONLY an empty string."
