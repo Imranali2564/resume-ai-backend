@@ -1069,53 +1069,51 @@ client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 def generate_smart_resume_from_keywords(data: dict) -> dict:
     """
     This function retrieves professionally rewritten content from AI for each resume section.
-    It provides a response based on the fields filled by the user.
+    This version includes specific logic and prompts for freshers and improved formatting.
     """
     smart_resume = {}
+    is_fresher = data.get("fresher_check", False) in [True, "true", "on", "1"]
 
-    # <<< PROMPTS WITH ENHANCED EDUCATION SECTION AND REVERTED OTHERS >>>
+    # --- DYNAMIC PROMPTS BASED ON FRESHER STATUS ---
+    summary_prompt = (
+        "Write a concise, impactful 2-3 line **Career Objective** for a fresher's resume. Focus on the desired role, key skills, and enthusiasm to learn and contribute. DO NOT mention 'years of experience'. If input is empty or insufficient, return ONLY an empty string."
+        if is_fresher else
+        "Write a concise, impactful 2-3 line **Professional Summary** for a resume. Focus on key skills, years of experience, and career achievements. If input is empty or insufficient, return ONLY an empty string."
+    )
+
     sections = {
-        "summary": "Write a concise, impactful 2-3 line professional summary for a resume. Focus on key skills, experience, and career goals. If input is empty or insufficient, return ONLY an empty string. DO NOT use headings like 'Summary:'.",
+        "summary": summary_prompt,
         "experience": """For each work experience entry, convert the raw input into a list of 3-5 *very concise, action-verb-driven bullet points* for a resume. Each bullet point should be a single line, start with an action verb, and focus on quantifiable achievements and key responsibilities. Do NOT include job titles, companies, or dates in this output; ONLY the bullet points. If input is empty or insufficient, return ONLY an empty string.""",
-        "education": """You are an expert resume writer. Your task is to reformat the following education details into a clean, professional, and standard resume format. No matter how messy the input is, you must parse it and produce a clean output.
-        - For each educational qualification, the first line must be the **Degree Name**.
-        - The second line must be the **'University/Institute, City, Country'**.
-        - The third line (or alongside the university) should be the **Graduation Year or Duration**.
-        - Any additional details like GPA, specializations, or honors should be listed as concise bullet points below the main entry.
-        - **CRITICAL RULE:** You MUST remove any and all labels like 'Input:', 'Output:', or similar metadata from the final text. The output should only contain the formatted education details.
+        "education": """You are an expert resume writer. Your task is to reformat the following education details into a clean, professional, and standard resume format.
+        - For each entry, the first line must be the **Degree Name in bold**.
+        - The second line must be the 'University/Institute, City, Country | Year'.
+        - Any additional details like GPA or specializations should be simple bullet points below.
+        - **CRITICAL RULE:** You MUST remove any and all labels like 'Input:', 'Output:'. The output should only contain the formatted education details.
         - If the input is completely empty or nonsensical, return ONLY an empty string.
 
 Example of perfect output:
-Master of Business Administration
+**Master of Business Administration**
 Harvard Business School, Cambridge, MA, USA | 2020
 • GPA: 3.9/4.0
-
-B.A. in Marketing
-University of California, Los Angeles, CA, USA | 2019
 """,
         "skills": """From the following text, extract ONLY the individual skills. List each skill on a new line. If there are categories like 'Technical Skills', list the category on its own line ending with a colon.
         **Crucial Rule: DO NOT combine skills on one line.**
-        Correct Example:
-        JavaScript
-        React
-        Python
         """,
-        "projects": """For each project entry, provide the concise project title on one line, followed by a list of 2-4 *very concise, action-verb-driven bullet points*. Each bullet should highlight technologies used, your role, and *key achievements/outcomes*. Do NOT include numbering or labels like 'Project Description:'. If input is empty or insufficient, return ONLY an empty string.""",
+        "projects": """For each project entry, provide the **Project Title in bold** on one line, followed by a list of 2-4 concise, action-verb-driven bullet points. Each bullet should highlight your key contributions and outcomes. This format is for ATS, so keep it clean and simple. If input is empty or insufficient, return ONLY an empty string.""",
         "certifications": """List each certification clearly, one per line. Include certification name, issuing body, and year if available. If input is empty or insufficient, return ONLY an empty string.""",
         "languages": """List each language clearly, one per line, along with proficiency level (e.g., English: Fluent, French: Intermediate). If input is empty or insufficient, return ONLY an empty string.""",
         "achievements": "List each achievement, award, or notable success concisely, one per line, suitable for a professional resume. If input is empty or insufficient, return ONLY an empty string.",
         "extraCurricular": "List extra-curricular activities and relevant contributions concisely, using bullet points or short phrases. Highlight leadership, teamwork, or organizational skills. If input is empty or insufficient, return ONLY an empty string."
     }
-
-    is_fresher = data.get("fresher_check", False) in [True, "true", "on", "1"]
     
-    # Restored the dynamic fresher experience line as requested.
+    # Dynamic fresher experience line based on user's skills and job title
     if is_fresher:
         job_title = data.get("jobTitle", "an entry-level role")
         skills_raw = data.get("skills", "")
-        skills = ", ".join([s.strip() for s in skills_raw.split(",") if s.strip()]) or "my field"
-        dynamic_experience_line = f"As a fresher in {job_title}, I am eager to apply my skills in {skills} and grow professionally."
-        smart_resume["experience"] = dynamic_experience_line
+        skills_list = [s.strip() for s in re.split(r',|\n', skills_raw) if s.strip()]
+        skills_text = ", ".join(skills_list) if skills_list else "my academic knowledge"
+        # A simple, human-like sentence.
+        smart_resume["experience"] = f"As a recent graduate, I am eager to apply my skills in {skills_text} to contribute to a dynamic team and grow professionally in {job_title}."
 
     for key, instruction in sections.items():
         if is_fresher and key == "experience":
@@ -1140,15 +1138,14 @@ Output:
             )
             result = response.choices[0].message.content.strip()
 
-            # A simple check for common AI refusal phrases
             if "i cannot" in result.lower() or "insufficient" in result.lower() or "provide the details" in result.lower() or not result:
-                 smart_resume[key] = "Not Provided" # Short message for empty/invalid input
+                 smart_resume[key] = "Not Provided"
             else:
                 smart_resume[key] = result
 
         except Exception as e:
             print(f"Error calling OpenAI for key '{key}': {e}")
-            smart_resume[key] = value # Fallback to user's original text on error
+            smart_resume[key] = value
 
     return smart_resume
 
@@ -1174,12 +1171,13 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
         if not section_data or section_data == "Not Provided":
              return f"<p contenteditable='true'>{section_data}</p>" if section_data else ""
 
-        # A simpler logic to handle both single paragraph (fresher) and multi-entry (experience)
-        if '\n' not in section_data and not section_data.startswith('•'):
+        # Handle single paragraph content (like fresher experience)
+        if '\n' not in section_data and not section_data.startswith(('•', '**')):
             return f"<p contenteditable='true'>{section_data}</p>"
 
-        # Logic to handle multi-entry sections like Education and Experience
-        entries = re.split(r'\n(?=[A-Z])', section_data.strip()) # Split based on lines starting with a capital letter (potential new entry)
+        # Logic for multi-entry sections like Education, Projects, and Experience
+        # This regex splits entries that start with a bolded title (like a job title or project name)
+        entries = re.split(r'\n(?=\*\*.+\*\*)', section_data.strip())
         html_output = ""
         
         for entry_text in entries:
@@ -1189,22 +1187,20 @@ def generate_full_ai_resume_html(user_info: dict, smart_content: dict) -> str:
             lines = [line.strip() for line in entry_text.split('\n') if line.strip()]
             item_html = "<div class='experience-item'>"
             
-            is_first_line_title = not lines[0].startswith('•')
-            
-            if is_first_line_title:
-                item_html += f"<h4 contenteditable='true'>{lines[0]}</h4>"
-                if len(lines) > 1 and not lines[1].startswith('•'):
-                     item_html += f"<p class='item-meta' contenteditable='true'>{lines[1]}</p>"
-                     details = lines[2:]
-                else:
-                     details = lines[1:]
-            else:
-                details = lines
+            title = lines[0].replace("**", "") if lines and lines[0].startswith("**") else ""
+            meta = lines[1] if len(lines) > 1 and not lines[1].startswith('•') else ""
+            details_start_index = 2 if title and meta else 1 if title else 0
+            details = [line.lstrip('• ').strip() for line in lines[details_start_index:] if line.startswith('•')]
 
+            if title:
+                item_html += f"<h4 contenteditable='true'>{title}</h4>"
+            if meta:
+                item_html += f"<p class='item-meta' contenteditable='true'>{meta}</p>"
+            
             if details:
                 item_html += "<ul>"
                 for detail in details:
-                    item_html += f"<li contenteditable='true'>{detail.lstrip('• ').strip()}</li>"
+                    item_html += f"<li contenteditable='true'>{detail}</li>"
                 item_html += "</ul>"
             
             item_html += "</div>"
