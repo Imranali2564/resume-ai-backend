@@ -830,10 +830,10 @@ def refine_list_section(section_name, section_text):
 
 def extract_resume_sections_safely(text):
     """
-    VERSION 4: Sabse smart prompt jo 3.5-turbo ke saath kaam karta hai.
-    Yeh alag-alag section naamo ko samajhta hai aur complex layouts ko handle karta hai.
+    VERSION 5: Final prompt jo 3.5-turbo ke saath kaam karta hai.
+    Yeh multi-column layouts ke jumbled text ko samajhne ke liye banaya gaya hai.
     """
-    logger.info("Extracting resume sections with FINAL v12 (Smart Prompt for 3.5-Turbo)...")
+    logger.info("Extracting resume sections with FINAL v13 (Advanced Layout Parsing)...")
     if not client:
         return {"error": "OpenAI client not initialized."}
 
@@ -843,7 +843,13 @@ def extract_resume_sections_safely(text):
         text = text[:TOKEN_LIMIT_IN_CHARS]
 
     prompt = f"""
-    You are a highly advanced resume parsing system. Your task is to intelligently parse the provided text, which may be jumbled due to a multi-column layout, and reconstruct a perfectly structured JSON object. You must use the 'Section Mapping Guide' to correctly categorize the information.
+    You are a world-class resume parsing engine. The provided text was extracted from a PDF and might be jumbled due to a multi-column layout. Your task is to meticulously analyze the text and reconstruct a perfectly structured JSON object using a two-step process.
+
+    **Step 1: Identify All Content Blocks**
+    First, mentally scan the entire text and identify all potential section headings and the text content that follows them, even if it's out of order.
+
+    **Step 2: Map to Final JSON using the Guide**
+    After identifying the blocks, use the 'Section Mapping Guide' below to populate the final JSON structure.
 
     **Section Mapping Guide (CRITICAL):**
     - Map "Work Experience", "Employment History", "Internships" to the `work_experience` key.
@@ -854,9 +860,9 @@ def extract_resume_sections_safely(text):
     - Map "Certifications", "Licenses", "Training", "Courses" to the `certifications` key.
 
     **Other Instructions:**
-    1.  **Layout Tolerance:** The text order might be illogical. You must correctly re-associate all details with their proper headings based on the guide.
-    2.  **Contact Details:** Diligently search the entire text for email, phone, location, and LinkedIn URL and place them in the structured `contact` object.
-    3.  **Clean Output:** If a section or a contact detail is not found, its value MUST be null. For list-based sections, return an empty list `[]` if not found.
+    1.  **Contact Details:** Diligently search the entire text for email, phone, location, and LinkedIn URL. They are often near the top but can be anywhere.
+    2.  **Clean Output:** If a section or a contact detail is not found, its value MUST be null. For list-based sections (like skills, projects), return an empty list `[]` if no content is found.
+    3.  **Be Thorough:** Do not miss any section. Scrutinize the text carefully to find all available information.
 
     **JSON STRUCTURE REQUIRED:**
     {{
@@ -900,13 +906,10 @@ def extract_resume_sections_safely(text):
             "languages": [], "certifications": [], "projects": [], "awards": [], "extra_curricular_activities": []
         }
         for key, default_value in all_possible_keys.items():
-            # Agar AI ne key nahi di, toh use default value ke saath add karein
             if key not in final_data:
                 final_data[key] = default_value
-            # Agar key di hai lekin value null hai, toh use default (khali list) se replace karein
             elif isinstance(default_value, list) and final_data[key] is None:
                 final_data[key] = default_value
-
 
         logger.info(f"Final data extracted successfully. Keys: {list(final_data.keys())}")
         return final_data
