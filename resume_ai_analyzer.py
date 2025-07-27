@@ -829,56 +829,35 @@ def refine_list_section(section_name, section_text):
         return [line.strip() for line in section_text.split('\n') if line.strip()]
 
 def extract_resume_sections_safely(text):
-    """
-    VERSION 8: The ultimate "Master" prompt for gpt-3.5-turbo.
-    This uses advanced prompt engineering with examples to handle jumbled text from multi-column layouts.
-    """
-    logger.info("Extracting resume sections with FINAL v16 (Master Prompt for 3.5-Turbo)...")
+    logger.info("Extracting resume sections with FINAL v9 (Simplified & Robust) AI strategy...")
     if not client:
         return {"error": "OpenAI client not initialized."}
-
+    
     TOKEN_LIMIT_IN_CHARS = 40000
     if len(text) > TOKEN_LIMIT_IN_CHARS:
         logger.warning(f"Resume text is too long, truncating to {TOKEN_LIMIT_IN_CHARS} characters.")
         text = text[:TOKEN_LIMIT_IN_CHARS]
 
     prompt = f"""
-    You are a master-level resume parsing engine. The provided text was extracted from a multi-column PDF and is heavily jumbled. Your task is to act like a detective: find all the pieces of information and assemble them correctly into the final JSON structure.
+    You are a world-class resume parsing system. The following text may be jumbled.
+    Your task is to intelligently parse this text and reconstruct a perfectly structured JSON object.
 
-    **CRITICAL WARNING:** Do NOT trust the order of the text. A heading like 'CONTACT' might be followed by text from the 'SUMMARY' section. You must search the entire text for clues.
-
-    **Your Thought Process (Follow these steps):**
-    1.  **Keyword First Search:** First, scan the entire text for specific keywords like "Email:", "Phone:", "LinkedIn:", "@", "www.". Extract the data associated with them. This is your contact information.
-    2.  **Heading and Content Grouping:** Now, find all capitalized headings (e.g., "PROJECTS", "SKILLS", "EDUCATION"). The text immediately following these headings, until the next capitalized heading, likely belongs to them. Group these content blocks.
-    3.  **Final Mapping:** Use the "Section Mapping Guide" to map the grouped content to the correct keys in the final JSON object.
-
-    **Section Mapping Guide:**
-    - "Work Experience", "Employment History", "Internships" -> `work_experience`
-    - "Projects", "Personal Projects" -> `projects`
-    - "Skills", "Technical Skills" -> `skills`
-    - "Awards & Achievements", "Honors" -> `awards`
-    - "Extra-Curricular Activities", "Hobbies", "Volunteer" -> `extra_curricular_activities`
-    - "Certifications", "Licenses", "Training" -> `certifications`
-
-    **Example of how to handle jumbled text:**
-    - Jumbled Input: "CONTACT\\nSUMMARY\\nEmail: a@b.com\\nSeeking a role...\\nPhone: 12345"
-    - Your Correct Interpretation: The contact details are `email: "a@b.com"` and `phone: "12345"`. The summary is "Seeking a role...".
+    **Crucial Instructions:**
+    1.  **Associate Details:** Correctly associate all details with their parent items.
+    2.  **Map Certifications:** Look for headings like "Certifications", "Additional Courses", "Training", "Licenses", or "Professional Development" and map ALL of them to the `certifications` key. This is very important.
+    3.  **Clean Output:** If a section is not found, its value must be null.
 
     **JSON STRUCTURE REQUIRED:**
-    {{
-      "name": "string | null",
-      "job_title": "string | null",
-      "contact": {{ "email": "string | null", "phone": "string | null", "location": "string | null", "linkedin": "string | null" }},
-      "summary": "string | null",
-      "work_experience": [],
-      "education": [],
-      "skills": [],
-      "languages": [],
-      "certifications": [],
-      "projects": [],
-      "awards": [],
-      "extra_curricular_activities": []
-    }}
+    - "name": string
+    - "job_title": string
+    - "contact": string
+    - "summary": string
+    - "work_experience": list of objects `[{{"title": string, "company": string, "duration": string, "details": list of strings}}]`
+    - "education": list of objects `[{{"degree": string, "school": string, "duration": string, "details": list of strings}}]`
+    - "skills": list of strings
+    - "languages": list of strings
+    - "certifications": list of strings  <-- All course-related info should come here.
+    - "projects": list of objects `[{{"title": string, "description": string, "details": list of strings}}]`
 
     **Resume Text to Parse:**
     ---
@@ -888,98 +867,22 @@ def extract_resume_sections_safely(text):
     """
     try:
         response = client.chat.completions.create(
-            # --- Using the budget-friendly model as requested ---
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
         final_data = json.loads(response.choices[0].message.content)
-
-        # Consistent structure ke liye, sabhi keys ko ensure karein
-        all_possible_keys = {
-            "name": None, "job_title": None, "contact": {"email": None, "phone": None, "location": None, "linkedin": None},
-            "summary": None, "work_experience": [], "education": [], "skills": [],
-            "languages": [], "certifications": [], "projects": [], "awards": [], "extra_curricular_activities": []
-        }
-        for key, default_value in all_possible_keys.items():
+        
+        all_possible_keys = ["name", "job_title", "contact", "summary", "work_experience", "education", "skills", "certifications", "languages", "projects", "awards", "volunteer_experience"]
+        for key in all_possible_keys:
             if key not in final_data:
-                final_data[key] = default_value
-            elif isinstance(default_value, list) and final_data[key] is None:
-                final_data[key] = default_value
+                final_data[key] = None
 
-        logger.info(f"Final data extracted successfully with Master Prompt. Keys: {list(final_data.keys())}")
+        logger.info(f"Final data extracted successfully. Keys: {list(final_data.keys())}")
         return final_data
     except Exception as e:
-        logger.error(f"Context-aware AI parsing failed with Master Prompt: {e}")
-        return {"error": "The AI failed to parse the resume. The document format might be too complex or unusual."}
-
-def fix_resume_issue(issue_text, extracted_data):
-    """
-    VERSION 2: Yeh function ab poora resume data theek karke wapas bhejega,
-    taaki koi bhi section gayab na ho.
-    """
-    if not client: 
-        logger.error("OpenAI client not configured.")
-        return {"error": "OpenAI API key not set."}
-        
-    logger.info(f"Generating fix for issue '{issue_text}' with full data context...")
-
-    # Resume data ko prompt ke liye JSON string mein convert karein
-    resume_context = json.dumps(extracted_data, indent=2)
-
-    prompt = f"""
-    You are an expert AI resume editor. Your task is to fix a specific issue in the provided resume JSON data.
-
-    **Resume Data (JSON format):**
-    ```json
-    {resume_context}
-    ```
-
-    **Issue to Fix:**
-    "{issue_text}"
-
-    **Instructions:**
-    1.  Analyze the 'Issue to Fix' and locate the relevant section within the 'Resume Data'.
-    2.  Modify ONLY the content of that specific section to resolve the issue. For example:
-        - If the issue is "lacks quantifiable achievements", add numbers and percentages to the `details` of the `work_experience` section.
-        - If the issue is "skills section should contain keywords, not long sentences", rewrite the `skills` list to contain only concise keywords.
-    3.  **CRITICAL:** After fixing the issue, you MUST return the **ENTIRE, UPDATED resume JSON object**. Do not omit any sections.
-
-    **Required Output Format (JSON):**
-    A single JSON object containing the complete, updated resume data.
-
-    Example Output:
-    {{
-      "name": "John Doe",
-      "job_title": "Software Engineer",
-      "contact": {{...}},
-      "summary": "Old summary text...",
-      "work_experience": [{{ "title": "Software Engineer", "company": "Tech Corp", "duration": "2022-Present", "details": ["Increased efficiency by 30% by developing new tools."] }}],
-      "education": [{{...}}],
-      "skills": ["Python", "JavaScript", "SQL", "Project Management"],
-      "languages": null,
-      "certifications": null,
-      "projects": null
-    }}
-    """
-
-    try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "system", "content": "You are a resume fixing assistant that responds with a complete and valid JSON object representing the entire updated resume."}, {"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
-        )
-        # Ab AI poora updated resume data bhejega
-        updated_resume_data = json.loads(response.choices[0].message.content)
-
-        if "name" not in updated_resume_data or "skills" not in updated_resume_data:
-            raise ValueError("AI response is incomplete and missing key sections.")
-        
-        # Frontend ko bhejne ke liye naya format
-        return {"updated_resume_data": updated_resume_data}
-    except Exception as e:
-        logger.error(f"[ERROR in fix_resume_issue]: {e}")
-        return {"error": "AI failed to generate a fix for this issue."}
+        logger.error(f"Context-aware AI parsing failed: {e}")
+        return {"error": "The AI failed to parse the resume. The document format might be too complex."}
 
 def generate_final_detailed_report(text, extracted_data):
     logger.info("Generating FINAL v16 Detailed Audit with Skills Check...")
