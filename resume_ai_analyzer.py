@@ -830,43 +830,53 @@ def refine_list_section(section_name, section_text):
 
 def extract_resume_sections_safely(text):
     """
-    VERSION 2: AI ko contact details alag-alag nikalne ke liye kehta hai.
+    VERSION 4: Sabse smart prompt jo 3.5-turbo ke saath kaam karta hai.
+    Yeh alag-alag section naamo ko samajhta hai aur complex layouts ko handle karta hai.
     """
-    logger.info("Extracting resume sections with FINAL v10 (Structured Contact Info)...")
+    logger.info("Extracting resume sections with FINAL v12 (Smart Prompt for 3.5-Turbo)...")
     if not client:
         return {"error": "OpenAI client not initialized."}
-    
+
     TOKEN_LIMIT_IN_CHARS = 40000
     if len(text) > TOKEN_LIMIT_IN_CHARS:
         logger.warning(f"Resume text is too long, truncating to {TOKEN_LIMIT_IN_CHARS} characters.")
         text = text[:TOKEN_LIMIT_IN_CHARS]
 
     prompt = f"""
-    You are a world-class resume parsing system. Your task is to intelligently parse the following text and reconstruct a perfectly structured JSON object.
+    You are a highly advanced resume parsing system. Your task is to intelligently parse the provided text, which may be jumbled due to a multi-column layout, and reconstruct a perfectly structured JSON object. You must use the 'Section Mapping Guide' to correctly categorize the information.
 
-    **Crucial Instructions:**
-    1.  **Contact Details:** Extract email, phone, location, and LinkedIn URL into a structured `contact` object. If a field is not found, its value must be null.
-    2.  **Associate Details:** Correctly associate all details with their parent items (e.g., job responsibilities with the correct company).
-    3.  **Map Certifications:** Look for headings like "Certifications", "Courses", or "Training" and map ALL of them to the `certifications` key.
-    4.  **Clean Output:** If a section is not found, its value must be null.
+    **Section Mapping Guide (CRITICAL):**
+    - Map "Work Experience", "Employment History", "Internships" to the `work_experience` key.
+    - Map "Projects", "Personal Projects", "Academic Projects" to the `projects` key.
+    - Map "Skills", "Technical Skills", "Core Competencies" to the `skills` key.
+    - Map "Awards & Achievements", "Honors", "Accolades" to the `awards` key.
+    - Map "Extra-Curricular Activities", "Hobbies", "Personal Interests", "Volunteer Experience" to the `extra_curricular_activities` key.
+    - Map "Certifications", "Licenses", "Training", "Courses" to the `certifications` key.
+
+    **Other Instructions:**
+    1.  **Layout Tolerance:** The text order might be illogical. You must correctly re-associate all details with their proper headings based on the guide.
+    2.  **Contact Details:** Diligently search the entire text for email, phone, location, and LinkedIn URL and place them in the structured `contact` object.
+    3.  **Clean Output:** If a section or a contact detail is not found, its value MUST be null. For list-based sections, return an empty list `[]` if not found.
 
     **JSON STRUCTURE REQUIRED:**
     {{
-      "name": "string",
-      "job_title": "string",
+      "name": "string | null",
+      "job_title": "string | null",
       "contact": {{
-        "email": "string",
-        "phone": "string",
-        "location": "string",
-        "linkedin": "string"
+        "email": "string | null",
+        "phone": "string | null",
+        "location": "string | null",
+        "linkedin": "string | null"
       }},
-      "summary": "string",
-      "work_experience": [{{ "title": "string", "company": "string", "duration": "string", "details": ["string"] }}],
-      "education": [{{ "degree": "string", "school": "string", "duration": "string", "details": ["string"] }}],
-      "skills": ["string"],
-      "languages": ["string"],
-      "certifications": ["string"],
-      "projects": [{{ "title": "string", "description": "string", "details": ["string"] }}]
+      "summary": "string | null",
+      "work_experience": [],
+      "education": [],
+      "skills": [],
+      "languages": [],
+      "certifications": [],
+      "projects": [],
+      "awards": [],
+      "extra_curricular_activities": []
     }}
 
     **Resume Text to Parse:**
@@ -877,23 +887,32 @@ def extract_resume_sections_safely(text):
     """
     try:
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-3.5-turbo", # Budget-friendly model ka istemal
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
         final_data = json.loads(response.choices[0].message.content)
-        
-        # Ensure all keys exist, even if null
-        all_possible_keys = ["name", "job_title", "contact", "summary", "work_experience", "education", "skills", "certifications", "languages", "projects"]
-        for key in all_possible_keys:
+
+        # Consistent structure ke liye, sabhi keys ko ensure karein
+        all_possible_keys = {
+            "name": None, "job_title": None, "contact": {"email": None, "phone": None, "location": None, "linkedin": None},
+            "summary": None, "work_experience": [], "education": [], "skills": [],
+            "languages": [], "certifications": [], "projects": [], "awards": [], "extra_curricular_activities": []
+        }
+        for key, default_value in all_possible_keys.items():
+            # Agar AI ne key nahi di, toh use default value ke saath add karein
             if key not in final_data:
-                final_data[key] = None if key != 'contact' else {}
+                final_data[key] = default_value
+            # Agar key di hai lekin value null hai, toh use default (khali list) se replace karein
+            elif isinstance(default_value, list) and final_data[key] is None:
+                final_data[key] = default_value
+
 
         logger.info(f"Final data extracted successfully. Keys: {list(final_data.keys())}")
         return final_data
     except Exception as e:
         logger.error(f"Context-aware AI parsing failed: {e}")
-        return {"error": "The AI failed to parse the resume. The document format might be too complex."}
+        return {"error": "The AI failed to parse the resume. The document format might be too complex or unusual."}
 
 
 def fix_resume_issue(issue_text, extracted_data):
