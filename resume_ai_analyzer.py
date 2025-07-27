@@ -830,10 +830,10 @@ def refine_list_section(section_name, section_text):
 
 def extract_resume_sections_safely(text):
     """
-    VERSION 6: Final "Chain of Thought" prompt for gpt-3.5-turbo.
-    This is designed to handle heavily jumbled text from multi-column layouts.
+    VERSION 8: The ultimate "Master" prompt for gpt-3.5-turbo.
+    This uses advanced prompt engineering with examples to handle jumbled text from multi-column layouts.
     """
-    logger.info("Extracting resume sections with FINAL v14 (Chain of Thought Parsing)...")
+    logger.info("Extracting resume sections with FINAL v16 (Master Prompt for 3.5-Turbo)...")
     if not client:
         return {"error": "OpenAI client not initialized."}
 
@@ -843,26 +843,26 @@ def extract_resume_sections_safely(text):
         text = text[:TOKEN_LIMIT_IN_CHARS]
 
     prompt = f"""
-    You are a world-class resume parsing engine. The provided text was extracted from a PDF and is likely jumbled due to a multi-column layout. Your task is to meticulously analyze the text and reconstruct a perfectly structured JSON object. Follow this chain of thought:
+    You are a master-level resume parsing engine. The provided text was extracted from a multi-column PDF and is heavily jumbled. Your task is to act like a detective: find all the pieces of information and assemble them correctly into the final JSON structure.
 
-    **Step 1: Raw Content Identification.**
-    Scan the entire text and identify all potential section headings (like CONTACT, SKILLS, PROJECTS, AWARDS & ACHIEVEMENTS, EXTRA-CURRICULAR ACTIVITIES) and the text content associated with them, no matter where it appears. Also, find the candidate's name and job title, which are usually prominent.
+    **CRITICAL WARNING:** Do NOT trust the order of the text. A heading like 'CONTACT' might be followed by text from the 'SUMMARY' section. You must search the entire text for clues.
 
-    **Step 2: Structured Mapping.**
-    Using the content you identified in Step 1, populate the final JSON object. Use the 'Section Mapping Guide' to ensure correct categorization.
+    **Your Thought Process (Follow these steps):**
+    1.  **Keyword First Search:** First, scan the entire text for specific keywords like "Email:", "Phone:", "LinkedIn:", "@", "www.". Extract the data associated with them. This is your contact information.
+    2.  **Heading and Content Grouping:** Now, find all capitalized headings (e.g., "PROJECTS", "SKILLS", "EDUCATION"). The text immediately following these headings, until the next capitalized heading, likely belongs to them. Group these content blocks.
+    3.  **Final Mapping:** Use the "Section Mapping Guide" to map the grouped content to the correct keys in the final JSON object.
 
-    **Section Mapping Guide (CRITICAL):**
+    **Section Mapping Guide:**
     - "Work Experience", "Employment History", "Internships" -> `work_experience`
     - "Projects", "Personal Projects" -> `projects`
     - "Skills", "Technical Skills" -> `skills`
     - "Awards & Achievements", "Honors" -> `awards`
-    - "Extra-Curricular Activities", "Hobbies", "Volunteer Experience" -> `extra_curricular_activities`
+    - "Extra-Curricular Activities", "Hobbies", "Volunteer" -> `extra_curricular_activities`
     - "Certifications", "Licenses", "Training" -> `certifications`
 
-    **Specific Instructions:**
-    - **Contact Details:** Search the ENTIRE text for email, phone, location, and LinkedIn. Do not assume they are under the "CONTACT" heading. They can be anywhere.
-    - **Thoroughness:** Be extremely thorough. Do not miss sections like 'Projects' or 'Extra-Curricular Activities' if they exist in the text.
-    - **Clean Output:** If a section or a contact detail is not found, its value MUST be null. For list-based sections (like skills, projects), return an empty list `[]`.
+    **Example of how to handle jumbled text:**
+    - Jumbled Input: "CONTACT\\nSUMMARY\\nEmail: a@b.com\\nSeeking a role...\\nPhone: 12345"
+    - Your Correct Interpretation: The contact details are `email: "a@b.com"` and `phone: "12345"`. The summary is "Seeking a role...".
 
     **JSON STRUCTURE REQUIRED:**
     {{
@@ -888,6 +888,7 @@ def extract_resume_sections_safely(text):
     """
     try:
         response = client.chat.completions.create(
+            # --- Using the budget-friendly model as requested ---
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
@@ -906,10 +907,10 @@ def extract_resume_sections_safely(text):
             elif isinstance(default_value, list) and final_data[key] is None:
                 final_data[key] = default_value
 
-        logger.info(f"Final data extracted successfully. Keys: {list(final_data.keys())}")
+        logger.info(f"Final data extracted successfully with Master Prompt. Keys: {list(final_data.keys())}")
         return final_data
     except Exception as e:
-        logger.error(f"Context-aware AI parsing failed: {e}")
+        logger.error(f"Context-aware AI parsing failed with Master Prompt: {e}")
         return {"error": "The AI failed to parse the resume. The document format might be too complex or unusual."}
 
 def fix_resume_issue(issue_text, extracted_data):
