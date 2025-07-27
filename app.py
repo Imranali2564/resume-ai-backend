@@ -206,6 +206,19 @@ def main_upload():
         # ✅ Extract section-wise smart content
         smart_content = generate_smart_content(resume_text)
 
+        # ✅ Fallback: Manually extract contact if missing
+        if not smart_content.get("contact"):
+            import re
+            email = re.search(r'[\w\.-]+@[\w\.-]+', resume_text)
+            phone = re.search(r'(\+?\d[\d\s\-\(\)]{7,})', resume_text)
+            location = re.search(r'\b(?:[A-Z][a-z]+\s?){1,3}(?:,?\s?(India|USA|UK|Canada|Australia))?', resume_text)
+            smart_content["contact"] = {
+                "email": email.group() if email else "",
+                "phone": phone.group() if phone else "",
+                "location": location.group() if location else ""
+            }
+            logger.info("Fallback contact used: %s", smart_content["contact"])
+
         # ✅ Format contact section properly
         contact_data = smart_content.get("contact", {})
         if isinstance(contact_data, dict):
@@ -253,7 +266,6 @@ def main_upload():
                 cleanup_file(filepath)
         except Exception as cleanup_err:
             logger.warning(f"Cleanup failed: {cleanup_err}")
-  
 
 @app.route('/ats-check', methods=['POST'])
 def check_ats():
