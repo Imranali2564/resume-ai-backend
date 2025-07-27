@@ -830,10 +830,10 @@ def refine_list_section(section_name, section_text):
 
 def extract_resume_sections_safely(text):
     """
-    VERSION 5: Final prompt jo 3.5-turbo ke saath kaam karta hai.
-    Yeh multi-column layouts ke jumbled text ko samajhne ke liye banaya gaya hai.
+    VERSION 6: Final "Chain of Thought" prompt for gpt-3.5-turbo.
+    This is designed to handle heavily jumbled text from multi-column layouts.
     """
-    logger.info("Extracting resume sections with FINAL v13 (Advanced Layout Parsing)...")
+    logger.info("Extracting resume sections with FINAL v14 (Chain of Thought Parsing)...")
     if not client:
         return {"error": "OpenAI client not initialized."}
 
@@ -843,37 +843,32 @@ def extract_resume_sections_safely(text):
         text = text[:TOKEN_LIMIT_IN_CHARS]
 
     prompt = f"""
-    You are a world-class resume parsing engine. The provided text was extracted from a PDF and might be jumbled due to a multi-column layout. Your task is to meticulously analyze the text and reconstruct a perfectly structured JSON object using a two-step process.
+    You are a world-class resume parsing engine. The provided text was extracted from a PDF and is likely jumbled due to a multi-column layout. Your task is to meticulously analyze the text and reconstruct a perfectly structured JSON object. Follow this chain of thought:
 
-    **Step 1: Identify All Content Blocks**
-    First, mentally scan the entire text and identify all potential section headings and the text content that follows them, even if it's out of order.
+    **Step 1: Raw Content Identification.**
+    Scan the entire text and identify all potential section headings (like CONTACT, SKILLS, PROJECTS, AWARDS & ACHIEVEMENTS, EXTRA-CURRICULAR ACTIVITIES) and the text content associated with them, no matter where it appears. Also, find the candidate's name and job title, which are usually prominent.
 
-    **Step 2: Map to Final JSON using the Guide**
-    After identifying the blocks, use the 'Section Mapping Guide' below to populate the final JSON structure.
+    **Step 2: Structured Mapping.**
+    Using the content you identified in Step 1, populate the final JSON object. Use the 'Section Mapping Guide' to ensure correct categorization.
 
     **Section Mapping Guide (CRITICAL):**
-    - Map "Work Experience", "Employment History", "Internships" to the `work_experience` key.
-    - Map "Projects", "Personal Projects", "Academic Projects" to the `projects` key.
-    - Map "Skills", "Technical Skills", "Core Competencies" to the `skills` key.
-    - Map "Awards & Achievements", "Honors", "Accolades" to the `awards` key.
-    - Map "Extra-Curricular Activities", "Hobbies", "Personal Interests", "Volunteer Experience" to the `extra_curricular_activities` key.
-    - Map "Certifications", "Licenses", "Training", "Courses" to the `certifications` key.
+    - "Work Experience", "Employment History", "Internships" -> `work_experience`
+    - "Projects", "Personal Projects" -> `projects`
+    - "Skills", "Technical Skills" -> `skills`
+    - "Awards & Achievements", "Honors" -> `awards`
+    - "Extra-Curricular Activities", "Hobbies", "Volunteer Experience" -> `extra_curricular_activities`
+    - "Certifications", "Licenses", "Training" -> `certifications`
 
-    **Other Instructions:**
-    1.  **Contact Details:** Diligently search the entire text for email, phone, location, and LinkedIn URL. They are often near the top but can be anywhere.
-    2.  **Clean Output:** If a section or a contact detail is not found, its value MUST be null. For list-based sections (like skills, projects), return an empty list `[]` if no content is found.
-    3.  **Be Thorough:** Do not miss any section. Scrutinize the text carefully to find all available information.
+    **Specific Instructions:**
+    - **Contact Details:** Search the ENTIRE text for email, phone, location, and LinkedIn. Do not assume they are under the "CONTACT" heading. They can be anywhere.
+    - **Thoroughness:** Be extremely thorough. Do not miss sections like 'Projects' or 'Extra-Curricular Activities' if they exist in the text.
+    - **Clean Output:** If a section or a contact detail is not found, its value MUST be null. For list-based sections (like skills, projects), return an empty list `[]`.
 
     **JSON STRUCTURE REQUIRED:**
     {{
       "name": "string | null",
       "job_title": "string | null",
-      "contact": {{
-        "email": "string | null",
-        "phone": "string | null",
-        "location": "string | null",
-        "linkedin": "string | null"
-      }},
+      "contact": {{ "email": "string | null", "phone": "string | null", "location": "string | null", "linkedin": "string | null" }},
       "summary": "string | null",
       "work_experience": [],
       "education": [],
@@ -893,7 +888,7 @@ def extract_resume_sections_safely(text):
     """
     try:
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo", # Budget-friendly model ka istemal
+            model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
@@ -916,7 +911,6 @@ def extract_resume_sections_safely(text):
     except Exception as e:
         logger.error(f"Context-aware AI parsing failed: {e}")
         return {"error": "The AI failed to parse the resume. The document format might be too complex or unusual."}
-
 
 def fix_resume_issue(issue_text, extracted_data):
     """
