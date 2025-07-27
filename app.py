@@ -207,17 +207,19 @@ def main_upload():
         smart_content = generate_smart_content(resume_text)
 
         # ✅ Format contact section properly
-        contact_data = smart_content.get("contact", {})
-        if isinstance(contact_data, dict):
-            contact = ' | '.join(filter(None, [
-                contact_data.get('email'),
-                contact_data.get('phone'),
-                contact_data.get('location'),
-                contact_data.get('linkedin'),
-                contact_data.get('github')
-            ]))
-        else:
-            contact = str(contact_data or "")
+contact_data = smart_content.get("contact", {})
+if isinstance(contact_data, dict):
+    contact_lines = list(filter(None, [
+        contact_data.get('email'),
+        contact_data.get('phone'),
+        contact_data.get('location'),
+        contact_data.get('linkedin'),
+        contact_data.get('github')
+    ]))
+    contact = "<ul>" + "".join(f"<li>{line}</li>" for line in contact_lines) + "</ul>" if contact_lines else ""
+else:
+    contact = f"<p>{contact_data}</p>" if contact_data else ""
+            
 
         # ✅ Final resume data with fallback values
         final_data = {
