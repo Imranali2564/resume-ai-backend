@@ -1186,7 +1186,7 @@ def handle_fix_issue_v2():
         payload = json.loads(request.form.get('payload'))
         issue_text = payload.get('issue_text')
         extracted_data = payload.get('extracted_data')
-        current_score = payload.get('current_score', 60) # Get current score, with a default
+        current_score = payload.get('current_score', 60)
 
         if not issue_text or not extracted_data:
             logger.error("Missing 'issue_text' or 'extracted_data' in payload.")
@@ -1194,7 +1194,6 @@ def handle_fix_issue_v2():
 
         # Naye, reliable function ko call karein
         logger.info(f"Calling fix_resume_issue for: {issue_text[:80]}")
-        # Make sure you have imported fix_resume_issue at the top of app.py
         fix_result = fix_resume_issue(issue_text, extracted_data) 
 
         if 'error' in fix_result:
@@ -1205,6 +1204,7 @@ def handle_fix_issue_v2():
         new_score = min(100, int(current_score) + 8)
 
         # Frontend ke liye response tayyar karein
+        # Ab 'fix' key ke andar poora updated resume data hai
         response_data = {
             "fix": fix_result,
             "new_score": new_score
