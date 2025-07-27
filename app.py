@@ -1123,38 +1123,47 @@ def analyze_resume_for_frontend():
         if file.filename == '':
             return jsonify({"success": False, "error": "No file selected."}), 400
 
+        # Step 1: Extract text from the uploaded file
         text = extract_text_from_resume(file)
-        if not text:
-            return jsonify({"success": False, "error": "Could not extract text from the resume."}), 500
+        
+        # --- NEW ERROR HANDLING ADDED ---
+        # Agar koi text nahi mila, toh error bhejein
+        if not text or not text.strip():
+            logger.warning(f"No text could be extracted from {file.filename}. It might be an image-based file.")
+            return jsonify({
+                "success": False, 
+                "error": "Could not read the resume. The uploaded file seems to be an image-based PDF or DOCX. Please upload a resume with selectable text."
+            }), 400
+        # --- END OF NEW ERROR HANDLING ---
 
-        # Step 1: Extract sections
+        # Step 2: Extract sections
         extracted_sections = extract_resume_sections_safely(text)
         if not extracted_sections or extracted_sections.get("error"):
             error_message = extracted_sections.get("error", "Failed to parse resume sections.")
             logger.error(f"Error from extract_resume_sections_safely: {error_message}")
             return jsonify({"success": False, "error": error_message}), 500
 
-        # Step 2: Generate detailed ATS report
+        # Step 3: Generate detailed ATS report
         ats_result = generate_final_detailed_report(text, extracted_sections)
         if not ats_result or ats_result.get("error"):
             error_message = ats_result.get("error", "Failed to generate ATS report.")
             logger.error(f"Error from generate_final_detailed_report: {error_message}")
             return jsonify({"success": False, "error": error_message}), 500
         
-        # Step 3: Get field-aware suggestions
+        # Step 4: Get field-aware suggestions
         field_info = get_field_suggestions(extracted_sections, text)
         if not field_info or field_info.get("error"):
             logger.warning("Could not get field suggestions, proceeding with default.")
             field_info = {"field": "General", "suggestions": []}
 
-        # Step 4: Prepare the final data structure
+        # Step 5: Prepare the final data structure
         formatted_data = {
             "analysis": ats_result,
             "extracted_data": extracted_sections,
             "field_info": field_info
         }
 
-        # Step 5: Calculate the score based on the detailed report
+        # Step 6: Calculate the score based on the detailed report
         fail_count = sum(1 for check in formatted_data['analysis'].values() if isinstance(check, dict) and check.get('status') in ['fail', 'improve'])
         formatted_data['score'] = max(40, 100 - (fail_count * 10))
         
