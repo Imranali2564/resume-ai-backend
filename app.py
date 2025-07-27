@@ -186,7 +186,7 @@ def main_upload():
             logger.error("No file uploaded in request")
             return jsonify({"error": "No file uploaded"}), 400
 
-        logger.info(f"File received: {file.filename}, size: {file.content_length}")
+        logger.info(f"File received: {file.filename}")
         ext = os.path.splitext(file.filename)[1].lower()
         if ext not in {'.pdf', '.docx'}:
             logger.error(f"Unsupported file format: {ext}")
@@ -197,36 +197,50 @@ def main_upload():
         logger.info(f"Saving file to {filepath}")
         file.save(filepath)
 
-        text = extract_text_from_pdf(filepath) if ext == ".pdf" else extract_text_from_docx(filepath)
-        cleaned_text = remove_unnecessary_personal_info(text)
+        # ✅ Extract original resume text (NO cleaning)
+        resume_text = extract_text_from_pdf(filepath) if ext == ".pdf" else extract_text_from_docx(filepath)
 
-        job_title = request.form.get('job_title', '')
-        company_name = request.form.get('company_name', '')
-        logger.info(f"Job title: {job_title}, Company name: {company_name}")
+        # ✅ Run ATS checks on raw text (personal info will be caught)
+        ats_score, final_checks = perform_ats_checks(resume_text)
 
-        prompt = f"""
-You are a professional resume editor. Fix the following resume to make it professional, concise, and tailored for the role of {job_title} at {company_name}. Remove unnecessary personal info (e.g., marital status, date of birth, gender, nationality, religion). Use active voice, quantify achievements where possible, and ensure ATS compatibility.
+        # ✅ Extract section-wise smart content
+        smart_content = generate_smart_content(resume_text)
 
-Resume:
-{cleaned_text[:6000]}
+        # ✅ Format contact section properly
+        contact_data = smart_content.get("contact", {})
+        if isinstance(contact_data, dict):
+            contact = ' | '.join(filter(None, [
+                contact_data.get('email'),
+                contact_data.get('phone'),
+                contact_data.get('location'),
+                contact_data.get('linkedin'),
+                contact_data.get('github')
+            ]))
+        else:
+            contact = str(contact_data or "")
 
-Return the improved resume as plain text.
-"""
+        # ✅ Final resume data with fallback values
+        final_data = {
+            "contact": contact,
+            "skills": smart_content.get("skills", "") or "",
+            "languages": smart_content.get("languages", "") or "",
+            "certifications": smart_content.get("certifications", "") or "",
+            "awards": smart_content.get("awards", "") or "",
+            "summary": smart_content.get("summary", "") or "",
+            "experience": smart_content.get("experience", "") or "",
+            "education": smart_content.get("education", "") or "",
+            "projects": smart_content.get("projects", "") or "",
+            "publications": smart_content.get("publications", "") or "",
+        }
 
-        from openai import OpenAI
-        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-        logger.info("Sending request to OpenAI")
-        ai_resp = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0
-        )
+        html = generateResumeTemplate(final_data)
 
-        improved_resume = ai_resp.choices[0].message.content.strip()
-        logger.info("Received response from OpenAI")
-
-        # ✅ Return plain text as JSON
-        return jsonify({"success": True, "data": {"text": improved_resume}})
+        return jsonify({
+            "success": True,
+            "score": ats_score,
+            "html": html,
+            "checks": final_checks
+        })
 
     except Exception as e:
         logger.error(f"Error in /main-upload: {str(e)}")

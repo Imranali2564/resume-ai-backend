@@ -720,31 +720,6 @@ Only include meaningful points.
 
     except Exception as e:
         return {"error": str(e)}
-import re
-
-def remove_unnecessary_personal_info(text):
-    # Remove Date of Birth
-    text = re.sub(r"(Date of Birth|DOB)[:\-]?\s*\d{1,2}[\/\-\.]?\d{1,2}[\/\-\.]?\d{2,4}", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"(Date of Birth|DOB)[:\-]?\s*[A-Za-z]+\s+\d{1,2},?\s+\d{4}", "", text, flags=re.IGNORECASE)
-
-    # Remove Gender
-    text = re.sub(r"Gender[:\-]?\s*(Male|Female|Other|Prefer not to say)", "", text, flags=re.IGNORECASE)
-
-    # Remove Marital Status
-    text = re.sub(r"Marital Status[:\-]?\s*(Single|Married|Divorced|Widowed)", "", text, flags=re.IGNORECASE)
-
-    # Remove Nationality
-    text = re.sub(r"Nationality[:\-]?\s*\w+", "", text, flags=re.IGNORECASE)
-
-    # Remove Religion
-    text = re.sub(r"Religion[:\-]?\s*\w+", "", text, flags=re.IGNORECASE)
-
-    # Remove long address formats, retain only city and country
-    # e.g. "T-602, Street No 12, Gautampuri, New Delhi 110053, India" → "New Delhi, India"
-    text = re.sub(r'((Address|Location)[:\-]?)?\s*[\w\s\-\,\.\/]*?(\b[A-Z][a-z]+\b)[,\s]+(\b[A-Z][a-z]+\b)(?:\s*\d{5,6})?(,\s*India)?', r'\3, \4', text)
-
-    return text
-
 
 def fix_ats_issue(issue_text, extracted_data):
     section = "misc"
