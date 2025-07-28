@@ -804,129 +804,45 @@ def refine_list_section(section_name, section_text):
         return [line.strip() for line in section_text.split('\n') if line.strip()]
 
 def extract_resume_sections_safely(text):
-    logger.info("Extracting resume sections with FINAL AI strategy including alias mapping...")
+    """
+    Parses resume text using an AI model to extract structured data in JSON format.
+    """
+    logger.info("Extracting resume sections with FINAL v9 (Simplified & Robust) AI strategy...")
     if not client:
         return {"error": "OpenAI client not initialized."}
-
-    section_alias_mapping = {
-        "summary": [
-            "Professional Summary", "Career Summary", "Profile", "Personal Statement", "About Me", "Executive Summary"
-        ],
-        "objective": [
-            "Objective", "Career Objective", "Job Target", "Employment Goal", "Career Aim"
-        ],
-        "work_experience": [
-            "Experience", "Work History", "Employment History", "Professional Experience", "Career History",
-            "Positions Held", "Industry Exposure", "Career Background", "Roles and Responsibilities"
-        ],
-        "education": [
-            "Education", "Academic Background", "Academic Qualifications", "Academic Credentials", "Scholarly Record",
-            "Degrees", "Schooling", "Educational Details", "University Details"
-        ],
-        "skills": [
-            "Skills", "Technical Skills", "Core Competencies", "Areas of Expertise", "Strengths", "Knowledge Areas",
-            "Capabilities", "Skill Highlights", "Tools & Technologies", "Tool Proficiency"
-        ],
-        "technical_skills": [
-            "Technical Expertise", "Technology Stack", "Programming Skills", "Software Tools", "IT Skills", "Tech Stack"
-        ],
-        "soft_skills": [
-            "Soft Skills", "Interpersonal Skills", "People Skills", "Behavioral Skills", "Human Skills"
-        ],
-        "certifications": [
-            "Certifications", "Courses Completed", "Licenses", "Trainings", "Workshops", "Professional Development",
-            "Seminars", "Online Courses", "Diplomas", "Microcredentials"
-        ],
-        "projects": [
-            "Projects", "Project Work", "Capstone Projects", "Academic Projects", "Freelance Projects", "Initiatives",
-            "Real-World Applications", "Client Work"
-        ],
-        "languages": [
-            "Languages", "Language Proficiency", "Spoken Languages", "Known Languages", "Linguistic Skills"
-        ],
-        "achievements": [
-            "Achievements", "Accomplishments", "Recognitions", "Milestones", "Success Stories", "Performance Highlights"
-        ],
-        "awards": [
-            "Awards", "Honors", "Trophies", "Badges", "Certificates of Excellence"
-        ],
-        "volunteer_experience": [
-            "Volunteer Work", "Social Service", "NGO Work", "Community Service", "Charity Experience", "Unpaid Work"
-        ],
-        "extracurricular": [
-            "Extra-Curricular Activities", "Interests", "Clubs & Societies", "Hobbies", "Personal Interests",
-            "Student Activities", "Leadership Roles"
-        ],
-        "publications": [
-            "Publications", "Research Papers", "Articles", "Journals", "Conference Papers", "Whitepapers"
-        ],
-        "internships": [
-            "Internships", "Training Experience", "Summer Internship", "Industrial Training", "Apprenticeship"
-        ],
-        "trainings": [
-            "Training", "Trainings", "Workshops", "Seminars", "Sessions", "Professional Development",
-            "Technical Training", "Industrial Training", "CME", "Medical Training", "Pedagogical Training",
-            "Corporate Training", "Sales Training", "Bootcamps", "Apprenticeship", "On-the-Job Training"
-        ],
-        "contact": [
-            "Contact", "Contact Details", "Contact Information", "Reach Me", "Personal Information"
-        ],
-        "references": [
-            "References", "Referees", "Recommendation Contacts", "Reference Contacts", "Recommendation Providers"
-        ]
-    }
 
     TOKEN_LIMIT_IN_CHARS = 40000
     if len(text) > TOKEN_LIMIT_IN_CHARS:
         logger.warning(f"Resume text is too long, truncating to {TOKEN_LIMIT_IN_CHARS} characters.")
         text = text[:TOKEN_LIMIT_IN_CHARS]
 
-    alias_instructions = "\n".join([
-        f"- {section_key}: {', '.join(aliases)}"
-        for section_key, aliases in section_alias_mapping.items()
-    ])
-
     prompt = f"""
-You are a world-class resume parsing system. The following resume text may be jumbled or written in various formats.
+    You are a world-class resume parsing system. The following text may be jumbled.
+    Your task is to intelligently parse this text and reconstruct a perfectly structured JSON object.
 
-Your job is to intelligently extract and organize the resume content into a perfectly structured JSON object.
+    **Crucial Instructions:**
+    1.  **Associate Details:** Correctly associate all details with their parent items.
+    2.  **Map Certifications:** Look for headings like "Certifications", "Additional Courses", "Training", "Licenses", or "Professional Development" and map ALL of them to the `certifications` key. This is very important.
+    3.  **Clean Output:** If a section is not found, its value must be null.
 
-You MUST map each section, even if the heading is written differently. Use the alias mapping below to understand alternate names:
-{alias_instructions}
+    **JSON STRUCTURE REQUIRED:**
+    - "name": string
+    - "job_title": string
+    - "contact": string
+    - "summary": string
+    - "work_experience": list of objects `[{{"title": string, "company": string, "duration": string, "details": list of strings}}]`
+    - "education": list of objects `[{{"degree": string, "school": string, "duration": string, "details": list of strings}}]`
+    - "skills": list of strings
+    - "languages": list of strings
+    - "certifications": list of strings  <-- All course-related info should come here.
+    - "projects": list of objects `[{{"title": string, "description": string, "details": list of strings}}]`
 
-**INSTRUCTIONS:**
-- Correctly associate all data under the appropriate section.
-- Skip empty or repeated content.
-- Do not include unknown or irrelevant sections.
-
-**JSON STRUCTURE REQUIRED:**
-- "name": string
-- "job_title": string
-- "contact": string
-- "summary": string
-- "work_experience": list of objects
-- "education": list of objects
-- "skills": list of strings
-- "technical_skills": list of strings
-- "soft_skills": list of strings
-- "certifications": list of strings
-- "projects": list of objects
-- "languages": list of strings
-- "awards": list of strings
-- "achievements": list of strings
-- "publications": list of strings
-- "volunteer_experience": list of strings
-- "extracurricular": list of strings
-- "internships": list of objects
-- "trainings": list of strings
-- "references": list of strings
-
-**Resume Text:**
-{text}
-
-Return ONLY the raw JSON object. Do not include any explanation.
-"""
-
+    **Resume Text to Parse:**
+    ---
+    {text[:8000]}
+    ---
+    Return ONLY the raw JSON object.
+    """
     try:
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -934,11 +850,23 @@ Return ONLY the raw JSON object. Do not include any explanation.
             response_format={"type": "json_object"}
         )
         final_data = json.loads(response.choices[0].message.content)
-        logger.info(f"Resume parsed successfully with keys: {list(final_data.keys())}")
+        
+        # Ensure all possible keys are present in the final dictionary, setting them to None if missing.
+        all_possible_keys = [
+            "name", "job_title", "contact", "summary", "work_experience", 
+            "education", "skills", "certifications", "languages", "projects", 
+            "awards", "volunteer_experience"
+        ]
+        for key in all_possible_keys:
+            if key not in final_data:
+                final_data[key] = None
+
+        logger.info(f"Final data extracted successfully. Keys: {list(final_data.keys())}")
         return final_data
+        
     except Exception as e:
-        logger.error(f"AI resume parsing failed: {e}")
-        return {"error": "AI failed to parse resume. Check formatting or try again."}
+        logger.error(f"Context-aware AI parsing failed: {e}")
+        return {"error": "The AI failed to parse the resume. The document format might be too complex."}
 
 def generate_final_detailed_report(text, extracted_data):
     logger.info("Generating FINAL v16 Detailed Audit with Skills Check...")
