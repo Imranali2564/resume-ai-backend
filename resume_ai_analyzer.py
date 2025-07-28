@@ -895,16 +895,17 @@ def extract_resume_sections_safely(text):
         return {"error": "The AI failed to parse the resume. The document format might be too complex."}
 
 # =====================================================================
-# START: FINAL & FULLY CORRECTED ANALYSIS ENGINE (ISSE REPLACE KAREIN)
+# START: ADVANCED ANALYSIS ENGINE (v20) - (ISSE REPLACE KAREIN)
 # =====================================================================
 def generate_final_detailed_report(extracted_data):
-    logger.info("Generating FINAL v19 Comprehensive Audit...")
+    logger.info("Generating FINAL v20 Detailed Multi-Check Audit...")
     if not client:
         return {"error": "OpenAI client not initialized."}
 
     final_report = {}
     
     # --- Check 1: Zaroori Sections Maujood Hain Ya Nahi ---
+    # (Yeh check waise hi rahega)
     required_sections = {
         "summary": "Profile Summary",
         "work_experience": "Work Experience",
@@ -918,52 +919,41 @@ def generate_final_detailed_report(extracted_data):
                 "comment": f"Critical section missing: '{name}'. A resume is incomplete without it."
             }
 
-    # --- Check 2: Name aur Contact jaankari VALID hai ya nahi ---
-    contact_text = str(extracted_data.get("contact", ""))
-    name_text = str(extracted_data.get("name", ""))
-    # Regex to check for an email OR a phone number with at least 8 digits
-    if not re.search(r'[\w\.-]+@[\w\.-]+', contact_text) or not re.search(r'\d{8,}', contact_text.replace(" ", "")):
-        final_report["contact_validity_check"] = {
-            "status": "fail",
-            "comment": "Critical issue: A valid Email and Phone Number are missing in the Contact section."
-        }
-    # Check for placeholder names
-    elif not name_text or name_text.lower().strip() in ["your name", "resume", "cv"]:
-         final_report["name_validity_check"] = {
-            "status": "fail",
-            "comment": "Critical issue: The candidate's Name is missing or is a generic placeholder."
-        }
-    else:
-        # NEW: Agar sab theek hai, to PASS status add karein
-        final_report["contact_validity_check"] = {
-            "status": "pass",
-            "comment": "Contact information (Email, Phone) and Name are present."
-        }
-        
-    # --- Check 3: Section-by-Section AI Analysis ---
+    # --- Check 2: Har Section ka Gehraai se Analysis ---
     for section_key, section_content in extracted_data.items():
         if not section_content or section_key in ["name", "job_title", "contact"]:
             continue
 
-        rules = ""
-        # (Rules waise hi rahenge jaise pichle code mein the)
-        if section_key == "summary":
-            rules = "Check 1: Length - Should be 2-4 lines. 2. Content: Must be impactful. 3. Keywords: Should contain top skills."
-        elif section_key == "work_experience":
-            rules = "Check 1: Format - Must use bullet points for details. 2. Content - Must use action verbs and have quantifiable results (e.g., numbers, %). 3. Length: Each bullet point should be concise (1-2 lines)."
-        # ... baaki sections ke rules yahan aayenge ...
-
         prompt = f"""
-        You are an expert resume auditor. Analyze ONLY the following resume section based on the given rules.
+        You are an elite resume auditor. Analyze ONLY the following resume section.
 
         Section Name: "{section_key}"
         Content: {json.dumps(section_content, indent=2)}
-        Rules: {rules}
+
+        Your Task: Return a JSON object with a sub-report for each of the following checks. Each check MUST have a "status" ('pass' or 'fail') and a "comment".
         
-        Your Task: Return a JSON object with a "status" ('pass' or 'fail') and a short, specific "comment".
-        The comment should be very clear. If it passes, say "Content and format are professional." If it fails, explain exactly why (e.g., "Work Experience lacks numbers", "Skills section uses sentences instead of keywords").
-        
-        JSON Output: {{"status": "pass/fail", "comment": "Your comment here."}}
+        1.  **formatting_check**: Is the format correct for this section? (e.g., bullet points for experience, keywords for skills).
+        2.  **conciseness_check**: Is the section content concise and not too wordy? Is it not too short?
+        3.  **grammar_spelling_check**: Are there any grammar or spelling errors?
+        4.  **keyword_relevance_check**: Does the content contain relevant keywords for a professional resume?
+
+        Example for a "pass" on work_experience:
+        {{
+            "formatting_check": {{"status": "pass", "comment": "Uses professional bullet points correctly."}},
+            "conciseness_check": {{"status": "pass", "comment": "Details are concise and to the point."}},
+            "grammar_spelling_check": {{"status": "pass", "comment": "No spelling or grammar errors found."}},
+            "keyword_relevance_check": {{"status": "pass", "comment": "Includes strong action verbs and keywords."}}
+        }}
+
+        Example for a "fail" on skills:
+        {{
+            "formatting_check": {{"status": "fail", "comment": "Uses long sentences instead of a keyword list."}},
+            "conciseness_check": {{"status": "pass", "comment": "Content length is appropriate."}},
+            "grammar_spelling_check": {{"status": "pass", "comment": "No spelling errors."}},
+            "keyword_relevance_check": {{"status": "pass", "comment": "Contains relevant skills."}}
+        }}
+
+        Return ONLY the JSON object for this one section's analysis.
         """
         
         try:
@@ -972,24 +962,25 @@ def generate_final_detailed_report(extracted_data):
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}
             )
-            section_report = json.loads(response.choices[0].message.content)
-            # NEW: Pass ya Fail, dono ko report mein daalein
-            final_report[f"{section_key}_check"] = section_report
+            # Har sub-check ko alag-alag final_report mein daalein
+            section_sub_report = json.loads(response.choices[0].message.content)
+            for check_name, check_result in section_sub_report.items():
+                final_report[f"{section_key}_{check_name}"] = check_result
         except Exception as e:
             logger.error(f"Error analyzing section {section_key}: {e}")
             
     return final_report
 # =====================================================================
-# END: FINAL & FULLY CORRECTED ANALYSIS ENGINE
+# END: ADVANCED ANALYSIS ENGINE (v20)
 # =====================================================================
 # =====================================================================
-# START: SUPERCHARGED FIX-IT-ALL FUNCTION (ISSE REPLACE KAREIN)
+# START: FINAL BUG-FREE FIX FUNCTION (ISSE REPLACE KAREIN)
 # =====================================================================
 def fix_resume_issue(issue_text, extracted_data):
     if not client: 
         return {"error": "OpenAI API key not set."}
         
-    logger.info(f"Generating SUPERCHARGED fix for issue '{issue_text}'...")
+    logger.info(f"Generating FINAL BUG-FREE fix for issue '{issue_text}'...")
     resume_context = json.dumps(extracted_data, indent=2)
 
     prompt = f"""
@@ -1003,21 +994,24 @@ def fix_resume_issue(issue_text, extracted_data):
     **Issue to Fix:**
     "{issue_text}"
 
-    **Instructions:**
-    1.  Analyze the 'Issue to Fix'. It could be about missing sections, bad formatting, wrong length, or lack of keywords.
-    2.  Locate the relevant section in the 'Resume Data'. If the issue is about a MISSING section (e.g., "Critical section missing: 'Summary'"), your task is to GENERATE that section from scratch based on the other information in the resume.
-    3.  Intelligently rewrite, reformat, or generate content to resolve the issue.
-        - For "lacks quantifiable results", add realistic numbers to `work_experience`.
-        - For "format is incorrect", fix the format (e.g., convert sentences to bullet points).
-        - For "too wordy", make it concise.
-        - For "missing section", create the content for that section. For example, for a missing summary, write a 2-3 line summary.
-    4.  Return a JSON object containing the `section` key you changed/created and its new `fixedContent`.
+    **CRITICAL INSTRUCTIONS:**
+    1.  Identify the section related to the issue (e.g., if issue is "Work Experience lacks numbers", the section is "work_experience").
+    2.  Intelligently rewrite, reformat, or GENERATE the content for that section to fix the issue.
+    3.  You MUST return a JSON object with two keys: "section" and "fixedContent".
+    4.  **THE MOST IMPORTANT RULE:** The data type of "fixedContent" MUST MATCH the original data type in the resume JSON.
+        - If you are fixing `work_experience` or `education`, `fixedContent` MUST be a **list of objects**.
+        - If you are fixing `technical_skills` or `soft_skills`, `fixedContent` MUST be a **list of strings**.
+        - If you are fixing `summary`, `fixedContent` MUST be a **single string**.
+    5.  Failure to return the correct data type will break the application. Be extremely careful.
 
     **Required Output Format (JSON):**
-    {{"section": "key_of_the_changed_or_created_section", "fixedContent": "the_new_content"}}
+    {{"section": "key_of_the_changed_section", "fixedContent": "the_new_content_with_CORRECT_DATA_TYPE"}}
 
-    Example for a MISSING SUMMARY fix:
-    {{"section": "summary", "fixedContent": "Results-driven professional with 5+ years of experience in project management and software development. Proven ability to lead teams and deliver high-quality products on time."}}
+    **PERFECT Example for Work Experience:**
+    {{"section": "work_experience", "fixedContent": [{{"title": "Software Engineer", "company": "Tech Corp", "duration": "2020 - Present", "details": ["Developed features that increased user engagement by 15%.", "Managed a project with a budget of $50,000."]}}]}}
+
+    **PERFECT Example for Skills:**
+    {{"section": "technical_skills", "fixedContent": ["Python", "JavaScript", "React", "Node.js", "SQL"]}}
     """
 
     try:
@@ -1027,14 +1021,21 @@ def fix_resume_issue(issue_text, extracted_data):
             response_format={"type": "json_object"}
         )
         fix_result = json.loads(response.choices[0].message.content)
+        
+        # Ek aur suraksha check
         if "section" not in fix_result or "fixedContent" not in fix_result:
-            raise ValueError("AI response was malformed.")
+            raise ValueError("AI response was malformed. Missing 'section' or 'fixedContent'.")
+        
+        original_section = fix_result["section"]
+        if original_section in extracted_data and type(extracted_data[original_section]) != type(fix_result["fixedContent"]):
+             logger.warning(f"AI returned wrong data type for {original_section}! JS might fail.")
+
         return fix_result
     except Exception as e:
         logger.error(f"[ERROR in fix_resume_issue]: {e}")
-        return {"error": "AI failed to generate a fix for this issue."}
+        return {"error": "AI failed to generate a stable fix for this issue."}
 # =====================================================================
-# END: SUPERCHARGED FIX-IT-ALL FUNCTION
+# END: FINAL BUG-FREE FIX FUNCTION
 # =====================================================================
 
 
