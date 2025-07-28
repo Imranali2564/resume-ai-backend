@@ -1008,101 +1008,54 @@ Return ONLY the raw JSON object. Do not include any explanation.
         return {"error": "AI failed to parse resume. Check formatting or try again."}
 
 def generate_final_detailed_report(text, extracted_data):
-    import json
-    import re
-    from openai import OpenAI
-
     logger.info("Generating FINAL v17 Smart Resume Audit with Formatting Awareness...")
 
     if not client:
         return {"error": "OpenAI client not initialized."}
 
-    # Truncate overly long resumes
-    text = text[:6000]
-
-    # Extract job keywords if present
-    job_keywords = []
-    if extracted_data and isinstance(extracted_data, dict):
-        job_keywords = extracted_data.get("job_keywords", [])
-
-    keywords_text = ", ".join(job_keywords or [])
-
     prompt = f"""
-You are a professional resume auditor. Carefully analyze the resume text below and return a detailed JSON audit report with realistic and meaningful feedback.
+You are a professional resume auditor. Analyze the provided resume text and return a detailed JSON report.
+For each check, provide a "status" ('pass', 'fail', or 'improve') and a "comment".
 
-Only return valid JSON (no explanation, no markdown formatting).
-
-JSON Format:
+**Required JSON Output Structure:**
 {{
-  "contact_info_check": {{
-    "status": "pass/fail",
-    "comment": "..."
-  }},
-  "summary_check": {{
-    "status": "pass/improve",
-    "comment": "...",
-    "suggested_fix": "..."
-  }},
-  "experience_metrics_check": {{
-    "status": "pass/fail",
-    "comment": "..."
-  }},
-  "action_verbs_check": {{
-    "status": "pass/fail",
-    "comment": "..."
-  }},
-  "skills_format_check": {{
-    "status": "pass/improve/fail",
-    "comment": "..."
-  }},
-  "keywords_match": {{
-    "status": "pass/fail",
-    "comment": "..."
-  }},
-  "formatting_check": {{
-    "status": "pass/improve/fail",
-    "comment": "..."
-  }},
-  "ats_compatibility": {{
-    "status": "pass/fail",
-    "comment": "..."
-  }},
-  "spelling_check": {{
-    "status": "pass",
-    "comment": "..."
-  }},
-  "grammar_check": {{
-    "status": "pass/fail",
-    "comment": "..."
-  }}
+    "contact_info_check": {{"status": "pass/fail", "comment": "Your comment here."}},
+    "summary_check": {{"status": "pass/improve", "comment": "Your comment here."}},
+    "experience_metrics_check": {{"status": "pass/fail", "comment": "e.g., The work experience lacks quantifiable results."}},
+    "action_verbs_check": {{"status": "pass/fail", "comment": "e.g., Sentences use passive voice like 'Responsible for'."}},
+    "skills_format_check": {{"status": "pass/fail", "comment": "e.g., The skills section should contain keywords, not long sentences."}},
+    "section_bullet_check": {{"status": "pass/fail", "comment": "e.g., Work experience and projects should use bullet points, not paragraphs."}},
+    "length_balance_check": {{"status": "pass/improve", "comment": "e.g., The summary is too short; consider expanding it slightly."}},
+    "spelling_check": {{"status": "pass", "comment": "No major spelling errors found."}},
+    "grammar_check": {{"status": "pass/fail", "comment": "e.g., Found a minor grammatical error in the summary."}}
 }}
 
-Rules:
-- Only fail ATS compatibility for real blockers: tables, multiple columns, icons, images, or headers misuse.
-- If skills are too long (>20 items) or written in paragraph form → improve/fail
-- Work Experience or Summary without bullet points → improve
-- Bullet points that are too long (more than 3 lines each) → improve
-- Keywords not found from this list: [{keywords_text}] → fail
-- Don't show vague issues. Be specific and useful.
+- For 'skills_format_check': if the skills section contains long descriptive sentences instead of keywords, set status to 'fail'. Otherwise, 'pass'.
+- For 'section_bullet_check': check if Work Experience or Projects are written in long paragraphs instead of bullets.
+- For 'length_balance_check': mark 'improve' if summary is too short or a section is overly long.
+- Only show real issues; don't invent problems.
+- Be specific and professional in your comments.
 
-Resume Text:
+**Resume Text to Analyze (first 6000 chars):**
 ---
-{text}
+{text[:6000]}
 ---
-    """
+"""
 
     try:
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "You are a resume auditor. Respond ONLY with JSON. No extra words."},
+                {"role": "system", "content": "You are a resume auditor that responds in perfect, structured JSON."},
                 {"role": "user", "content": prompt}
             ]
         )
-        return json.loads(response.choices[0].message.content)
+        report_data = json.loads(response.choices[0].message.content)
+        return report_data
+
     except Exception as e:
-        logger.error(f"Smart audit failed: {e}")
-        return {"error": "AI analysis failed."}
+        logger.error(f"Error in detailed report generation: {e}")
+        return {"error": "AI analysis failed to generate a detailed report."}
 
 def fix_resume_issue(issue_text, extracted_data):
     """
