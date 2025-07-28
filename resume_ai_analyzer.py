@@ -804,59 +804,35 @@ def refine_list_section(section_name, section_text):
         return [line.strip() for line in section_text.split('\n') if line.strip()]
 
 def extract_resume_sections_safely(text):
-    """
-    VERSION 9: The Ultimate "Master" prompt for gpt-3.5-turbo.
-    This version has the most comprehensive section mapping guide to date,
-    and handles special cases like fresher work experience paragraphs.
-    """
-    logger.info("Extracting resume sections with FINAL v17 (Ultimate Master Prompt)...")
+    logger.info("Extracting resume sections with FINAL v9 (Simplified & Robust) AI strategy...")
     if not client:
         return {"error": "OpenAI client not initialized."}
-
+    
     TOKEN_LIMIT_IN_CHARS = 40000
     if len(text) > TOKEN_LIMIT_IN_CHARS:
         logger.warning(f"Resume text is too long, truncating to {TOKEN_LIMIT_IN_CHARS} characters.")
         text = text[:TOKEN_LIMIT_IN_CHARS]
 
     prompt = f"""
-    You are a master-level resume parsing engine. The provided text was extracted from a PDF and may be heavily jumbled due to a multi-column layout. Your task is to act like a detective: find all pieces of information and assemble them correctly into the final JSON structure.
+    You are a world-class resume parsing system. The following text may be jumbled.
+    Your task is to intelligently parse this text and reconstruct a perfectly structured JSON object.
 
-    **CRITICAL WARNING:** Do NOT trust the order of the text. You must search the entire text for clues and use the detailed mapping guide below.
-
-    **Section Mapping Guide (VERY IMPORTANT):**
-    - "Profile", "Summary", "Objective" -> `summary`
-    - "Work Experience", "Employment History", "Experience" -> `work_experience`
-    - "Internships" -> `internships`
-    - "Projects", "Academic Projects", "Personal Projects" -> `projects`
-    - "Skills", "Technical Skills", "Soft Skills", "Core Competencies" -> `skills`
-    - "Awards & Achievements", "Key Achievements", "Honors", "Accolades" -> `awards`
-    - "Extra-Curricular Activities", "Hobbies", "Passions", "Interests", "Volunteer Experience", "Organizations" -> `extra_curricular_activities`
-    - "Certifications", "Licenses", "Training", "Courses" -> `certifications`
-    - "Publications", "Research" -> `publications`
-    - "References" -> `references`
-
-    **Special Logic for 'work_experience':**
-    - If the "Work Experience" section contains a list of jobs with titles, companies, and dates, format it as a list of objects.
-    - **BUT**, if it contains a single paragraph (common for freshers), extract it as a single string.
+    **Crucial Instructions:**
+    1.  **Associate Details:** Correctly associate all details with their parent items.
+    2.  **Map Certifications:** Look for headings like "Certifications", "Additional Courses", "Training", "Licenses", or "Professional Development" and map ALL of them to the `certifications` key. This is very important.
+    3.  **Clean Output:** If a section is not found, its value must be null.
 
     **JSON STRUCTURE REQUIRED:**
-    {{
-      "name": "string | null",
-      "job_title": "string | null",
-      "contact": {{ "email": "string | null", "phone": "string | null", "location": "string | null", "linkedin": "string | null" }},
-      "summary": "string | null",
-      "work_experience": "list of objects | string | null",
-      "internships": [],
-      "education": [],
-      "skills": [],
-      "languages": [],
-      "certifications": [],
-      "projects": [],
-      "awards": [],
-      "extra_curricular_activities": [],
-      "publications": [],
-      "references": "string | null"
-    }}
+    - "name": string
+    - "job_title": string
+    - "contact": string
+    - "summary": string
+    - "work_experience": list of objects `[{{"title": string, "company": string, "duration": string, "details": list of strings}}]`
+    - "education": list of objects `[{{"degree": string, "school": string, "duration": string, "details": list of strings}}]`
+    - "skills": list of strings
+    - "languages": list of strings
+    - "certifications": list of strings  <-- All course-related info should come here.
+    - "projects": list of objects `[{{"title": string, "description": string, "details": list of strings}}]`
 
     **Resume Text to Parse:**
     ---
@@ -871,25 +847,17 @@ def extract_resume_sections_safely(text):
             response_format={"type": "json_object"}
         )
         final_data = json.loads(response.choices[0].message.content)
-
-        # Consistent structure ke liye, sabhi keys ko ensure karein
-        all_possible_keys = {
-            "name": None, "job_title": None, "contact": {"email": None, "phone": None, "location": None, "linkedin": None},
-            "summary": None, "work_experience": [], "internships": [], "education": [], "skills": [],
-            "languages": [], "certifications": [], "projects": [], "awards": [], "extra_curricular_activities": [],
-            "publications": [], "references": None
-        }
-        for key, default_value in all_possible_keys.items():
+        
+        all_possible_keys = ["name", "job_title", "contact", "summary", "work_experience", "education", "skills", "certifications", "languages", "projects", "awards", "volunteer_experience"]
+        for key in all_possible_keys:
             if key not in final_data:
-                final_data[key] = default_value
-            elif isinstance(default_value, list) and final_data[key] is None:
-                final_data[key] = default_value
+                final_data[key] = None
 
-        logger.info(f"Final data extracted successfully with Ultimate Master Prompt. Keys: {list(final_data.keys())}")
+        logger.info(f"Final data extracted successfully. Keys: {list(final_data.keys())}")
         return final_data
     except Exception as e:
-        logger.error(f"Context-aware AI parsing failed with Ultimate Master Prompt: {e}")
-        return {"error": "The AI failed to parse the resume. The document format might be too complex or unusual."}
+        logger.error(f"Context-aware AI parsing failed: {e}")
+        return {"error": "The AI failed to parse the resume. The document format might be too complex."}
 
 def generate_final_detailed_report(text, extracted_data):
     logger.info("Generating FINAL v16 Detailed Audit with Skills Check...")
