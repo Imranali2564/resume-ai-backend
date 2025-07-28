@@ -628,73 +628,6 @@ def generate_michelle_template_html(sections):
       </div>
     </div>
     """
-# Resumefixerpro main tool template
-def generateResumeTemplate(data: dict) -> str:
-    """
-    ResumeFixerPro ka main rendering function for resume preview.
-    Renders user's original resume data (without AI cleanup) with proper layout.
-    """
-
-    def list_to_html(items):
-        if not items:
-            return ""
-        if isinstance(items, str):
-            items = [line.strip() for line in items.split('\n') if line.strip()]
-        elif isinstance(items, list):
-            items = [str(i).strip() for i in items if str(i).strip()]
-        else:
-            return ""
-        return "<ul>" + "".join(f"<li>{line}</li>" for line in items) + "</ul>"
-
-    def parse_section(section_title, content):
-        if not content:
-            return ""
-        html = f'<div class="section"><h3>{section_title}</h3>'
-        if isinstance(content, str):
-            html += f"<p>{content.strip()}</p>"
-        elif isinstance(content, list):
-            html += list_to_html(content)
-        elif isinstance(content, dict):
-            for k, v in content.items():
-                html += f"<h4>{k}</h4>{list_to_html(v)}"
-        html += "</div>"
-        return html
-
-    # Left column
-    left_col = ""
-    if 'contact' in data:
-        contact = data.get("contact", {})
-        left_col += '<div class="section"><h3>Contact</h3>'
-        if 'email' in contact:
-            left_col += f"<p><b>Email:</b> {contact['email']}</p>"
-        if 'phone' in contact:
-            left_col += f"<p><b>Phone:</b> {contact['phone']}</p>"
-        if 'location' in contact:
-            left_col += f"<p><b>Location:</b> {contact['location']}</p>"
-        left_col += "</div>"
-
-    left_col += parse_section("Skills", data.get("skills"))
-    left_col += parse_section("Certifications", data.get("certifications"))
-    left_col += parse_section("Languages", data.get("languages"))
-    left_col += parse_section("Awards", data.get("awards"))
-    left_col += parse_section("Trainings", data.get("trainings"))
-    left_col += parse_section("Extracurricular", data.get("extracurricular"))
-
-    # Right column
-    right_col = ""
-    right_col += parse_section("Summary", data.get("summary"))
-    right_col += parse_section("Work Experience", data.get("work_experience"))
-    right_col += parse_section("Projects", data.get("projects"))
-    right_col += parse_section("Education", data.get("education"))
-
-    # Final resume layout HTML
-    html = (
-        '<div class="resume-container">'
-        f'<div class="left-column">{left_col}</div>'
-        f'<div class="right-column">{right_col}</div>'
-        '</div>'
-    )
-    return html
 
 def check_ats_compatibility_fast(text):
     score = 100
@@ -1008,51 +941,41 @@ Return ONLY the raw JSON object. Do not include any explanation.
         return {"error": "AI failed to parse resume. Check formatting or try again."}
 
 def generate_final_detailed_report(text, extracted_data):
-    logger.info("Generating FINAL v17 Smart Resume Audit with Formatting Awareness...")
-
+    logger.info("Generating FINAL v16 Detailed Audit with Skills Check...")
     if not client:
         return {"error": "OpenAI client not initialized."}
 
     prompt = f"""
-You are a professional resume auditor. Analyze the provided resume text and return a detailed JSON report.
-For each check, provide a "status" ('pass', 'fail', or 'improve') and a "comment".
+    You are a professional resume auditor. Analyze the provided resume text and return a detailed JSON report.
+    For each check, provide a "status" ('pass', 'fail', or 'improve') and a "comment".
 
-**Required JSON Output Structure:**
-{{
-    "contact_info_check": {{"status": "pass/fail", "comment": "Your comment here."}},
-    "summary_check": {{"status": "pass/improve", "comment": "Your comment here."}},
-    "experience_metrics_check": {{"status": "pass/fail", "comment": "e.g., The work experience lacks quantifiable results."}},
-    "action_verbs_check": {{"status": "pass/fail", "comment": "e.g., Sentences use passive voice like 'Responsible for'."}},
-    "skills_format_check": {{"status": "pass/fail", "comment": "e.g., The skills section should contain keywords, not long sentences."}},
-    "section_bullet_check": {{"status": "pass/fail", "comment": "e.g., Work experience and projects should use bullet points, not paragraphs."}},
-    "length_balance_check": {{"status": "pass/improve", "comment": "e.g., The summary is too short; consider expanding it slightly."}},
-    "spelling_check": {{"status": "pass", "comment": "No major spelling errors found."}},
-    "grammar_check": {{"status": "pass/fail", "comment": "e.g., Found a minor grammatical error in the summary."}}
-}}
+    **Required JSON Output Structure:**
+    {{
+        "contact_info_check": {{"status": "pass/fail", "comment": "Your comment here."}},
+        "summary_check": {{"status": "pass/improve", "comment": "Your comment here."}},
+        "experience_metrics_check": {{"status": "pass/fail", "comment": "e.g., The work experience lacks quantifiable results."}},
+        "action_verbs_check": {{"status": "pass/fail", "comment": "e.g., Sentences use passive voice like 'Responsible for'."}},
+        "skills_format_check": {{"status": "pass/fail", "comment": "e.g., The skills section should contain keywords, not long sentences."}},
+        "spelling_check": {{"status": "pass", "comment": "No major spelling errors found."}},
+        "grammar_check": {{"status": "pass/fail", "comment": "e.g., Found a minor grammatical error in the summary."}}
+    }}
+    
+    - For 'skills_format_check', if the skills section contains long descriptive sentences instead of keywords, set status to 'fail'. Otherwise, 'pass'.
+    - Be specific and professional in your comments.
 
-- For 'skills_format_check': if the skills section contains long descriptive sentences instead of keywords, set status to 'fail'. Otherwise, 'pass'.
-- For 'section_bullet_check': check if Work Experience or Projects are written in long paragraphs instead of bullets.
-- For 'length_balance_check': mark 'improve' if summary is too short or a section is overly long.
-- Only show real issues; don't invent problems.
-- Be specific and professional in your comments.
-
-**Resume Text to Analyze (first 6000 chars):**
----
-{text[:6000]}
----
-"""
-
+    **Resume Text to Analyze:**
+    ---
+    {text[:6000]}
+    ---
+    """
     try:
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a resume auditor that responds in perfect, structured JSON."},
-                {"role": "user", "content": prompt}
-            ]
+            messages=[{"role": "system", "content": "You are a resume auditor that responds in perfect, structured JSON."}, {"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
         )
         report_data = json.loads(response.choices[0].message.content)
         return report_data
-
     except Exception as e:
         logger.error(f"Error in detailed report generation: {e}")
         return {"error": "AI analysis failed to generate a detailed report."}
