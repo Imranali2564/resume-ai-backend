@@ -628,6 +628,73 @@ def generate_michelle_template_html(sections):
       </div>
     </div>
     """
+# Resumefixerpro main tool template
+def generateResumeTemplate(data: dict) -> str:
+    """
+    ResumeFixerPro ka main rendering function for resume preview.
+    Renders user's original resume data (without AI cleanup) with proper layout.
+    """
+
+    def list_to_html(items):
+        if not items:
+            return ""
+        if isinstance(items, str):
+            items = [line.strip() for line in items.split('\n') if line.strip()]
+        elif isinstance(items, list):
+            items = [str(i).strip() for i in items if str(i).strip()]
+        else:
+            return ""
+        return "<ul>" + "".join(f"<li>{line}</li>" for line in items) + "</ul>"
+
+    def parse_section(section_title, content):
+        if not content:
+            return ""
+        html = f'<div class="section"><h3>{section_title}</h3>'
+        if isinstance(content, str):
+            html += f"<p>{content.strip()}</p>"
+        elif isinstance(content, list):
+            html += list_to_html(content)
+        elif isinstance(content, dict):
+            for k, v in content.items():
+                html += f"<h4>{k}</h4>{list_to_html(v)}"
+        html += "</div>"
+        return html
+
+    # Left column
+    left_col = ""
+    if 'contact' in data:
+        contact = data.get("contact", {})
+        left_col += '<div class="section"><h3>Contact</h3>'
+        if 'email' in contact:
+            left_col += f"<p><b>Email:</b> {contact['email']}</p>"
+        if 'phone' in contact:
+            left_col += f"<p><b>Phone:</b> {contact['phone']}</p>"
+        if 'location' in contact:
+            left_col += f"<p><b>Location:</b> {contact['location']}</p>"
+        left_col += "</div>"
+
+    left_col += parse_section("Skills", data.get("skills"))
+    left_col += parse_section("Certifications", data.get("certifications"))
+    left_col += parse_section("Languages", data.get("languages"))
+    left_col += parse_section("Awards", data.get("awards"))
+    left_col += parse_section("Trainings", data.get("trainings"))
+    left_col += parse_section("Extracurricular", data.get("extracurricular"))
+
+    # Right column
+    right_col = ""
+    right_col += parse_section("Summary", data.get("summary"))
+    right_col += parse_section("Work Experience", data.get("work_experience"))
+    right_col += parse_section("Projects", data.get("projects"))
+    right_col += parse_section("Education", data.get("education"))
+
+    # Final resume layout HTML
+    html = (
+        '<div class="resume-container">'
+        f'<div class="left-column">{left_col}</div>'
+        f'<div class="right-column">{right_col}</div>'
+        '</div>'
+    )
+    return html
 
 def check_ats_compatibility_fast(text):
     score = 100
