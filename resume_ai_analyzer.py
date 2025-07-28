@@ -896,130 +896,137 @@ def extract_resume_sections_safely(text):
 
 
 # =====================================================================
-# START: NAYA SECTION-BY-SECTION ANALYSIS ENGINE (ISSE REPLACE KAREIN)
+# START: NAYA MASTER ANALYSIS ENGINE (ISSE REPLACE KAREIN)
 # =====================================================================
 def generate_final_detailed_report(extracted_data):
-    logger.info("Generating FINAL v17 Section-by-Section Detailed Audit...")
+    logger.info("Generating FINAL v18 Master Audit...")
     if not client:
         return {"error": "OpenAI client not initialized."}
 
     final_report = {}
     
-    # Har section ke liye alag se prompt banakar AI se check karwayein
+    # --- Check 1: Zaroori Sections Maujood Hain Ya Nahi ---
+    required_sections = {
+        "summary": "Profile Summary",
+        "work_experience": "Work Experience",
+        "education": "Education",
+        "technical_skills": "Technical Skills",
+        "soft_skills": "Soft Skills"
+    }
+    for key, name in required_sections.items():
+        if not extracted_data.get(key):
+            final_report[f"missing_{key}_check"] = {
+                "status": "fail",
+                "comment": f"Critical section missing: '{name}'. A resume is incomplete without it."
+            }
+
+    # --- Check 2: Section-by-Section Analysis (Format, Length, Keywords) ---
     for section_key, section_content in extracted_data.items():
-        # Sirf un sections ko check karein jinmein content hai
         if not section_content or section_key in ["name", "job_title", "contact"]:
             continue
 
-        # Section ke hisab se niyam (rules) tay karein
         rules = ""
         if section_key == "summary":
-            rules = "Check for: A concise (2-4 lines) and impactful professional summary. It should mention key skills and experience. Check for length and clarity."
+            rules = "Check 1: Length - Should be 2-4 lines. 2. Content: Must be impactful. 3. Keywords: Should contain top skills."
         elif section_key == "work_experience":
-            rules = "Check for: Use of action verbs (e.g., 'Managed', 'Developed'). Inclusion of quantifiable achievements (e.g., 'increased sales by 20%'). Correct format (Title, Company, Duration, and bullet points for details)."
+            rules = "Check 1: Format - Must use bullet points for details. 2. Content - Must use action verbs and have quantifiable results (e.g., numbers, %). 3. Length: Each bullet point should be concise (1-2 lines)."
         elif section_key == "education":
-            rules = "Check for: Clear formatting (Degree, University, Duration). It should be concise."
-        elif section_key == "technical_skills" or section_key == "soft_skills":
-            rules = "Check for: Format should be a list of keywords, not long sentences. Check for relevance to the likely job profile."
-        elif section_key == "projects":
-            rules = "Check for: Clear project title and description. It should highlight the user's role and the technologies used. Bullet points are preferred for details."
-        else:
-            rules = "Check for: General clarity, spelling, and grammar. Ensure the content is relevant to the section title."
+            rules = "Check 1: Format - Must clearly show Degree, University, and Duration. 2. Clarity: Must be easy to read."
+        elif section_key in ["technical_skills", "soft_skills", "languages", "awards"]:
+            rules = "Check 1: Format - MUST be a list of keywords/short phrases, not long sentences."
+        else: # Projects, etc.
+             rules = "Check 1: Format - Should have a clear title and bullet points for details. 2. Content - Should describe the outcome and technologies used."
 
         prompt = f"""
-        You are an expert resume auditor. Analyze ONLY the following section of a resume based on the given rules.
+        You are a top-tier resume auditor. Analyze ONLY the following resume section based on the given rules.
 
-        **Section Name:** "{section_key}"
-
-        **Content to Analyze:**
-        ---
-        {json.dumps(section_content, indent=2)}
-        ---
-
-        **Rules for this Section:**
-        {rules}
+        Section Name: "{section_key}"
+        Content: {json.dumps(section_content, indent=2)}
+        Rules: {rules}
         
-        **Your Task:**
-        Provide a "status" ('pass' or 'fail') and a short, specific "comment".
-        - If it fails, your comment MUST explain why (e.g., "Lacks quantifiable results," "Uses passive language," "Format is incorrect, should be keywords," "Section is too wordy").
-
-        **Required JSON Output:**
-        {{"status": "pass/fail", "comment": "Your specific comment here."}}
+        Your Task: Return a JSON object with a "status" ('pass' or 'fail') and a "comment".
+        If it fails, the comment MUST be specific (e.g., "Work Experience lacks numbers", "Skills section uses sentences instead of keywords", "Summary is too long").
+        
+        JSON Output: {{"status": "pass/fail", "comment": "Your comment here."}}
         """
         
         try:
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
-                messages=[{"role": "system", "content": "You are a resume auditor that responds in perfect, structured JSON."}, {"role": "user", "content": prompt}],
+                messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}
             )
             section_report = json.loads(response.choices[0].message.content)
             final_report[f"{section_key}_check"] = section_report
         except Exception as e:
             logger.error(f"Error analyzing section {section_key}: {e}")
-            final_report[f"{section_key}_check"] = {"status": "fail", "comment": "AI analysis failed for this section."}
-            
+
+    # --- Check 3: Name aur Contact jaankari hai ya nahi ---
+    if not extracted_data.get("name") or not extracted_data.get("contact"):
+        final_report["contact_details_check"] = {
+            "status": "fail",
+            "comment": "Critical issue: Name or Contact Details (Email/Phone) are missing from the resume."
+        }
+
     return final_report
 # =====================================================================
-# END: NAYA SECTION-BY-SECTION ANALYSIS ENGINE
+# END: NAYA MASTER ANALYSIS ENGINE
 # =====================================================================
 
+# =====================================================================
+# START: SUPERCHARGED FIX-IT-ALL FUNCTION (ISSE REPLACE KAREIN)
+# =====================================================================
 def fix_resume_issue(issue_text, extracted_data):
-    """
-    FIXED: This new function takes the entire resume data object for better context,
-    making the AI's job easier and more reliable.
-    """
     if not client: 
-        logger.error("OpenAI client not configured.")
         return {"error": "OpenAI API key not set."}
         
-    logger.info(f"Generating fix for issue '{issue_text}' with full data context...")
-
-    # Convert the resume data to a JSON string for the prompt
+    logger.info(f"Generating SUPERCHARGED fix for issue '{issue_text}'...")
     resume_context = json.dumps(extracted_data, indent=2)
-
 
     prompt = f"""
     You are a world-class AI resume editor. Your task is to fix a specific issue in the provided resume JSON data.
 
     **Resume Data (JSON format):**
     ```json
-   {resume_context}    
+    {resume_context}
     ```
 
     **Issue to Fix:**
     "{issue_text}"
 
     **Instructions:**
-    1.  Analyze the 'Issue to Fix' and locate the relevant section within the 'Resume Data'.
-    2.  Modify ONLY the content of that specific section to resolve the issue. For example:
-        - If the issue is "lacks quantifiable_achievements", add numbers and percentages to the `details` of the `work_experience` section.
-        - If the issue is "action_verbs_passive_language", rewrite the sentences in `work_experience` to start with strong verbs.
-        - If the issue is "contact_information", ensure the `contact` string contains a clear email and phone number.
-    3.  Return a JSON object containing ONLY the name of the section you changed and its new, updated content.
+    1.  Analyze the 'Issue to Fix'. It could be about missing sections, bad formatting, wrong length, or lack of keywords.
+    2.  Locate the relevant section in the 'Resume Data'. If the issue is about a MISSING section (e.g., "Critical section missing: 'Summary'"), your task is to GENERATE that section from scratch based on the other information in the resume.
+    3.  Intelligently rewrite, reformat, or generate content to resolve the issue.
+        - For "lacks quantifiable results", add realistic numbers to `work_experience`.
+        - For "format is incorrect", fix the format (e.g., convert sentences to bullet points).
+        - For "too wordy", make it concise.
+        - For "missing section", create the content for that section. For example, for a missing summary, write a 2-3 line summary.
+    4.  Return a JSON object containing the `section` key you changed/created and its new `fixedContent`.
 
     **Required Output Format (JSON):**
-    {{"section": "key_of_the_changed_section", "fixedContent": "the_new_content_for_that_section"}}
+    {{"section": "key_of_the_changed_or_created_section", "fixedContent": "the_new_content"}}
 
-    Example Output:
-    {{"section": "work_experience", "fixedContent": [{{"title": "Tele Caller", "company": "Paisely Advisory Pvt, Ltd", "duration": "Having 6 Month Experience", "details": ["Contacted over 100 potential customers daily to promote products.", "Achieved a 15% higher customer satisfaction rate based on feedback.", "Maintained detailed records of over 2000 calls and interactions." ]}}]}}
+    Example for a MISSING SUMMARY fix:
+    {{"section": "summary", "fixedContent": "Results-driven professional with 5+ years of experience in project management and software development. Proven ability to lead teams and deliver high-quality products on time."}}
     """
 
     try:
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "system", "content": "You are a resume fixing assistant that responds in perfect JSON."}, {"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
         fix_result = json.loads(response.choices[0].message.content)
-
         if "section" not in fix_result or "fixedContent" not in fix_result:
             raise ValueError("AI response was malformed.")
-        
         return fix_result
     except Exception as e:
         logger.error(f"[ERROR in fix_resume_issue]: {e}")
         return {"error": "AI failed to generate a fix for this issue."}
+# =====================================================================
+# END: SUPERCHARGED FIX-IT-ALL FUNCTION
+# =====================================================================
 
 
 def calculate_new_score(current_score, issue_text):
@@ -1043,35 +1050,37 @@ def calculate_new_score(current_score, issue_text):
     logger.info(f"Score incremented by {increment}. New score: {new_score}")
     return new_score
 
+# =====================================================================
+# START: BEHTAR SUGGESTION ENGINE (ISSE REPLACE KAREIN)
+# =====================================================================
 def get_field_suggestions(extracted_data, resume_text):
-    logger.info("Running FINAL v9 Field & Suggestion analysis...")
+    logger.info("Running FINAL v10 Field & Suggestion analysis...")
     if not client:
         return {"field": "Unknown", "suggestions": []}
 
-    prompt = f"""
-    You are an expert Indian career coach and resume analyst. Your task is to analyze a resume to identify its professional field and suggest critical missing sections for improvement.
+    found_sections = list(k for k, v in extracted_data.items() if v)
 
-    **Step 1: Identify the Professional Field**
-    Based on the skills (e.g., "Tally", "Python", "AutoCAD"), job titles (e.g., "Accountant", "Software Developer", "Civil Engineer"), and summary in the resume text, determine the most accurate professional field. Use common Indian job market fields like: "IT / Software Development", "Finance & Accounting", "Mechanical/Civil/Electrical Engineering", "Sales & Marketing", "Human Resources (HR)", "Graphic Design", "Healthcare", or "General / Fresher".
+    prompt = f"""
+    You are an expert Indian career coach. Your task is to analyze a resume to identify its professional field and suggest critical missing sections.
+
+    **Step 1: Identify Professional Field**
+    Based on the resume content, determine the most accurate professional field (e.g., "IT / Software", "Finance", "Mechanical Engineering", "Sales", "Fresher").
 
     **Step 2: Suggest Important Missing Sections**
-    Here are the sections that were already found in the resume: {list(k for k, v in extracted_data.items() if v)}
+    The following sections were already found: {found_sections}
     
-    Now, as a career coach, analyze the FULL resume text. Based on the field you identified, suggest **only the most important and relevant sections** that are genuinely missing and would add significant value. For example:
-    - For an "IT / Software Development" resume, if there's no link to GitHub/GitLab or a Portfolio, you MUST suggest adding "Projects" or "Portfolio / GitHub".
-    - For a "Graphic Design" resume, a "Portfolio Link" (like Behance/Dribbble) is CRITICAL.
-    - For a "Finance & Accounting" resume, if not present, a "Certifications" section (like Tally, NISM) is very valuable.
-    - For any "Fresher" resume, a "Projects" or "Internships" section is highly recommended to showcase practical skills.
-    - For a "Sales" resume, a "Key Achievements" section with sales targets met or exceeded is very impactful.
+    Based on the identified field, suggest UP TO 3 missing sections that would add the most value.
+    - For an "IT" resume, if "Projects" or a Portfolio/GitHub link is missing, you MUST suggest it. Mark it as "Required".
+    - For a "Designer", a "Portfolio Link" is "Required".
+    - For a "Fresher", "Projects" or "Internships" are "Required".
+    - For most professional resumes, "Certifications" or "Awards" are good "Recommended" additions.
     
-    Do NOT suggest adding a section if its content is already mentioned somewhere else in the resume. Be smart and contextual.
+    Do NOT suggest a section if it's already in the 'found_sections' list.
 
     **Instructions:**
-    Return a single JSON object with two keys:
-    1.  "field": A string with the name of the Indian-context field you identified.
-    2.  "suggestions": A list of objects. Each object should be {{"type": "Required" or "Recommended", "section": "Section Name to Add"}}. Only suggest 2-3 of the MOST CRITICAL missing sections. "Required" is for must-haves (like a portfolio for a designer). "Recommended" is for strong value-adds.
-
-    **Resume Text to Analyze:**
+    Return a single JSON object with "field" (string) and "suggestions" (a list of objects `{{type: "Required/Recommended", section: "Section Name"}}`).
+    
+    **Resume Text:**
     ---
     {resume_text[:7000]} 
     ---
@@ -1086,18 +1095,14 @@ def get_field_suggestions(extracted_data, resume_text):
             response_format={"type": "json_object"}
         )
         result = json.loads(response.choices[0].message.content)
-        
-        detected_field = result.get("field", "General / Fresher")
-        suggestions = result.get("suggestions", [])
-        
-        if not isinstance(suggestions, list):
-             suggestions = []
-
-        return {"field": detected_field, "suggestions": suggestions}
+        return {"field": result.get("field", "General"), "suggestions": result.get("suggestions", [])}
     
     except Exception as e:
         logger.error(f"Could not get field suggestions: {e}")
-        return {"field": "General / Fresher", "suggestions": [{"type": "Recommended", "section": "Projects"}]}
+        return {"field": "General", "suggestions": []}
+# =====================================================================
+# END: BEHTAR SUGGESTION ENGINE
+# =====================================================================
 
 import os
 import re
