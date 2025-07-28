@@ -805,9 +805,10 @@ def refine_list_section(section_name, section_text):
 
 def extract_resume_sections_safely(text):
     """
-    Parses resume text using an AI model to extract structured data in JSON format.
+    Parses resume text using an AI model with "smart training" to extract structured data.
+    This version understands alternative section names and separates technical vs. soft skills.
     """
-    logger.info("Extracting resume sections with FINAL v9 (Simplified & Robust) AI strategy...")
+    logger.info("Extracting resume sections with SMART TRAINING (v10) AI strategy...")
     if not client:
         return {"error": "OpenAI client not initialized."}
 
@@ -816,14 +817,28 @@ def extract_resume_sections_safely(text):
         logger.warning(f"Resume text is too long, truncating to {TOKEN_LIMIT_IN_CHARS} characters.")
         text = text[:TOKEN_LIMIT_IN_CHARS]
 
+    # --- YAHAN PAR SMART TRAINING PROMPT SHURU HOTA HAI ---
     prompt = f"""
-    You are a world-class resume parsing system. The following text may be jumbled.
-    Your task is to intelligently parse this text and reconstruct a perfectly structured JSON object.
+    You are a world-class resume parsing system. Your task is to intelligently parse the provided text and reconstruct a perfectly structured JSON object.
 
-    **Crucial Instructions:**
-    1.  **Associate Details:** Correctly associate all details with their parent items.
-    2.  **Map Certifications:** Look for headings like "Certifications", "Additional Courses", "Training", "Licenses", or "Professional Development" and map ALL of them to the `certifications` key. This is very important.
-    3.  **Clean Output:** If a section is not found, its value must be null.
+    **CRUCIAL TRAINING DATA - SECTION MAPPING:**
+    You must use the following list to correctly identify and map all possible section names. A single section can have many different names.
+    
+    - **Map to "summary":** Summary, Objective, Professional Profile, Career Summary, Career Objective, Professional Objective, Executive Summary.
+    - **Map to "work_experience":** Work Experience, Professional Experience, Employment History, Work History, Career History, Relevant Experience, Professional Background, Internship Experience.
+    - **Map to "education":** Education, Educational Background, Academic Qualifications, Academic Background, Education & Training.
+    - **Map to "projects":** Projects, Personal Projects, Academic Projects, Portfolio, Key Projects, Relevant Projects.
+    - **Map to "certifications":** Certifications, Certifications & Licenses, Professional Development, Training & Certifications, Licenses & Certifications, Professional Training.
+    - **Map to "awards":** Awards, Awards & Honors, Recognitions, Achievements, Honors & Awards.
+    - **Map to "volunteer_experience":** Volunteer Experience, Volunteering, Community Involvement, Social Work, Community Service.
+    - **Map to "extra_curricular_activities":** Extra-Curricular Activities, Co-Curricular Activities, Leadership Experience, Campus Involvement, Activities & Honors.
+    - **Map to "publications":** Publications, Research & Publications, Published Works, Presentations & Publications.
+    - **Map to "languages":** Languages, Language Proficiency, Linguistic Skills.
+
+    **CRUCIAL INSTRUCTION - SKILLS CATEGORIZATION:**
+    Analyze all skills mentioned in the resume. You MUST categorize them into two separate lists in the final JSON:
+    1.  `technical_skills`: For specific, measurable abilities (e.g., Python, Java, SQL, AutoCAD, Tally, SEO Tools, Financial Modeling).
+    2.  `soft_skills`: For interpersonal abilities (e.g., Communication, Leadership, Teamwork, Problem-Solving, Time Management).
 
     **JSON STRUCTURE REQUIRED:**
     - "name": string
@@ -832,16 +847,24 @@ def extract_resume_sections_safely(text):
     - "summary": string
     - "work_experience": list of objects `[{{"title": string, "company": string, "duration": string, "details": list of strings}}]`
     - "education": list of objects `[{{"degree": string, "school": string, "duration": string, "details": list of strings}}]`
-    - "skills": list of strings
+    - "technical_skills": list of strings  <-- Yahan par technical skills daalein.
+    - "soft_skills": list of strings     <-- Yahan par soft skills daalein.
     - "languages": list of strings
-    - "certifications": list of strings  <-- All course-related info should come here.
+    - "certifications": list of strings
     - "projects": list of objects `[{{"title": string, "description": string, "details": list of strings}}]`
+    - "awards": list of strings
+    - "publications": list of strings
+    - "volunteer_experience": list of strings
+    - "extra_curricular_activities": list of strings
+
+    **Final Instructions:**
+    - If a section is not found, its value in the JSON must be null.
+    - Return ONLY the raw JSON object.
 
     **Resume Text to Parse:**
     ---
     {text[:8000]}
     ---
-    Return ONLY the raw JSON object.
     """
     try:
         response = client.chat.completions.create(
@@ -851,21 +874,22 @@ def extract_resume_sections_safely(text):
         )
         final_data = json.loads(response.choices[0].message.content)
         
-        # Ensure all possible keys are present in the final dictionary, setting them to None if missing.
+        # --- YEH SUNISCHIT KARTA HAI KI SABHI POSSIBLE KEYS FINAL OUTPUT MEIN HON ---
         all_possible_keys = [
             "name", "job_title", "contact", "summary", "work_experience", 
-            "education", "skills", "certifications", "languages", "projects", 
-            "awards", "volunteer_experience"
+            "education", "technical_skills", "soft_skills", "certifications", 
+            "languages", "projects", "awards", "volunteer_experience", 
+            "publications", "extra_curricular_activities"
         ]
         for key in all_possible_keys:
             if key not in final_data:
                 final_data[key] = None
 
-        logger.info(f"Final data extracted successfully. Keys: {list(final_data.keys())}")
+        logger.info(f"Smart data extracted successfully. Keys: {list(final_data.keys())}")
         return final_data
         
     except Exception as e:
-        logger.error(f"Context-aware AI parsing failed: {e}")
+        logger.error(f"Smart AI parsing failed: {e}")
         return {"error": "The AI failed to parse the resume. The document format might be too complex."}
 
 def generate_final_detailed_report(text, extracted_data):
