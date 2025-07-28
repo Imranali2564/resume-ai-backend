@@ -946,6 +946,7 @@ def generate_final_detailed_report(text, extracted_data):
     from openai import OpenAI
 
     logger.info("Generating FINAL v17 Smart Resume Audit with Formatting Awareness...")
+
     if not client:
         return {"error": "OpenAI client not initialized."}
 
@@ -976,14 +977,14 @@ def generate_final_detailed_report(text, extracted_data):
         "grammar_check": {{"status": "pass/fail", "comment": "..."}}
     }}
 
-    New Smart Rules:
+    Smart Rules:
     - If skills section is written as full sentences → fail
     - If skills section is too long (>20 items) → improve
     - If summary or work experience is paragraph-only with no bullets → improve
     - If bullets are too long (more than 3 lines per bullet) → improve
-    - If formatting is clean and readable, do NOT fail it
     - Only fail ATS if real blockers exist (tables, icons, headers, etc.)
-    - For keyword match: only fail if most job-specific keywords are missing: [{keywords_text}]
+    - For keyword match: fail only if most job-specific keywords are missing: [{keywords_text}]
+    - Don't show generic issues. Be specific and realistic.
 
     Resume:
     ---
@@ -993,17 +994,18 @@ def generate_final_detailed_report(text, extracted_data):
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are a resume auditor. Return only JSON, no explanation."},
                 {"role": "user", "content": prompt}
             ],
-            response_format="json_object"
+            response_format="json"  # ✅ GPT-3.5 turbo supports this now
         )
         return json.loads(response.choices[0].message.content)
     except Exception as e:
         logger.error(f"Smart audit failed: {e}")
         return {"error": "AI analysis failed."}
+
 
 def fix_resume_issue(issue_text, extracted_data):
     """
