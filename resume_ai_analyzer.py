@@ -806,9 +806,9 @@ def refine_list_section(section_name, section_text):
 def extract_resume_sections_safely(text):
     """
     Parses resume text using an AI model with "smart training" to extract structured data.
-    This version understands alternative section names and separates technical vs. soft skills.
+    This version understands alternative section names, separates skills, and strictly follows headings.
     """
-    logger.info("Extracting resume sections with SMART TRAINING (v10) AI strategy...")
+    logger.info("Extracting resume sections with SMART TRAINING (v11 - Strict Heading) AI strategy...")
     if not client:
         return {"error": "OpenAI client not initialized."}
 
@@ -820,6 +820,9 @@ def extract_resume_sections_safely(text):
     # --- YAHAN PAR SMART TRAINING PROMPT SHURU HOTA HAI ---
     prompt = f"""
     You are a world-class resume parsing system. Your task is to intelligently parse the provided text and reconstruct a perfectly structured JSON object.
+
+    **MOST IMPORTANT RULE - PRIORITIZE HEADINGS:**
+    You MUST map content based on the section heading written on the resume, even if the content inside seems to belong to another category. For example, if the heading is 'Extra-Curricular Activities' and the content says 'Volunteer at a shelter', you MUST map it to `extra_curricular_activities`, NOT `volunteer_experience`. Your primary guide is the heading itself.
 
     **CRUCIAL TRAINING DATA - SECTION MAPPING:**
     You must use the following list to correctly identify and map all possible section names. A single section can have many different names.
@@ -847,8 +850,8 @@ def extract_resume_sections_safely(text):
     - "summary": string
     - "work_experience": list of objects `[{{"title": string, "company": string, "duration": string, "details": list of strings}}]`
     - "education": list of objects `[{{"degree": string, "school": string, "duration": string, "details": list of strings}}]`
-    - "technical_skills": list of strings  <-- Yahan par technical skills daalein.
-    - "soft_skills": list of strings     <-- Yahan par soft skills daalein.
+    - "technical_skills": list of strings
+    - "soft_skills": list of strings
     - "languages": list of strings
     - "certifications": list of strings
     - "projects": list of objects `[{{"title": string, "description": string, "details": list of strings}}]`
@@ -874,7 +877,6 @@ def extract_resume_sections_safely(text):
         )
         final_data = json.loads(response.choices[0].message.content)
         
-        # --- YEH SUNISCHIT KARTA HAI KI SABHI POSSIBLE KEYS FINAL OUTPUT MEIN HON ---
         all_possible_keys = [
             "name", "job_title", "contact", "summary", "work_experience", 
             "education", "technical_skills", "soft_skills", "certifications", 
@@ -891,6 +893,7 @@ def extract_resume_sections_safely(text):
     except Exception as e:
         logger.error(f"Smart AI parsing failed: {e}")
         return {"error": "The AI failed to parse the resume. The document format might be too complex."}
+
 
 def generate_final_detailed_report(text, extracted_data):
     logger.info("Generating FINAL v16 Detailed Audit with Skills Check...")
