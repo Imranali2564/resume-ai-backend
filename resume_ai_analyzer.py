@@ -953,7 +953,7 @@ def generate_final_detailed_report(text, extracted_data):
     # Truncate overly long resumes
     text = text[:6000]
 
-    # Optional: extract keywords from extracted_data if provided
+    # Extract job keywords if present
     job_keywords = []
     if extracted_data and isinstance(extracted_data, dict):
         job_keywords = extracted_data.get("job_keywords", [])
@@ -961,51 +961,81 @@ def generate_final_detailed_report(text, extracted_data):
     keywords_text = ", ".join(job_keywords or [])
 
     prompt = f"""
-    You are a professional resume auditor. Audit the resume below and return a smart, structured JSON report.
+You are a professional resume auditor. Carefully analyze the resume text below and return a detailed JSON audit report with realistic and meaningful feedback.
 
-    JSON Format:
-    {{
-        "contact_info_check": {{"status": "pass/fail", "comment": "..."}},
-        "summary_check": {{"status": "pass/improve", "comment": "...", "suggested_fix": "..."}},
-        "experience_metrics_check": {{"status": "pass/fail", "comment": "..."}},
-        "action_verbs_check": {{"status": "pass/fail", "comment": "..."}},
-        "skills_format_check": {{"status": "pass/improve/fail", "comment": "..."}},
-        "keywords_match": {{"status": "pass/fail", "comment": "..."}},
-        "formatting_check": {{"status": "pass/improve/fail", "comment": "..."}},
-        "ats_compatibility": {{"status": "pass/fail", "comment": "..."}},
-        "spelling_check": {{"status": "pass", "comment": "..."}},
-        "grammar_check": {{"status": "pass/fail", "comment": "..."}}
-    }}
+Only return valid JSON (no explanation, no markdown formatting).
 
-    Smart Rules:
-    - If skills section is written as full sentences → fail
-    - If skills section is too long (>20 items) → improve
-    - If summary or work experience is paragraph-only with no bullets → improve
-    - If bullets are too long (more than 3 lines per bullet) → improve
-    - Only fail ATS if real blockers exist (tables, icons, headers, etc.)
-    - For keyword match: fail only if most job-specific keywords are missing: [{keywords_text}]
-    - Don't show generic issues. Be specific and realistic.
+JSON Format:
+{{
+  "contact_info_check": {{
+    "status": "pass/fail",
+    "comment": "..."
+  }},
+  "summary_check": {{
+    "status": "pass/improve",
+    "comment": "...",
+    "suggested_fix": "..."
+  }},
+  "experience_metrics_check": {{
+    "status": "pass/fail",
+    "comment": "..."
+  }},
+  "action_verbs_check": {{
+    "status": "pass/fail",
+    "comment": "..."
+  }},
+  "skills_format_check": {{
+    "status": "pass/improve/fail",
+    "comment": "..."
+  }},
+  "keywords_match": {{
+    "status": "pass/fail",
+    "comment": "..."
+  }},
+  "formatting_check": {{
+    "status": "pass/improve/fail",
+    "comment": "..."
+  }},
+  "ats_compatibility": {{
+    "status": "pass/fail",
+    "comment": "..."
+  }},
+  "spelling_check": {{
+    "status": "pass",
+    "comment": "..."
+  }},
+  "grammar_check": {{
+    "status": "pass/fail",
+    "comment": "..."
+  }}
+}}
 
-    Resume:
-    ---
-    {text}
-    ---
+Rules:
+- Only fail ATS compatibility for real blockers: tables, multiple columns, icons, images, or headers misuse.
+- If skills are too long (>20 items) or written in paragraph form → improve/fail
+- Work Experience or Summary without bullet points → improve
+- Bullet points that are too long (more than 3 lines each) → improve
+- Keywords not found from this list: [{keywords_text}] → fail
+- Don't show vague issues. Be specific and useful.
+
+Resume Text:
+---
+{text}
+---
     """
 
     try:
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "You are a resume auditor. Return only JSON, no explanation."},
+                {"role": "system", "content": "You are a resume auditor. Respond ONLY with JSON. No extra words."},
                 {"role": "user", "content": prompt}
-            ],
-            response_format="json"  # ✅ GPT-3.5 turbo supports this now
+            ]
         )
         return json.loads(response.choices[0].message.content)
     except Exception as e:
         logger.error(f"Smart audit failed: {e}")
         return {"error": "AI analysis failed."}
-
 
 def fix_resume_issue(issue_text, extracted_data):
     """
