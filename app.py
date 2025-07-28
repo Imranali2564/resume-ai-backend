@@ -1162,7 +1162,7 @@ def analyze_resume_for_frontend():
             return jsonify({"success": False, "error": error_message}), 500
 
         # Step 2: Generate detailed ATS report
-        ats_result = generate_final_detailed_report(text, extracted_sections)
+        ats_result = generate_final_detailed_report(extracted_sections)
         if not ats_result or ats_result.get("error"):
             error_message = ats_result.get("error", "Failed to generate ATS report.")
             logger.error(f"Error from generate_final_detailed_report: {error_message}")

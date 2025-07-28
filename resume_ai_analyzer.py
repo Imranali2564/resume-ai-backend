@@ -895,45 +895,74 @@ def extract_resume_sections_safely(text):
         return {"error": "The AI failed to parse the resume. The document format might be too complex."}
 
 
-def generate_final_detailed_report(text, extracted_data):
-    logger.info("Generating FINAL v16 Detailed Audit with Skills Check...")
+# =====================================================================
+# START: NAYA SECTION-BY-SECTION ANALYSIS ENGINE (ISSE REPLACE KAREIN)
+# =====================================================================
+def generate_final_detailed_report(extracted_data):
+    logger.info("Generating FINAL v17 Section-by-Section Detailed Audit...")
     if not client:
         return {"error": "OpenAI client not initialized."}
 
-    prompt = f"""
-    You are a professional resume auditor. Analyze the provided resume text and return a detailed JSON report.
-    For each check, provide a "status" ('pass', 'fail', or 'improve') and a "comment".
-
-    **Required JSON Output Structure:**
-    {{
-        "contact_info_check": {{"status": "pass/fail", "comment": "Your comment here."}},
-        "summary_check": {{"status": "pass/improve", "comment": "Your comment here."}},
-        "experience_metrics_check": {{"status": "pass/fail", "comment": "e.g., The work experience lacks quantifiable results."}},
-        "action_verbs_check": {{"status": "pass/fail", "comment": "e.g., Sentences use passive voice like 'Responsible for'."}},
-        "skills_format_check": {{"status": "pass/fail", "comment": "e.g., The skills section should contain keywords, not long sentences."}},
-        "spelling_check": {{"status": "pass", "comment": "No major spelling errors found."}},
-        "grammar_check": {{"status": "pass/fail", "comment": "e.g., Found a minor grammatical error in the summary."}}
-    }}
+    final_report = {}
     
-    - For 'skills_format_check', if the skills section contains long descriptive sentences instead of keywords, set status to 'fail'. Otherwise, 'pass'.
-    - Be specific and professional in your comments.
+    # Har section ke liye alag se prompt banakar AI se check karwayein
+    for section_key, section_content in extracted_data.items():
+        # Sirf un sections ko check karein jinmein content hai
+        if not section_content or section_key in ["name", "job_title", "contact"]:
+            continue
 
-    **Resume Text to Analyze:**
-    ---
-    {text[:6000]}
-    ---
-    """
-    try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "system", "content": "You are a resume auditor that responds in perfect, structured JSON."}, {"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
-        )
-        report_data = json.loads(response.choices[0].message.content)
-        return report_data
-    except Exception as e:
-        logger.error(f"Error in detailed report generation: {e}")
-        return {"error": "AI analysis failed to generate a detailed report."}
+        # Section ke hisab se niyam (rules) tay karein
+        rules = ""
+        if section_key == "summary":
+            rules = "Check for: A concise (2-4 lines) and impactful professional summary. It should mention key skills and experience. Check for length and clarity."
+        elif section_key == "work_experience":
+            rules = "Check for: Use of action verbs (e.g., 'Managed', 'Developed'). Inclusion of quantifiable achievements (e.g., 'increased sales by 20%'). Correct format (Title, Company, Duration, and bullet points for details)."
+        elif section_key == "education":
+            rules = "Check for: Clear formatting (Degree, University, Duration). It should be concise."
+        elif section_key == "technical_skills" or section_key == "soft_skills":
+            rules = "Check for: Format should be a list of keywords, not long sentences. Check for relevance to the likely job profile."
+        elif section_key == "projects":
+            rules = "Check for: Clear project title and description. It should highlight the user's role and the technologies used. Bullet points are preferred for details."
+        else:
+            rules = "Check for: General clarity, spelling, and grammar. Ensure the content is relevant to the section title."
+
+        prompt = f"""
+        You are an expert resume auditor. Analyze ONLY the following section of a resume based on the given rules.
+
+        **Section Name:** "{section_key}"
+
+        **Content to Analyze:**
+        ---
+        {json.dumps(section_content, indent=2)}
+        ---
+
+        **Rules for this Section:**
+        {rules}
+        
+        **Your Task:**
+        Provide a "status" ('pass' or 'fail') and a short, specific "comment".
+        - If it fails, your comment MUST explain why (e.g., "Lacks quantifiable results," "Uses passive language," "Format is incorrect, should be keywords," "Section is too wordy").
+
+        **Required JSON Output:**
+        {{"status": "pass/fail", "comment": "Your specific comment here."}}
+        """
+        
+        try:
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "system", "content": "You are a resume auditor that responds in perfect, structured JSON."}, {"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+            section_report = json.loads(response.choices[0].message.content)
+            final_report[f"{section_key}_check"] = section_report
+        except Exception as e:
+            logger.error(f"Error analyzing section {section_key}: {e}")
+            final_report[f"{section_key}_check"] = {"status": "fail", "comment": "AI analysis failed for this section."}
+            
+    return final_report
+# =====================================================================
+# END: NAYA SECTION-BY-SECTION ANALYSIS ENGINE
+# =====================================================================
 
 def fix_resume_issue(issue_text, extracted_data):
     """
@@ -949,12 +978,13 @@ def fix_resume_issue(issue_text, extracted_data):
     # Convert the resume data to a JSON string for the prompt
     resume_context = json.dumps(extracted_data, indent=2)
 
+
     prompt = f"""
-    You are an expert AI resume editor. Your task is to fix a specific issue in the provided resume JSON data.
+    You are a world-class AI resume editor. Your task is to fix a specific issue in the provided resume JSON data.
 
     **Resume Data (JSON format):**
     ```json
-    {resume_context}
+   {resume_context}    
     ```
 
     **Issue to Fix:**
