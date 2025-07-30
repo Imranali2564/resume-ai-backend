@@ -713,30 +713,49 @@ def optimize_keywords():
     results = compare_resume_with_keywords(resume_text, jd_keywords)
     return jsonify(results)
 
-@app.route('/analyze-jd', methods=['POST'])
-def analyze_job_description_api():
+@app.route('/analyze-jd-file', methods=['POST'])
+def analyze_jd_from_file_api():
     try:
-        data = request.get_json()
-        jd_text = data.get('job_description')
+        file = request.files.get('file')
+        if not file or file.filename == '':
+            logger.error("No file uploaded for /analyze-jd-file")
+            return jsonify({"error": "No file uploaded"}), 400
 
-        if not jd_text or not isinstance(jd_text, str) or not jd_text.strip():
-            logger.error("Invalid or empty job description text provided for /analyze-jd")
-            return jsonify({"error": "Invalid or empty job description"}), 400
-        
-        # Call the updated analyze_job_description function from resume_ai_analyzer.py
-        # This function will now directly return a JSON object
-        analysis_result = analyze_job_description(jd_text) 
+        # Save file temporarily
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+
+        # Extract text from the file
+        ext = os.path.splitext(filename)[1].lower()
+        if ext == ".pdf":
+            jd_text = extract_text_from_pdf(filepath)
+        elif ext == ".docx":
+            jd_text = extract_text_from_docx(filepath)
+        else:
+            cleanup_file(filepath)
+            return jsonify({"error": "Unsupported file format. Please upload PDF or DOCX."}), 400
+
+        if not jd_text.strip():
+            cleanup_file(filepath)
+            return jsonify({"error": "Could not extract text from the uploaded file. File might be empty or image-based."}), 400
+
+        # Call the analyze_job_description function (जो अब JSON रिटर्न करता है)
+        analysis_result = analyze_job_description(jd_text)
 
         if "error" in analysis_result:
-            logger.error(f"Error from analyze_job_description: {analysis_result['error']}")
+            logger.error(f"Error from analyze_job_description (file upload): {analysis_result['error']}")
             return jsonify({"error": analysis_result["error"]}), 500
 
-        # Return the JSON response directly as analyze_job_description is now in the correct format
         return jsonify(analysis_result)
 
     except Exception as e:
-        logger.error(f"Error in /analyze-jd API: {str(e)}")
-        return jsonify({"error": f"Failed to analyze job description: {str(e)}"}), 500
+        logger.error(f"Error in /analyze-jd-file API: {str(e)}")
+        return jsonify({"error": f"Failed to analyze job description from file: {str(e)}"}), 500
+    finally:
+        # Clean up the temporary file
+        if 'filepath' in locals() and os.path.exists(filepath):
+            cleanup_file(filepath)
 
 # Yeh function app.py me replace karein
 @app.route("/generate-ai-resume", methods=["POST"])

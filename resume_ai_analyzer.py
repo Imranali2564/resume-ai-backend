@@ -483,6 +483,8 @@ def compare_resume_with_keywords(resume_text, job_keywords):
         "missing_keywords": missing_keywords
     }
 
+# resume_ai_analyzer.py फाइल में, इस फंक्शन को ढूंढें और इसे नीचे दिए गए कोड से REPLACE करें:
+
 def analyze_job_description(jd_text):
     """
     Analyzes job description text using OpenAI to extract summary, skills, and tools in JSON format.
@@ -505,14 +507,14 @@ Job Description:
 {jd_text[:6000]} # JD text up to 6000 characters
 
 Return a JSON object with the following keys:
-- "summary": A concise, professional summary (2-4 sentences) of the ideal candidate profile. This should capture the essence of what the recruiter is looking for, in simple, universally understood terms.
+- "summary": A concise, professional summary of the ideal candidate profile (2-4 sentences). This should capture the essence of what the recruiter is looking for, in simple, universally understood terms.
 - "skills": A list of key technical, soft, and transferable skills explicitly mentioned or strongly implied. Think broadly about skills applicable across various industries and regions.
 - "tools": A list of specific tools, software, platforms, or technologies mentioned. This includes programming languages, frameworks, specific applications, or industry-standard equipment.
 
 Example JSON output:
 {{
-  "summary": "This role seeks a proactive Software Engineer with strong problem-solving skills and experience in scalable cloud solutions. The ideal candidate will excel in collaborative environments and drive technical innovation.",
-  "skills": ["Python", "Node.js", "RESTful APIs", "Database Management", "CI/CD", "Collaboration", "Problem-Solving", "Communication", "Leadership", "Data Structures", "Algorithms", "Distributed Systems", "Agile Methodologies"],
+  "summary": "Highly motivated Software Engineer with expertise in Python and cloud platforms, seeking to develop scalable backend services.",
+  "skills": ["Python", "Node.js", "RESTful APIs", "PostgreSQL", "MongoDB", "CI/CD", "Jenkins", "GitLab CI", "Collaboration", "Code Review", "Troubleshooting", "Mentoring", "Data Structures", "Algorithms", "Distributed Systems", "Communication", "Problem-Solving", "Agile Methodologies"],
   "tools": ["AWS", "Azure", "GCP", "Docker", "Kubernetes", "Jenkins", "GitLab CI", "Kafka", "RabbitMQ"]
 }}
 
