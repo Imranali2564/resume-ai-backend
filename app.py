@@ -723,63 +723,20 @@ def analyze_job_description_api():
             logger.error("Invalid or empty job description text provided for /analyze-jd")
             return jsonify({"error": "Invalid or empty job description"}), 400
         
-        # Call analyze_job_description function from resume_ai_analyzer.py
-        # This function will still return a string, which we need to parse
-        analysis_raw_text = analyze_job_description(jd_text) 
+        # Call the updated analyze_job_description function from resume_ai_analyzer.py
+        # This function will now directly return a JSON object
+        analysis_result = analyze_job_description(jd_text) 
 
-        if "error" in analysis_raw_text: # If analyze_job_description returns an error string
-            logger.error(f"Error from analyze_job_description: {analysis_raw_text['error']}")
-            return jsonify({"error": analysis_raw_text["error"]}), 500
-        
-        # --- Parse the string received from AI ---
-        # This parsing depends on the output format of the AI's analyze_job_description function
-        # which typically includes headings like "Key Skills:", "Tools & Software Mentioned:", "Ideal Candidate Profile (AI Summary):"
+        if "error" in analysis_result:
+            logger.error(f"Error from analyze_job_description: {analysis_result['error']}")
+            return jsonify({"error": analysis_result["error"]}), 500
 
-        summary = ""
-        skills = []
-        tools = []
-
-        # Ideal Candidate Profile (AI Summary)
-        summary_match = re.search(r"Ideal Candidate Profile \(AI Summary\):\s*(.*?)(?=(?:Key Skills Required:|Tools & Software Mentioned:|$))", analysis_raw_text, re.DOTALL)
-        if summary_match:
-            summary = summary_match.group(1).strip()
-
-        # Key Skills Required
-        skills_match = re.search(r"Key Skills Required:\s*(.*?)(?=(?:Tools & Software Mentioned:|Ideal Candidate Profile \(AI Summary\):|$))", analysis_raw_text, re.DOTALL)
-        if skills_match:
-            skills_raw = skills_match.group(1).strip()
-            # Treat each line as a separate skill, and remove bullet points or dashes
-            skills = [s.strip().lstrip('-• ').strip() for s in skills_raw.split('\n') if s.strip()]
-            # Remove empty strings or entries that are just dashes
-            skills = [s for s in skills if s and s != '-']
-
-
-        # Tools & Software Mentioned
-        tools_match = re.search(r"Tools & Software Mentioned:\s*(.*?)(?=(?:Key Skills Required:|Ideal Candidate Profile \(AI Summary\):|$))", analysis_raw_text, re.DOTALL)
-        if tools_match:
-            tools_raw = tools_match.group(1).strip()
-            # Treat each line as a separate tool, and remove bullet points or dashes
-            tools = [t.strip().lstrip('-• ').strip() for t in tools_raw.split('\n') if t.strip()]
-            # Remove empty strings or entries that are just dashes
-            tools = [t for t in tools if t and t != '-']
-
-        # Ensure that if a section is not found, it's an empty list/string
-        summary = summary if summary else ""
-        skills = skills if skills else []
-        tools = tools if tools else []
-
-        # Send the expected JSON response to the frontend
-        return jsonify({
-            "summary": summary,
-            "skills": skills,
-            "tools": tools
-        })
+        # Return the JSON response directly as analyze_job_description is now in the correct format
+        return jsonify(analysis_result)
 
     except Exception as e:
         logger.error(f"Error in /analyze-jd API: {str(e)}")
-        # If parsing encounters an issue, return an error response
-        return jsonify({"error": f"Failed to analyze job description due to an internal error: {str(e)}"}), 500
-
+        return jsonify({"error": f"Failed to analyze job description: {str(e)}"}), 500
 
 # Yeh function app.py me replace karein
 @app.route("/generate-ai-resume", methods=["POST"])

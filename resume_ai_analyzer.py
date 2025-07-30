@@ -484,34 +484,78 @@ def compare_resume_with_keywords(resume_text, job_keywords):
     }
 
 def analyze_job_description(jd_text):
+    """
+    Analyzes job description text using OpenAI to extract summary, skills, and tools in JSON format.
+    This version is enhanced for global relevance and clarity.
+    """
     if not client:
-        return "OpenAI API key not set. Cannot analyze job description."
+        # If OpenAI client is not initialized
+        logger.error("OpenAI API key not set. Cannot analyze job description.")
+        return {"error": "OpenAI API key not set. Please configure the OPENAI_API_KEY environment variable."}
 
     try:
+        # The AI prompt is strengthened to ensure it always responds in JSON format
+        # and provides globally relevant, easy-to-understand insights.
         prompt = f"""
-You are an expert resume reviewer.
-
-Analyze the following job description and extract the most relevant:
-1. Key Skills
-2. Required Qualifications
-3. Recommended Action Verbs
-
-Format the result clearly in 3 sections with headings.
+You are a world-class, highly intelligent Job Description Analyzer. Your expertise spans global job markets and industry standards.
+Your task is to analyze the provided job description and extract the most relevant and crucial information.
+The output MUST be a JSON object, clean, concise, and easy for anyone to understand, regardless of their background.
 
 Job Description:
-{jd_text}
+{jd_text[:6000]} # JD text up to 6000 characters
+
+Return a JSON object with the following keys:
+- "summary": A concise, professional summary (2-4 sentences) of the ideal candidate profile. This should capture the essence of what the recruiter is looking for, in simple, universally understood terms.
+- "skills": A list of key technical, soft, and transferable skills explicitly mentioned or strongly implied. Think broadly about skills applicable across various industries and regions.
+- "tools": A list of specific tools, software, platforms, or technologies mentioned. This includes programming languages, frameworks, specific applications, or industry-standard equipment.
+
+Example JSON output:
+{{
+  "summary": "This role seeks a proactive Software Engineer with strong problem-solving skills and experience in scalable cloud solutions. The ideal candidate will excel in collaborative environments and drive technical innovation.",
+  "skills": ["Python", "Node.js", "RESTful APIs", "Database Management", "CI/CD", "Collaboration", "Problem-Solving", "Communication", "Leadership", "Data Structures", "Algorithms", "Distributed Systems", "Agile Methodologies"],
+  "tools": ["AWS", "Azure", "GCP", "Docker", "Kubernetes", "Jenkins", "GitLab CI", "Kafka", "RabbitMQ"]
+}}
+
+Important Guidelines:
+- The output MUST be in English.
+- If a category is not found or cannot be extracted (e.g., no specific tools mentioned), its list should be empty (e.g., []) or its string should be empty (e.g., "").
+- Focus on extracting core requirements and universally recognized concepts. Avoid jargon where simpler terms suffice.
+- Return ONLY the JSON object. Do NOT include any other text, explanations, or formatting outside the JSON.
         """
 
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"} # This ensures AI returns JSON
         )
+        
+        # Load the AI response directly as JSON
+        analysis_result = json.loads(response.choices[0].message.content)
+        
+        # Ensure all expected keys exist and are of the correct type
+        # If AI omits a key, assign it a default empty value
+        final_output = {
+            'summary': analysis_result.get('summary', '') or '',
+            'skills': analysis_result.get('skills', []) or [],
+            'tools': analysis_result.get('tools', []) or []
+        }
 
-        return response.choices[0].message.content.strip()
+        # Ensure skills and tools are lists, even if AI provided something else (e.g., a single string)
+        if not isinstance(final_output['skills'], list):
+            final_output['skills'] = [final_output['skills']] if final_output['skills'] else []
+        if not isinstance(final_output['tools'], list):
+            final_output['tools'] = [final_output['tools']] if final_output['tools'] else []
 
+        logger.info(f"Job description analyzed successfully. Summary: {final_output['summary'][:50]}...")
+        return final_output
+
+    except json.JSONDecodeError as e:
+        logger.error(f"AI returned invalid JSON for analyze_job_description: {e}. Raw response: {response.choices[0].message.content}")
+        return {"error": "AI returned an invalid response. Please try again with a different job description."}
     except Exception as e:
         logger.error(f"[ERROR in analyze_job_description]: {str(e)}")
-        return "Failed to analyze job description."
+        # A general error response for any other errors
+        return {"error": f"Failed to analyze job description: {str(e)}"}
 
 def generate_michelle_template_html(sections):
     def list_items(text, section_type="other"):
