@@ -30,21 +30,20 @@ else:
 
 def extract_text_from_pdf(file_path):
     try:
-        # First, try to extract text directly using PyMuPDF
+        # Pehle, PyMuPDF se text extract karne ki koshish karein
         doc = fitz.open(file_path)
-        text = "\n".join(page.get_text() for page in doc).strip()
+        text = ""
+        if doc.page_count > 0:
+            text = "\n".join(page.get_text() for page in doc).strip()
         doc.close()
 
-        # If no text is extracted, try OCR
-        if not text:
-            logger.warning(f"No text extracted from {file_path} using PyMuPDF, attempting OCR...")
-            try:
-                text = extract_text_with_ocr(file_path)
-            except Exception as ocr_error:
-                logger.error(f"OCR failed for {file_path}: {str(ocr_error)}")
-                return ""  # Return empty string if OCR fails
-
-        return text if text.strip() else ""
+        # Agar PyMuPDF se koi text extract nahi hua, toh ise image-based manein
+        # Aur OCR ko bypass karein jaisa ki request kiya gaya hai.
+        if not text.strip(): # .strip() use karein taaki sirf whitespace wali string empty mani jaye
+            logger.warning(f"No readable text extracted from {file_path} using PyMuPDF. Assuming image-based PDF for error handling.")
+            return "NO_TEXT_EXTRACTED_IMAGE_BASED" # Ek special flag return kiya
+        
+        return text
 
     except Exception as e:
         logger.error(f"[ERROR in extract_text_from_pdf]: {str(e)}")

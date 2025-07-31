@@ -805,6 +805,8 @@ def generate_ai_resume():
         traceback.print_exc()  # Debugging ke liye traceback print karen
         return jsonify({"error": f"❌ Exception in generate-ai-resume: {type(e).__name__} - {str(e)}"}), 500
 
+# app.py file mein, convert_format route ke andar ke changes:
+
 @app.route('/convert-format', methods=['POST'])
 def convert_format():
     try:
@@ -858,36 +860,26 @@ def convert_format():
                 logger.error(f"Invalid or corrupted DOCX file: {str(e)}")
                 return jsonify({"error": f"Invalid or corrupted DOCX file: {str(e)}"}), 400
 
+        # --- Common Text Extraction Logic ---
+        # extract_text_from_pdf function ko resume_ai_analyzer.py mein update kiya gaya hai.
+        extracted_text = ""
+        if ext == '.pdf':
+            extracted_text = extract_text_from_pdf(upload_path)
+            if extracted_text == "NO_TEXT_EXTRACTED_IMAGE_BASED":
+                return jsonify({"error": "Please upload a scannable PDF. We currently do not support image-based PDFs."}), 400
+        elif ext == '.docx':
+            # DOCX se text extract karte waqt, paragraphs ko preserve karein
+            doc = Document(upload_path) # Re-open doc for consistent processing
+            extracted_text = "\n".join([p.text for p in doc.paragraphs])
+            
+        if not extracted_text.strip():
+            logger.warning("No text could be extracted from the file")
+            return jsonify({"error": "No text could be extracted. The file may be empty or contain only images."}), 400
+
+        # --- Conversion Logic based on target_format ---
         if target_format == 'text':
-            text = ""
-            if ext == '.pdf':
-                try:
-                    doc = fitz.open(upload_path)
-                    if doc.page_count == 0:
-                        logger.error("PDF has no pages")
-                        return jsonify({"error": "PDF has no content to extract"}), 400
-                    text = "\n".join([page.get_text().strip() for page in doc])
-                    doc.close()
-                    logger.info(f"Extracted text from PDF: {len(text)} characters")
-                except Exception as e:
-                    logger.error(f"Failed to extract text from PDF: {str(e)}")
-                    return jsonify({"error": f"Failed to extract text from PDF: {str(e)}"}), 500
-
-            elif ext == '.docx':
-                try:
-                    doc = Document(upload_path)
-                    text = "\n".join([para.text for para in doc.paragraphs])
-                    logger.info(f"Extracted text from DOCX: {len(text)} characters")
-                except Exception as e:
-                    logger.error(f"Failed to extract text from DOCX: {str(e)}")
-                    return jsonify({"error": f"Failed to extract text from DOCX: {str(e)}"}), 500
-
-            if not text.strip():
-                logger.warning("No text could be extracted from the file")
-                return jsonify({"error": "No text could be extracted. The file may be empty or contain only images."}), 400
-
             with open(output_path, 'w', encoding='utf-8') as f:
-                f.write(text)
+                f.write(extracted_text)
             
             return send_file(
                 output_path,
@@ -898,16 +890,68 @@ def convert_format():
 
         elif ext == '.docx' and target_format == 'pdf':
             try:
-                doc = Document(upload_path)
-                paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
-                if not paragraphs:
-                    logger.error("DOCX file has no content")
+                doc = Document(upload_path) # Load DOCX for style analysis
+                html_content_parts = []
+                
+                for para in doc.paragraphs:
+                    text = para.text.strip()
+                    if not text:
+                        continue
+
+                    # DOCX styles ko HTML headings aur lists mein map karein
+                    style_name = para.style.name.lower()
+                    if "heading 1" in style_name:
+                        html_content_parts.append(f"<h1>{text}</h1>")
+                    elif "heading 2" in style_name:
+                        html_content_parts.append(f"<h2>{text}</h2>")
+                    elif "heading 3" in style_name:
+                        html_content_parts.append(f"<h3>{text}</h3>")
+                    elif "list" in style_name or text.startswith(('-', '*', '•')) or (len(text) > 2 and text[0].isdigit() and text[1] == '.'):
+                        # Bullet/Numbered list items
+                        html_content_parts.append(f"<li>{text.lstrip('-*•0-9. ').strip()}</li>")
+                    else:
+                        html_content_parts.append(f"<p>{text}</p>")
+
+                if not html_content_parts:
+                    logger.error("DOCX file has no readable content for PDF conversion")
                     return jsonify({"error": "DOCX file is empty or contains no readable text."}), 400
 
-                html_content = '\n'.join([f"<p>{para}</p>" for para in paragraphs])
+                # List items ko <ul> tags mein wrap karein
+                final_html_content = ""
+                in_list = False
+                for part in html_content_parts:
+                    if part.startswith("<li>") and not in_list:
+                        final_html_content += "<ul>"
+                        in_list = True
+                    elif not part.startswith("<li>") and in_list and not part.startswith("<li>"): # List end ho gayi
+                        final_html_content += "</ul>"
+                        in_list = False
+                    final_html_content += part
+                if in_list: # Agar list end nahi hui thi
+                    final_html_content += "</ul>"
+
+                # Basic styling for PDF
+                html_for_pdf = f"""
+                <html>
+                <head>
+                    <style>
+                        body {{ font-family: 'sans-serif'; margin: 20px; line-height: 1.6; color: #333; }}
+                        h1 {{ font-size: 24px; margin-top: 20px; margin-bottom: 10px; }}
+                        h2 {{ font-size: 20px; margin-top: 18px; margin-bottom: 8px; }}
+                        h3 {{ font-size: 18px; margin-top: 15px; margin-bottom: 7px; }}
+                        p {{ margin-bottom: 10px; }}
+                        ul {{ margin-left: 20px; margin-bottom: 10px; list-style-type: disc; }}
+                        li {{ margin-bottom: 5px; }}
+                    </style>
+                </head>
+                <body>
+                    {final_html_content}
+                </body>
+                </html>
+                """
                 
                 with open(html_temp_path, 'w', encoding='utf-8') as f:
-                    f.write(html_content)
+                    f.write(html_for_pdf)
                 
                 pdfkit.from_file(html_temp_path, output_path)
                 
@@ -924,19 +968,44 @@ def convert_format():
 
         elif ext == '.pdf' and target_format == 'docx':
             try:
-                doc = fitz.open(upload_path)
-                if doc.page_count == 0:
-                    logger.error("PDF has no pages")
-                    return jsonify({"error": "PDF has no content to convert"}), 400
-                text = "\n".join([page.get_text().strip() for page in doc])
-                doc.close()
-
-                if not text.strip():
-                    logger.warning("No text extracted from PDF")
-                    return jsonify({"error": "No text could be extracted from the PDF."}), 400
-
+                # PDF se text extract karein (extracted_text variable upar se use hoga)
                 word_doc = Document()
-                word_doc.add_paragraph(text)
+                
+                # Heuristics for PDF text to DOCX formatting
+                lines = extracted_text.split('\n')
+                for i, line in enumerate(lines):
+                    line = line.strip()
+                    if not line:
+                        continue # Skip empty lines
+
+                    # Simple Heading Detection (Heuristic-based)
+                    # Check for all caps, short lines, or common heading patterns
+                    is_heading = False
+                    if len(line) < 50 and line.isupper() and len(line.split()) < 5:
+                        is_heading = True
+                    elif re.match(r"^(education|experience|skills|summary|projects|certifications|languages|awards|volunteer|publications)\b", line.lower()):
+                        is_heading = True
+                    
+                    # Bullet Point Detection
+                    is_bullet = False
+                    if line.startswith(('-', '*', '•')) or (len(line) > 2 and line[0].isdigit() and line[1] == '.' and ' ' in line):
+                        is_bullet = True
+                    
+                    if is_heading:
+                        # Attempt to assign heading levels based on length/position (simple heuristic)
+                        if len(line) < 20 and line.isupper(): # Main sections
+                            word_doc.add_heading(line, level=1)
+                        else: # Sub-sections
+                            word_doc.add_heading(line, level=2)
+                    elif is_bullet:
+                        word_doc.add_paragraph(line.lstrip('-*•0-9. ').strip(), style='List Bullet')
+                    else:
+                        word_doc.add_paragraph(line) # Normal paragraph
+
+                if not word_doc.paragraphs:
+                    logger.warning("No content added to DOCX from PDF extraction.")
+                    return jsonify({"error": "No readable content found in PDF for DOCX conversion."}), 400
+
                 word_doc.save(output_path)
                 logger.info(f"Converted PDF to DOCX: {output_path}")
                 return send_file(
@@ -960,7 +1029,7 @@ def convert_format():
     finally:
         cleanup_file(upload_path)
         cleanup_file(output_path)
-        cleanup_file(html_temp_path)
+        cleanup_file(html_temp_path) # html_temp_path ko bhi cleanup karein
 
 @app.route('/fix-formatting', methods=['POST'])
 def fix_formatting():
