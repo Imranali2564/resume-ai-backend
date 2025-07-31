@@ -696,22 +696,78 @@ Just return a number between 0 and 100, nothing else.
 
 @app.route('/optimize-keywords', methods=['POST'])
 def optimize_keywords():
-    resume_file = request.files.get('resume')
-    job_description = request.form.get('job_description', '')
+    resume_file = None
+    filepath = None # For cleanup
 
-    if not resume_file or not job_description:
-        return jsonify({"error": "Missing resume or job description"}), 400
+    try:
+        resume_file = request.files.get('resume')
+        job_description_text = request.form.get('job_description', '')
 
-    resume_text = extract_text_from_resume(resume_file)
-    if not resume_text.strip():
-        return jsonify({"error": "No extractable text found in resume"}), 400
+        if not resume_file or resume_file.filename == '':
+            logger.error("No resume file uploaded for /optimize-keywords")
+            return jsonify({"error": "Missing resume file."}), 400
+        
+        if not job_description_text.strip():
+            logger.error("No job description provided for /optimize-keywords")
+            return jsonify({"error": "Missing job description."}), 400
 
-    jd_keywords = extract_keywords_from_jd(job_description)
-    if not jd_keywords:
-        return jsonify({"error": "No keywords extracted from job description"}), 400
+        # Resume file ko temp location par save karein
+        filename = secure_filename(resume_file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        resume_file.save(filepath)
+        logger.info(f"Resume file saved to: {filepath}")
 
-    results = compare_resume_with_keywords(resume_text, jd_keywords)
-    return jsonify(results)
+        # Step 1: Resume se text extract karein
+        ext = os.path.splitext(filename)[1].lower()
+        if ext == ".pdf":
+            resume_text = extract_text_from_pdf(filepath)
+            # Image-based PDF detection
+            if resume_text == "NO_TEXT_EXTRACTED_IMAGE_BASED":
+                logger.warning(f"Image-based PDF detected for {filename}.")
+                return jsonify({"error": "Please upload a scannable PDF. We currently do not support image-based PDFs."}), 400
+        elif ext == ".docx":
+            resume_text = extract_text_from_docx(filepath)
+        else:
+            logger.error(f"Unsupported resume file format: {ext}")
+            return jsonify({"error": f"Unsupported resume file format: {ext}. Please upload a PDF or DOCX."}), 400
+
+        if not resume_text.strip():
+            logger.error(f"No extractable text found in resume: {filename}")
+            return jsonify({"error": "Could not extract text from your resume. It might be empty or image-based."}), 400
+
+        # Step 2: Job Description se keywords extract karein
+        jd_keywords_string = extract_keywords_from_jd(job_description_text)
+        if not jd_keywords_string.strip():
+            logger.error("No keywords extracted from job description by AI.")
+            return jsonify({"error": "Could not extract keywords from the job description. Please ensure it contains relevant text."}), 400
+        
+        # Step 3: Resume aur JD keywords ko compare karein
+        # compare_resume_with_keywords ab 'present_keywords' return karega.
+        comparison_results = compare_resume_with_keywords(resume_text, jd_keywords_string)
+        
+        present_keywords = comparison_results.get("present_keywords", [])
+        missing_keywords = comparison_results.get("missing_keywords", [])
+        
+        # Step 4: Missing keywords ke liye AI suggestions generate karein
+        # Ye naya function hai jo resume_ai_analyzer.py mein add kiya jayega.
+        suggested_keywords = generate_keyword_suggestions(job_description_text, missing_keywords)
+        
+        # Final response frontend ko bhej dein
+        return jsonify({
+            "match_score": comparison_results.get("match_score", 0),
+            "present_keywords": present_keywords,
+            "missing_keywords": missing_keywords,
+            "suggested_keywords": suggested_keywords
+        })
+
+    except Exception as e:
+        import traceback
+        logger.error(f"Error in /optimize-keywords: {traceback.format_exc()}")
+        return jsonify({"error": f"An unexpected server error occurred: {str(e)}"}), 500
+    finally:
+        if filepath and os.path.exists(filepath):
+            os.remove(filepath) # Temporary file cleanup
+            logger.debug(f"Cleaned up temporary file: {filepath}")
 
 @app.route('/analyze-jd', methods=['POST'])
 def analyze_job_description_api():

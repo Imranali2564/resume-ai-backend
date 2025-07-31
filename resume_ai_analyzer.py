@@ -465,20 +465,82 @@ Make it ATS-friendly, use action words, and highlight strengths. Do not include 
         logger.error(f"[ERROR in generate_resume_summary]: {str(e)}")
         return "Failed to generate summary due to AI error."
 
+# generate_keyword_suggestions Keyword Optimizer ke liye hai.
+
+def generate_keyword_suggestions(job_description_text, missing_keywords):
+    """
+    AI ka use karke job description aur missing keywords ke aadhar par naye keywords suggest karta hai.
+    """
+    if not client:
+        logger.error("OpenAI client not initialized for keyword suggestions.")
+        return []
+
+    if not job_description_text.strip():
+        return []
+
+    missing_kw_str = ", ".join(missing_keywords) if missing_keywords else "no specific missing keywords provided"
+
+    prompt = f"""
+    You are an expert resume and ATS (Applicant Tracking System) optimization specialist.
+    Your task is to suggest relevant keywords that a job seeker should add to their resume.
+    
+    Here's the Job Description:
+    ---
+    {job_description_text[:4000]}
+    ---
+    
+    And here are some keywords that are currently missing from the candidate's resume:
+    ---
+    {missing_kw_str}
+    ---
+    
+    Based on the Job Description, suggest 5-10 additional, highly relevant keywords (technical, soft, or industry-specific) that would significantly improve the resume's ATS compatibility and recruiter appeal.
+    
+    **Important:**
+    - Suggest only keywords that are directly relevant to the job description.
+    - Do NOT suggest keywords that are already in the 'missing keywords' list (unless they are very broad categories that can be broken down).
+    - Return ONLY a comma-separated list of keywords. Do NOT include any other text, explanations, or formatting.
+    
+    Example: "Data Analysis, SQL, Python, Project Management, Client Communication"
+    """
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7 # Thoda creativity allow karein suggestions ke liye
+        )
+        suggestions_raw = response.choices[0].message.content.strip()
+        # Comma-separated string ko list mein convert karein
+        suggestions_list = [s.strip() for s in suggestions_raw.split(',') if s.strip()]
+        return suggestions_list
+    except Exception as e:
+        logger.error(f"[ERROR in generate_keyword_suggestions]: {str(e)}")
+        return [] # Empty list return karein agar AI fail hota hai
+
+# compare_resume_with_keywords bhi Keyword Optimizer keliye hai.
+
 def compare_resume_with_keywords(resume_text, job_keywords):
     if not resume_text or not job_keywords:
-        return {"match_score": 0, "missing_keywords": job_keywords}
+        # Ensure present_keywords is an empty list as expected by frontend
+        return {"match_score": 0, "present_keywords": [], "missing_keywords": job_keywords}
 
     resume_lower = resume_text.lower()
     keywords = [kw.strip().lower() for kw in job_keywords.split(",") if kw.strip()]
-    missing_keywords = [kw for kw in keywords if kw not in resume_lower]
-    matched_keywords = [kw for kw in keywords if kw in resume_lower]
+    
+    present_keywords = [] # Initialize this list
+    missing_keywords = []
 
-    match_score = int((len(matched_keywords) / len(keywords)) * 100) if keywords else 0
+    for kw in keywords:
+        if kw in resume_lower:
+            present_keywords.append(kw)
+        else:
+            missing_keywords.append(kw)
+
+    match_score = int((len(present_keywords) / len(keywords)) * 100) if keywords else 0
 
     return {
         "match_score": match_score,
-        "matched_keywords": matched_keywords,
+        "present_keywords": present_keywords, # Renamed from matched_keywords for frontend consistency
         "missing_keywords": missing_keywords
     }
 
