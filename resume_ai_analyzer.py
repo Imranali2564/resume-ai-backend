@@ -828,6 +828,116 @@ Only include meaningful points.
     except Exception as e:
         return {"error": str(e)}
 
+# Sirf Score Checker k eliye ye function hai
+
+def generate_resume_score_and_detailed_feedback(resume_text):
+    logger.info("Generating Resume Score and Detailed Feedback for Score Checker Tool...")
+    if not client:
+        return {"error": "OpenAI client not initialized."}
+
+    # Step 1: Resume sections extract karein
+    # extract_resume_sections_safely function ko ensure karein ki woh resume_ai_analyzer.py mein maujood hai
+    extracted_data = extract_resume_sections_safely(resume_text)
+    if "error" in extracted_data:
+        logger.error(f"Error extracting sections for score checker: {extracted_data['error']}")
+        return {"error": extracted_data["error"]}
+
+    final_feedback_details = []
+    overall_calculated_score = 100 # Initial score
+
+    # --- Check 1: Zaroori Sections Maujood Hain Ya Nahi ---
+    required_sections = {
+        "summary": "Profile Summary",
+        "work_experience": "Work Experience",
+        "education": "Education",
+        "technical_skills": "Technical Skills"
+    }
+    for key, name in required_sections.items():
+        if not extracted_data.get(key) or (isinstance(extracted_data.get(key), list) and not extracted_data.get(key)):
+            final_feedback_details.append({"status": "fail", "comment": f"❌ Critical section missing: '{name}'. A resume is incomplete without it."})
+            overall_calculated_score -= 15
+        else:
+            final_feedback_details.append({"status": "pass", "comment": f"✅ '{name}' section found."})
+
+    # --- Check 2: Har Section ka Gehraai se Analysis (GPT-3.5 se) ---
+    # Har section ke liye AI prompt chalayenge
+    for section_key, section_content in extracted_data.items():
+        if not section_content or section_key in ["name", "job_title", "contact"]:
+            continue # Skip basic info or empty sections
+
+        # AI ko section content JSON format mein pass karein agar woh list/dict hai
+        content_to_analyze = json.dumps(section_content, indent=2) if isinstance(section_content, (list, dict)) else section_content
+
+        prompt = f"""
+        You are an elite resume auditor. Analyze ONLY the following resume section.
+        Provide a concise report for each of these checks: formatting, conciseness, grammar/spelling, keyword relevance, and quantifiable achievements.
+        
+        Section Name: "{section_key.replace('_', ' ').title()}"
+        Content:
+        ---
+        {content_to_analyze[:3000]}
+        ---
+
+        Your Task: Return a JSON object with a sub-report for each of the following checks. Each check MUST have a "status" ('pass', 'fail', or 'improve') and a "comment" (brief, actionable).
+        
+        1.  **formatting_check**: Is the format correct for this section? (e.g., bullet points for experience, keywords for skills, consistent spacing).
+        2.  **conciseness_check**: Is the section content concise and not too wordy? Is it not too short?
+        3.  **grammar_spelling_check**: Are there any grammar or spelling errors?
+        4.  **keyword_relevance_check**: Does the content contain relevant keywords for a professional resume? (General relevance, not JD specific).
+        5.  **quantifiable_achievements_check**: (Only for 'work_experience' and 'projects') Does it include quantifiable achievements (numbers, percentages, metrics)? If not applicable, status 'N/A'.
+
+        Example for a "pass" on work_experience:
+        {{
+            "formatting_check": {{"status": "pass", "comment": "Uses professional bullet points correctly."}},
+            "conciseness_check": {{"status": "pass", "comment": "Details are concise and to the point."}},
+            "grammar_spelling_check": {{"status": "pass", "comment": "No spelling or grammar errors found."}},
+            "keyword_relevance_check": {{"status": "pass", "comment": "Includes strong action verbs and relevant industry terms."}},
+            "quantifiable_achievements_check": {{"status": "pass", "comment": "Quantifiable achievements are present."}}
+        }}
+
+        Example for a "fail" on skills:
+        {{
+            "formatting_check": {{"status": "fail", "comment": "Uses long sentences instead of a keyword list."}},
+            "conciseness_check": {{"status": "pass", "comment": "Content length is appropriate."}},
+            "grammar_spelling_check": {{"status": "pass", "comment": "No spelling errors."}},
+            "keyword_relevance_check": {{"status": "improve", "comment": "Consider adding more industry-specific skills."}},
+            "quantifiable_achievements_check": {{"status": "N/A", "comment": "Not applicable for this section."}}
+        }}
+
+        Return ONLY the JSON object for this one section's analysis.
+        """
+        
+        try:
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+            section_sub_report = json.loads(response.choices[0].message.content)
+            
+            # Score adjust karein based on sub-report
+            for check_name, check_result in section_sub_report.items():
+                if check_result.get("status") == "fail":
+                    final_feedback_details.append({"status": "fail", "comment": f"❌ {section_key.replace('_', ' ').title()} - {check_result.get('comment')}"})
+                    overall_calculated_score -= 10
+                elif check_result.get("status") == "improve":
+                    final_feedback_details.append({"status": "improve", "comment": f"⚠️ {section_key.replace('_', ' ').title()} - {check_result.get('comment')}"})
+                    overall_calculated_score -= 5
+                elif check_result.get("status") == "pass":
+                    final_feedback_details.append({"status": "pass", "comment": f"✅ {section_key.replace('_', ' ').title()} - {check_result.get('comment')}"})
+                # N/A wale ko score se affect nahi karenge
+
+        except Exception as e:
+            logger.error(f"Error analyzing section {section_key} for score checker: {e}")
+            final_feedback_details.append({"status": "error", "comment": f"⚠️ Could not analyze '{section_key.replace('_', ' ').title()}' due to AI error."})
+            overall_calculated_score -= 5 # Minor deduction for unanalyzed section
+            
+    # Overall score ko 0-100 ke beech rakhein
+    overall_calculated_score = max(0, min(100, overall_calculated_score))
+    
+    return {"score": overall_calculated_score, "feedback_details": final_feedback_details}
+    
+
 def fix_ats_issue(issue_text, extracted_data):
     section = "misc"
     fixed_content = extracted_data # Initialize with the extracted data

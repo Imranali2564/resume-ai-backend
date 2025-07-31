@@ -47,6 +47,7 @@ from resume_ai_analyzer import (
     extract_keywords_from_jd,
     compare_resume_with_keywords,
     generate_keyword_suggestions,
+    generate_resume_score_and_detailed_feedback,
     analyze_job_description,
     fix_resume_formatting,
     generate_resume_summary,
@@ -640,7 +641,7 @@ def download_cover_letter():
 @app.route('/resume-score', methods=['POST'])
 def resume_score():
     resume_text = ""
-    filepath = None  # For cleanup later
+    filepath = None  # For cleanup
 
     try:
         if request.is_json:
@@ -650,11 +651,17 @@ def resume_score():
             file = request.files.get('file')
             if not file:
                 return jsonify({"error": "No file uploaded"}), 400
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
+            
+            # File ko save karein aur text extract karein
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filepath)
+            
             ext = os.path.splitext(filepath)[1].lower()
             if ext == ".pdf":
                 resume_text = extract_text_from_pdf(filepath)
+                if resume_text == "NO_TEXT_EXTRACTED_IMAGE_BASED":
+                    return jsonify({"error": "Please upload a scannable PDF. Image-based PDFs are not supported."}), 400
             elif ext == ".docx":
                 resume_text = extract_text_from_docx(filepath)
             else:
@@ -663,37 +670,28 @@ def resume_score():
         if not resume_text.strip():
             return jsonify({"error": "No extractable text found in resume"}), 400
 
-        prompt = f"""
-You are a professional resume reviewer. Give a resume score between 0 and 100 based on:
-- Formatting and readability
-- Grammar and professionalism
-- Use of action verbs and achievements
-- Keyword optimization for ATS
-- Overall impression and completeness
-Resume:
-{resume_text[:6000]}
-Just return a number between 0 and 100, nothing else.
-        """
+        # Naye function ko call karein jo score aur detailed feedback dega
+        # generate_resume_score_and_detailed_feedback function ko resume_ai_analyzer.py se import karna zaroori hai
+        report = generate_resume_score_and_detailed_feedback(resume_text)
 
-        from openai import OpenAI
-        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a strict but fair resume scoring assistant."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        score_raw = response.choices[0].message.content.strip()
-        score = int(''.join(filter(str.isdigit, score_raw)))
-        return jsonify({"score": max(0, min(score, 100))})
+        if "error" in report:
+            logger.error(f"Error generating detailed report for score checker: {report['error']}")
+            return jsonify({"error": report["error"]}), 500
+
+        # Frontend ko detailed score aur issues bhej dein
+        return jsonify({
+            "score": report["score"],
+            "feedback_details": report["feedback_details"] # Detailed issues aur suggestions
+        })
 
     except Exception as e:
-        logger.error(f"Error in /resume-score: {str(e)}")
-        return jsonify({"score": 70})
+        import traceback
+        logger.error(f"Error in /resume-score: {traceback.format_exc()}")
+        # Fallback score aur generic error message agar kuch bhi galat hota hai
+        return jsonify({"score": 70, "feedback_details": [{"status": "error", "comment": f"An unexpected error occurred during analysis: {str(e)}"}]})
     finally:
         if filepath:
-            cleanup_file(filepath)
+            cleanup_file(filepath) # Temporary file cleanup
 
 @app.route('/optimize-keywords', methods=['POST'])
 def optimize_keywords():
