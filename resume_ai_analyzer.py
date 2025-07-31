@@ -432,12 +432,12 @@ Job Description:
     
 def generate_resume_summary(name, role, experience, skills):
     if not client:
-        return "OpenAI API key not set. Cannot generate summary."
+        return {"error": "OpenAI API key not set. Cannot generate summary."}
 
     try:
-        # 🧼 Clean personal info from inputs
-        experience = remove_unnecessary_personal_info(experience or "")
-        skills = remove_unnecessary_personal_info(skills or "")
+        # Yahan se 'remove_unnecessary_personal_info' function call ko hata diya gaya hai.
+        # experience = remove_unnecessary_personal_info(experience or "")
+        # skills = remove_unnecessary_personal_info(skills or "")
 
         prompt = f"""
 You are a professional resume expert.
@@ -459,11 +459,11 @@ Make it ATS-friendly, use action words, and highlight strengths. Do not include 
             temperature=0.7
         )
 
-        return response.choices[0].message.content.strip()
+        return {"summary": response.choices[0].message.content.strip()} # Return as dictionary with 'summary' key
 
     except Exception as e:
         logger.error(f"[ERROR in generate_resume_summary]: {str(e)}")
-        return "Failed to generate summary due to AI error."
+        return {"error": "Failed to generate summary due to AI error."}
 
 # generate_keyword_suggestions Keyword Optimizer ke liye hai.
 
