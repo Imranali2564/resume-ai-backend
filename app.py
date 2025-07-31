@@ -46,6 +46,7 @@ from resume_ai_analyzer import (
     check_ats_compatibility_deep,
     extract_keywords_from_jd,
     compare_resume_with_keywords,
+    generate_keyword_suggestions,
     analyze_job_description,
     fix_resume_formatting,
     generate_resume_summary,
